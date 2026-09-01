@@ -1,0 +1,256 @@
+==============================================
+CARA PENGGUNAAN API
+==============================================
+Project: express-api (RSV Helmet)
+Base URL: http://localhost:8000 (development Docker)
+Format response: JSON
+
+==============================================
+ENDPOINT BARU: Jumlah Barang FINISHGOOD per Bulan
+==============================================
+GET /api/barang/finishgood-per-bulan
+
+Deskripsi:
+  Menghitung jumlah Barang yang SAAT INI berstatus FINISHGOOD,
+  dikelompokkan per bulan (tahun-bulan) berdasarkan kolom `tanggal`
+  barang (tanggal produksi). Data diambil live dari SQL view
+  `ViewBarangFinishgoodPerBulan`.
+
+Query param (semua OPSIONAL):
+  variantId  -> filter khusus satu variant (angka)
+  productId  -> filter khusus satu product (angka)
+  tanggalAwal  -> batas awal bulan (tanggal valid, "YYYY-MM-DD" atau "YYYY-MM")
+  tanggalAkhir -> batas akhir bulan (tanggal valid)
+
+Contoh request:
+  # Semua data
+  curl http://localhost:8000/api/barang/finishgood-per-bulan
+
+  # Filter product id=1
+  curl "http://localhost:8000/api/barang/finishgood-per-bulan?productId=1"
+
+  # Filter variant id=5
+  curl "http://localhost:8000/api/barang/finishgood-per-bulan?variantId=5"
+
+  # Filter rentang bulan 2026-01 s/d 2026-08 + product 1
+  curl "http://localhost:8000/api/barang/finishgood-per-bulan?productId=1&tanggalAwal=2026-01-01&tanggalAkhir=2026-08-31"
+
+Contoh response 200:
+{
+  "data": [
+    {
+      "bulan": "2026-08",
+      "tahun": 2026,
+      "bulanAngka": 8,
+      "variantId": 1,
+      "productId": 1,
+      "jumlah": 30
+    }
+  ],
+  "meta": {
+    "variantId": 1,
+    "productId": 1
+  }
+}
+
+Keterangan field `data`:
+  bulan       -> key "YYYY-MM"
+  tahun       -> tahun (int)
+  bulanAngka  -> nomor bulan 1-12 (int)
+  variantId   -> id variant
+  productId   -> id product (hasil join via ProductVariant)
+  jumlah      -> banyak barang FINISHGOOD pada bulan tsb
+
+Response error:
+  400 - Parameter tidak valid (opsi benar, mis. variantId bukan angka,
+        atau tanggal tidak valid). Pesan di field `message`.
+  500 - Gagal mengambil data. Pesan di field `message`.
+
+========================================================================
+ENDPOINT STATISTIK BARANG (sudah ada, terkait)
+========================================================================
+GET /api/barang/status-summary
+  Ringkasan total barang + jumlah per status (REGISTER, FINISHGOOD,
+  RETUR, OUT, BAD). Tanpa param.
+
+GET /api/barang/stats
+  Statistik barang: total, perStatus, perVariant, perBatch.
+  Query param OPSIONAL: variantId, batchId.
+  Catatan: perBatch.total hanya menghitung barang berstatus TIDAK
+  REGISTER (FINISHGOOD/RETUR/OUT/BAD). REGISTER tidak dihitung.
+
+GET /api/barang/batch-rentang-tanggal
+  Rentang tanggal produksi per batch (status SELESAI & AKTIF).
+  Data diambil live dari view `ViewBatchRentangTanggal`; tanggal
+  didasarkan pada tanggal barang (barcode): tanggalMulai = MIN,
+  tanggalSelesai = MAX. Untuk batch AKTIF, tanggalSelesai diisi
+  waktu sekarang.
+
+  Query param (semua OPSIONAL):
+    tanggalAwal  -> batas awal rentang (tanggal valid, "YYYY-MM-DD")
+    tanggalAkhir -> batas akhir rentang (tanggal valid, "YYYY-MM-DD")
+
+  Aturan filter:
+    - batch SELESAI: disaring berdasar tanggalSelesai (MAX) dalam
+      rentang [tanggalAwal, tanggalAkhir].
+    - batch AKTIF : disaring berdasar tanggalMulai (MIN) <= tanggalAkhir
+      (karena akhirnya = sekarang).
+
+  Contoh request:
+    curl http://localhost:8000/api/barang/batch-rentang-tanggal
+    curl "http://localhost:8000/api/barang/batch-rentang-tanggal?tanggalAwal=2026-01-01&tanggalAkhir=2026-08-31"
+
+  Contoh response 200:
+  {
+    "selesai": [
+      {
+        "batchId": 1,
+        "nomorBatch": "BC001",
+        "jumlah": 5000,
+        "tanggalMulai": "2026-01-01...",
+        "tanggalSelesai": "2026-01-31..."
+      }
+    ],
+    "aktif": [
+      {
+        "batchId": 2,
+        "nomorBatch": "BC002",
+        "jumlah": 1200,
+        "tanggalMulai": "2026-08-01...",
+        "tanggalSelesai": "2026-08-30..."   // = waktu sekarang
+      }
+    ]
+  }
+
+  Keterangan field:
+    batchId        -> id batch
+    nomorBatch     -> kode batch ("BC001")
+    jumlah         -> banyak barang di batch yang berstatus TIDAK
+                      REGISTER (FINISHGOOD, RETUR, OUT, BAD). Barang
+                      yang masih REGISTER (baru generate/belum scan)
+                      TIDAK dihitung. Angka ini monotonik naik & tak
+                      pernah turun walau status berubah (mis. FINISHGOOD
+                      -> RETUR tetap dihitung).
+    tanggalMulai   -> produksi pertama di batch (MIN tanggal)
+    tanggalSelesai -> produksi terakhir di batch (MAX tanggal);
+                      untuk AKTIF = waktu sekarang
+
+  Response error:
+    400 - Parameter tanggal tidak valid.
+    500 - Gagal mengambil data. Pesan di field `message`.
+
+GET /api/barang
+
+
+  List barang dengan pagination & filter.
+  Query param: page (default 1), limit (default 20, maks 100),
+  variantId, batchId, status, tanggalAwal, tanggalAkhir.
+
+GET /api/barang/:id
+  Detail barang by id.
+
+GET /api/barang/:id/riwayat
+  Riwayat perubahan status barang.
+
+GET /api/barang/scan/:kodeBarang
+  Cari barang berdasarkan barcode.
+
+GET /api/barang/search?q=...
+  Cari barang by kode (contains). Param: q (wajib), limit (default 20, maks 50).
+
+GET /api/barang/export?format=json|csv
+  Ekspor data barang (unduh file attachment).
+
+  Query param (semua OPSIONAL):
+    format       -> "json" atau "csv". Default "json". Wajib salah satu, selain itu 400.
+    page         -> halaman, default 1.
+    limit        -> jumlah per halaman, default 10000, maks 10000.
+    variantId    -> filter khusus variant (angka).
+    batchId      -> filter khusus batch (angka).
+    status       -> filter status: REGISTER, FINISHGOOD, RETUR, OUT, BAD.
+    tanggalAwal  -> batas awal tanggal barang (valid, "YYYY-MM-DD").
+    tanggalAkhir -> batas akhir tanggal barang (valid, "YYYY-MM-DD").
+
+  Contoh request:
+    curl "http://localhost:8000/api/barang/export?format=csv"
+    curl "http://localhost:8000/api/barang/export?format=json&status=FINISHGOOD"
+    curl "http://localhost:8000/api/barang/export?format=csv&variantId=1&tanggalAwal=2026-01-01&tanggalAkhir=2026-08-31"
+
+  Response:
+    - format=json -> Content-Type application/json, attachment "barang-export-<ts>.json",
+                     body berisi { data, meta } (minat listBarang).
+    - format=csv  -> Content-Type text/csv, attachment "barang-export-<ts>.csv",
+                     kolom: id, kodeBarang, status, tanggal, variantId, kodeVariant,
+                     product, style, color, size, batchId, nomorBatch.
+                     Nilai mengandung koma/quote/newline di-escape CSV.
+
+  Response error:
+    400 - format bukan json/csv, atau param tidak valid.
+    500 - Gagal export. Pesan di field `message`.
+
+POST /api/barang/generate
+  Generate barang baru. Body: { "variantId": 1, "jumlah": 100 }.
+
+POST /api/barang/scan/bulk
+  Scan banyak barcode + ubah status. Body:
+  { "kodeBarang": ["BC001-V001-250826-0001"], "status": "FINISHGOOD", "keterangan": "..." }
+
+PATCH /api/barang/:id/status
+  Ubah status satu barang. Body: { "status": "FINISHGOOD", "keterangan": "..." }
+
+POST /api/barang/bulk-status
+  Ubah status banyak barang dalam satu request.
+
+========================================================================
+ENDPOINT PRODUCT & VARIANT
+========================================================================
+GET  /api/products
+GET  /api/products/:id
+POST /api/products                Body: { "nama": "...", "prefix": "..." }
+PUT  /api/products/:id            Body: { "nama": "..." }
+DELETE /api/products/:id
+GET  /api/products/:id/variants
+POST /api/products/:id/variants   Body: { "styleId": 1, "colorId": 1, "sizeId": 1, "tanggal?": "2026-08-01" }
+PATCH /api/products/:id/variants/:variantId  Body: { "tanggal?": "..." }
+DELETE /api/products/:id/variants/:variantId
+
+GET  /api/variant-produk          Filter OPSIONAL: productId, styleId, colorId, sizeId
+GET  /api/variant-produk/:id
+POST /api/variant-produk          Body: { "productId":1, "styleId":1, "colorId":1, "sizeId":1, "tanggal?" }
+PUT  /api/variant-produk/:id      Body: partial style/color/size/tanggal
+DELETE /api/variant-produk/:id
+
+========================================================================
+ENDPOINT AUTH
+========================================================================
+POST /api/auth/login   Body: { "email": "...", "password": "..." }
+                       Response: { "message", "token", "user" }
+POST /api/auth/logout  Header: Authorization: Bearer <token>
+                       (satu-satunya endpoint yang wajib login)
+
+========================================================================
+VALIDASI & DEPLOYMENT (Docker)
+========================================================================
+# Jalankan dari root backend:
+
+npm run docker:up          # pastikan container api/db/redis jalan
+npm run db:migrate         # terapkan migrasi (termasuk view) ke MariaDB di container
+npm run db:seed            # (opsional) isi data awal
+npm run build              # TypeScript strict
+npm test                   # jalankan seluruh test (vitest)
+
+# Cek via Docker kalau mau:
+# docker compose exec api npm run build
+# docker compose exec api npm test
+
+========================================================================
+STATUS BARANG (enum)
+========================================================================
+REGISTER, FINISHGOOD, RETUR, OUT, BAD
+
+Transition (singkat):
+  REGISTER   -> FINISHGOOD | OUT | RETUR | BAD
+  FINISHGOOD -> OUT | RETUR | BAD
+  RETUR      -> FINISHGOOD | OUT | BAD
+  OUT        -> terminal
+  BAD        -> terminal

@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-black: #000000;
+  --color-brand-gold: #e6aa5a;
+  --color-brand-gold-light: #f2c889;
+  --color-brand-gold-dark: #c08638;
+  --color-brand-grey: #9b9b9c;
+  --color-brand-grey-light: #d6d6d7;
+  --color-brand-grey-dark: #5a5a5c;
+  --color-brand-surface: #0b0b0c;
+  --color-brand-surface-card: #141416;
+  --color-brand-border: #232326;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  html {
+    font-family: "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #000000;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #232326;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #e6aa5a;
+  }
+}
+
+.app-admin {
+  color-scheme: dark;
+}
+
+.app-admin h1,
+.app-admin h2,
+.app-admin h3,
+.app-admin h4,
+.app-admin h5,
+.app-admin h6,
+.app-admin strong,
+.app-admin b {
+  color: inherit;
+}
+
+.app-admin .text-brand-grey {
+  color: #ffffff !important;
+}
+
+.app-admin input,
+.app-admin select {
+  color-scheme: dark;
+}
+
+.app-admin select option {
+  background-color: #141416;
+  color: #ffffff;
+}
+
+.app-admin input::placeholder {
+  color: #b5b5b6;
+  opacity: 1;
+}
+
+.app-admin input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+.app-admin select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23D6D6D7' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 14px;
+  padding-right: 2.25rem;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

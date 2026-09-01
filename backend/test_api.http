@@ -1,0 +1,186 @@
+@baseUrl = http://localhost:8000
+
+### Root
+GET {{baseUrl}}/
+
+### ==========================================
+### PRODUCTS
+### ==========================================
+
+### GET semua produk (beserta variants)
+GET {{baseUrl}}/api/products
+
+### GET produk by ID
+GET {{baseUrl}}/api/products/1
+
+### POST buat produk baru
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+
+{
+  "nama": "Hoodie Fleece"
+}
+
+### PUT update nama produk
+PUT {{baseUrl}}/api/products/1
+Content-Type: application/json
+
+{
+  "nama": "Windbreaker Premium"
+}
+
+### DELETE hapus produk (variants ikut terhapus)
+DELETE {{baseUrl}}/api/products/1
+
+### ==========================================
+### PRODUCT VARIANTS
+### ==========================================
+
+### GET semua variant produk ID 1
+GET {{baseUrl}}/api/products/1/variants
+
+### POST tambah variant baru ke produk ID 1
+### styleId: 1=Motif, 2=Solid
+### colorId: 1=BOB, 2=Carbon, 3=Nation, 4=Redline, 5=Black Doff, 6=Black Glossy, 7=Platinum Grey, 8=White Glossy
+### sizeId:  1=LG, 2=MD, 3=XL, 4=XXL
+POST {{baseUrl}}/api/products/1/variants
+Content-Type: application/json
+
+{
+  "styleId": 1,
+  "colorId": 1,
+  "sizeId": 1,
+  "tanggal": "2026-08-25"
+}
+
+### PATCH update status variant
+PATCH {{baseUrl}}/api/products/1/variants/1
+Content-Type: application/json
+
+{
+  "status": "finish_good"
+}
+
+### DELETE hapus variant ID 1 dari produk ID 1
+DELETE {{baseUrl}}/api/products/1/variants/1
+
+### ==========================================
+### BARANG — INFO & GENERATE
+### ==========================================
+
+### GET info batch aktif + preview nextNumber untuk variantId=1
+GET {{baseUrl}}/api/barang/generate-info?variantId=1
+
+### GET info batch aktif untuk variantId=2
+GET {{baseUrl}}/api/barang/generate-info?variantId=2
+
+### POST generate 3 barang variant W001 (variantId=1)
+POST {{baseUrl}}/api/barang/generate
+Content-Type: application/json
+
+{
+  "variantId": 1,
+  "jumlah": 3
+}
+
+### POST generate 2 barang variant W002 (variantId=2)
+POST {{baseUrl}}/api/barang/generate
+Content-Type: application/json
+
+{
+  "variantId": 2,
+  "jumlah": 2
+}
+
+### POST generate dalam jumlah besar (uji distribusi multi-batch)
+POST {{baseUrl}}/api/barang/generate
+Content-Type: application/json
+
+{
+  "variantId": 1,
+  "jumlah": 100
+}
+
+### ==========================================
+### BARANG — LIST & DETAIL
+### ==========================================
+
+### GET semua barang (pagination default: page=1, limit=20)
+GET {{baseUrl}}/api/barang
+
+### GET semua barang page 2
+GET {{baseUrl}}/api/barang?page=2&limit=20
+
+### GET barang filter by variantId
+GET {{baseUrl}}/api/barang?variantId=1
+
+### GET barang filter by batchId
+GET {{baseUrl}}/api/barang?batchId=1
+
+### GET barang filter by status
+GET {{baseUrl}}/api/barang?status=FINISHGOOD
+
+### GET detail barang by ID
+GET {{baseUrl}}/api/barang/1
+
+### GET riwayat barang by ID
+GET {{baseUrl}}/api/barang/1/riwayat
+
+### ==========================================
+### BARANG — SCAN
+### ==========================================
+
+### GET scan barang by kodeBarang (ganti sesuai kode aktual)
+GET {{baseUrl}}/api/barang/scan/BC001-W001-250826-0001
+
+### GET scan barang — contoh batch kedua
+GET {{baseUrl}}/api/barang/scan/BC002-W001-250826-0001
+
+### ==========================================
+### BARANG — UPDATE STATUS
+### ==========================================
+
+### PATCH update status barang ID 1 ke OUT
+PATCH {{baseUrl}}/api/barang/1/status
+Content-Type: application/json
+
+{
+  "status": "OUT",
+  "keterangan": "Barang keluar gudang"
+}
+
+### PATCH update status barang ke RETUR
+PATCH {{baseUrl}}/api/barang/2/status
+Content-Type: application/json
+
+{
+  "status": "RETUR",
+  "keterangan": "Dikembalikan oleh distributor"
+}
+
+### PATCH update status ke BAD
+PATCH {{baseUrl}}/api/barang/3/status
+Content-Type: application/json
+
+{
+  "status": "BAD",
+  "keterangan": "Barang rusak"
+}
+
+### ==========================================
+### BARANG — BULK SCAN
+### ==========================================
+
+### POST bulk scan — update status beberapa barang sekaligus
+POST {{baseUrl}}/api/barang/scan/bulk
+Content-Type: application/json
+
+{
+  "kodeBarang": [
+    "BC001-W001-250826-0001",
+    "BC001-W001-250826-0002",
+    "BC001-W001-250826-0003"
+  ],
+  "status": "OUT",
+  "keterangan": "Pengiriman batch pertama"
+}

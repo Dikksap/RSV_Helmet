@@ -1,0 +1,179 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id        Int      @id @default(autoincrement())
+  nama      String
+  prefix    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variants ProductVariant[]
+}
+
+model Style {
+  id        Int      @id @default(autoincrement())
+  nama      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variants ProductVariant[]
+}
+
+model Color {
+  id        Int      @id @default(autoincrement())
+  nama      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variants ProductVariant[]
+}
+
+model Size {
+  id        Int      @id @default(autoincrement())
+  nama      String   @unique
+  urutan    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variants ProductVariant[]
+}
+
+model ProductVariant {
+  id          Int      @id @default(autoincrement())
+  kodeVariant String   @unique
+
+  productId Int
+  styleId   Int
+  colorId   Int
+  sizeId    Int
+
+    tanggal    DateTime? @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  style   Style   @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  color   Color   @relation(fields: [colorId], references: [id], onDelete: Restrict)
+  size    Size    @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+
+  barang         Barang[]
+  barangCounters BarangCounter[]
+
+  @@unique([productId, styleId, colorId, sizeId])
+  @@index([productId])
+  @@index([styleId])
+  @@index([colorId])
+  @@index([sizeId])
+}
+
+// =============================================
+// Production Batch
+// =============================================
+
+enum StatusBatch {
+  AKTIF
+  SELESAI
+}
+
+model ProductionBatch {
+  id            Int         @id @default(autoincrement())
+  nomorBatch    Int         @unique
+  totalProduksi Int         @default(0)
+  kapasitas     Int         @default(5000)
+  status        StatusBatch @default(AKTIF)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  barang         Barang[]
+  barangCounters BarangCounter[]
+
+  @@index([status])
+}
+
+// =============================================
+// Barang
+// =============================================
+
+enum StatusBarang {
+  REGISTER
+  FINISHGOOD
+  RETUR
+  OUT
+  BAD
+}
+
+model Barang {
+  id         Int          @id @default(autoincrement())
+  kodeBarang String       @unique
+  variantId  Int
+  batchId    Int?
+  tanggal    DateTime?
+  status     StatusBarang @default(REGISTER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variant ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  batch   ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  riwayat RiwayatBarang[]
+
+  @@index([variantId])
+  @@index([batchId])
+  @@index([status])
+}
+
+model RiwayatBarang {
+  id         Int          @id @default(autoincrement())
+  barangId   Int
+  status     StatusBarang
+  tanggal    DateTime     @default(now())
+  keterangan String?
+
+  barang Barang @relation(fields: [barangId], references: [id], onDelete: Restrict)
+
+  @@index([barangId])
+  @@index([tanggal])
+}
+
+// =============================================
+// BarangCounter
+// Key: (batchId, variantId, tanggal)
+// Reset otomatis karena tanggal/batch berbeda = baris baru
+// =============================================
+
+model BarangCounter {
+  id           Int      @id @default(autoincrement())
+  batchId      Int
+  variantId    Int
+  tanggal      DateTime
+  currentCount Int      @default(0)
+
+  batch   ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  variant ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, variantId, tanggal])
+  @@index([batchId])
+  @@index([variantId])
+}

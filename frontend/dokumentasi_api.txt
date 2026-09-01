@@ -1,0 +1,598 @@
+DOKUMENTASI API WEBSITE INVENTORY BARANG
+=========================================
+
+Dokumen ini disusun berdasarkan endpoint API yang digunakan oleh frontend.
+
+1. KONFIGURASI BASE URL
+-----------------------
+
+Frontend membaca base URL dari environment variable:
+
+    VITE_API_URL
+
+Jika VITE_API_URL tidak diatur, frontend menggunakan default:
+
+    http://localhost:8000/api
+
+Contoh konfigurasi file .env:
+
+    VITE_API_URL=http://localhost:8000/api
+
+Seluruh endpoint di bawah ditulis relatif terhadap base URL tersebut.
+
+Format data:
+
+    Request/response: JSON
+    Content-Type untuk POST: application/json
+
+Catatan:
+
+- Dokumentasi ini hanya mencakup endpoint yang dipanggil oleh frontend.
+- Detail autentikasi tidak ditemukan pada pemanggilan API frontend saat ini.
+- Contoh URL menggunakan base URL default lokal.
+
+
+2. GET /products
+----------------
+
+Kegunaan:
+
+Mengambil seluruh product beserta variant yang digunakan pada halaman katalog
+dan halaman generate barang.
+
+Request:
+
+    Method: GET
+    URL: http://localhost:8000/api/products
+    Body: tidak ada
+
+Response sukses: 200 OK
+
+Bentuk response: array Product
+
+    [
+      {
+        "id": 1,
+        "nama": "Nama Product",
+        "prefix": "PRD",
+        "createdAt": "2026-08-25T00:00:00.000Z",
+        "updatedAt": "2026-08-25T00:00:00.000Z",
+        "variants": [
+          {
+            "id": 10,
+            "kodeVariant": "PRD-STY-COL-SZ",
+            "productId": 1,
+            "styleId": 2,
+            "colorId": 3,
+            "sizeId": 4,
+            "tanggal": "2026-08-25",
+            "createdAt": "2026-08-25T00:00:00.000Z",
+            "updatedAt": "2026-08-25T00:00:00.000Z",
+            "style": {
+              "id": 2,
+              "nama": "Nama Style"
+            },
+            "color": {
+              "id": 3,
+              "nama": "Nama Color"
+            },
+            "size": {
+              "id": 4,
+              "nama": "M",
+              "urutan": 2
+            }
+          }
+        ]
+      }
+    ]
+
+Field utama Product:
+
+    id          number      ID product
+    nama        string      Nama product
+    prefix      string      Prefix kode product
+    createdAt   string      Waktu dibuat
+    updatedAt   string      Waktu diperbarui
+    variants    array       Daftar variant product
+
+Field utama ProductVariant:
+
+    id          number      ID variant
+    kodeVariant string?     Kode variant, opsional
+    productId   number      ID product
+    styleId     number      ID style
+    colorId     number      ID color
+    sizeId      number      ID size
+    tanggal     string      Tanggal variant
+    createdAt   string      Waktu dibuat
+    updatedAt   string      Waktu diperbarui
+    style       object      { id, nama }
+    color       object      { id, nama }
+    size        object      { id, nama, urutan }
+
+Response error:
+
+    Jika response.ok bernilai false, frontend menampilkan:
+    Failed to fetch products: <HTTP_STATUS>
+
+
+3. GET /barang
+--------------
+
+Kegunaan:
+
+Mengambil daftar barang untuk halaman katalog. Frontend mengambil seluruh halaman
+dengan limit 100 data per request, lalu menggabungkan semua data menjadi satu array.
+
+Request halaman pertama:
+
+    Method: GET
+    URL: http://localhost:8000/api/barang?page=1&limit=100
+    Body: tidak ada
+
+Request halaman berikutnya:
+
+    GET /barang?page=2&limit=100
+    GET /barang?page=3&limit=100
+    dan seterusnya sampai totalPages
+
+Query parameter:
+
+    page    number      Nomor halaman, dimulai dari 1
+    limit   number      Jumlah data per halaman, digunakan 100 oleh frontend
+
+Response sukses: 200 OK
+
+Response setiap halaman:
+
+   {
+  "data": [
+    {
+      "id": 5,
+      "kodeBarang": "BC001-WB009-270826-0001",
+      "variantId": 9,
+      "batchId": 1,
+      "status": "FINISHGOOD",
+      "createdAt": "2026-08-27T07:59:05.063Z",
+      "updatedAt": "2026-08-27T08:00:03.233Z",
+      "variant": {
+        "id": 9,
+        "kodeVariant": "WB009",
+        "productId": 1,
+        "styleId": 1,
+        "colorId": 3,
+        "sizeId": 1,
+        "tanggal": "2026-08-26T11:50:08.748Z",
+        "createdAt": "2026-08-26T11:50:08.748Z",
+        "updatedAt": "2026-08-26T11:50:08.748Z",
+        "product": {
+          "id": 1,
+          "nama": "Windbreaker",
+          "prefix": "wb",
+          "createdAt": "2026-08-26T11:50:08.134Z",
+          "updatedAt": "2026-08-26T11:50:08.134Z"
+        },
+        "style": {
+          "id": 1,
+          "nama": "Motif",
+          "createdAt": "2026-08-26T11:50:08.165Z",
+          "updatedAt": "2026-08-26T11:50:08.165Z"
+        },
+        "color": {
+          "id": 3,
+          "nama": "Nation",
+          "createdAt": "2026-08-26T11:50:08.279Z",
+          "updatedAt": "2026-08-26T11:50:08.279Z"
+        },
+        "size": {
+          "id": 1,
+          "nama": "LG",
+          "urutan": 1,
+          "createdAt": "2026-08-26T11:50:08.469Z",
+          "updatedAt": "2026-08-26T11:50:08.469Z"
+        }
+      },
+      "batch": {
+        "id": 1,
+        "nomorBatch": 1,
+        "totalProduksi": 5,
+        "kapasitas": 5000,
+        "status": "AKTIF"
+      }
+    },
+    {
+      "id": 4,
+      "kodeBarang": "BC001-WB026-270826-0001",
+      "variantId": 26,
+      "batchId": 1,
+      "status": "REGISTER",
+      "createdAt": "2026-08-27T06:56:33.164Z",
+      "updatedAt": "2026-08-27T06:56:33.164Z",
+      "variant": {
+        "id": 26,
+        "kodeVariant": "WB026",
+        "productId": 1,
+        "styleId": 2,
+        "colorId": 7,
+        "sizeId": 2,
+        "tanggal": "2026-08-26T11:50:09.051Z",
+        "createdAt": "2026-08-26T11:50:09.051Z",
+        "updatedAt": "2026-08-26T11:50:09.051Z",
+        "product": {
+          "id": 1,
+          "nama": "Windbreaker",
+          "prefix": "wb",
+          "createdAt": "2026-08-26T11:50:08.134Z",
+          "updatedAt": "2026-08-26T11:50:08.134Z"
+        },
+        "style": {
+          "id": 2,
+          "nama": "Solid",
+          "createdAt": "2026-08-26T11:50:08.190Z",
+          "updatedAt": "2026-08-26T11:50:08.190Z"
+        },
+        "color": {
+          "id": 7,
+          "nama": "Platinum Grey",
+          "createdAt": "2026-08-26T11:50:08.387Z",
+          "updatedAt": "2026-08-26T11:50:08.387Z"
+        },
+        "size": {
+          "id": 2,
+          "nama": "MD",
+          "urutan": 2,
+          "createdAt": "2026-08-26T11:50:08.492Z",
+          "updatedAt": "2026-08-26T11:50:08.492Z"
+        }
+      },
+      "batch": {
+        "id": 1,
+        "nomorBatch": 1,
+        "totalProduksi": 5,
+        "kapasitas": 5000,
+        "status": "AKTIF"
+      }
+    },
+    {
+      "id": 3,
+      "kodeBarang": "BC001-WB006-270826-0001",
+      "variantId": 6,
+      "batchId": 1,
+      "status": "REGISTER",
+      "createdAt": "2026-08-27T06:55:24.627Z",
+      "updatedAt": "2026-08-27T06:55:24.627Z",
+      "variant": {
+        "id": 6,
+        "kodeVariant": "WB006",
+        "productId": 1,
+        "styleId": 1,
+        "colorId": 2,
+        "sizeId": 2,
+        "tanggal": "2026-08-26T11:50:08.699Z",
+        "createdAt": "2026-08-26T11:50:08.699Z",
+        "updatedAt": "2026-08-26T11:50:08.699Z",
+        "product": {
+          "id": 1,
+          "nama": "Windbreaker",
+          "prefix": "wb",
+          "createdAt": "2026-08-26T11:50:08.134Z",
+          "updatedAt": "2026-08-26T11:50:08.134Z"
+        },
+        "style": {
+          "id": 1,
+          "nama": "Motif",
+          "createdAt": "2026-08-26T11:50:08.165Z",
+          "updatedAt": "2026-08-26T11:50:08.165Z"
+        },
+        "color": {
+          "id": 2,
+          "nama": "Carbon",
+          "createdAt": "2026-08-26T11:50:08.252Z",
+          "updatedAt": "2026-08-26T11:50:08.252Z"
+        },
+        "size": {
+          "id": 2,
+          "nama": "MD",
+          "urutan": 2,
+          "createdAt": "2026-08-26T11:50:08.492Z",
+          "updatedAt": "2026-08-26T11:50:08.492Z"
+        }
+      },
+      "batch": {
+        "id": 1,
+        "nomorBatch": 1,
+        "totalProduksi": 5,
+        "kapasitas": 5000,
+        "status": "AKTIF"
+      }
+    },
+    {
+      "id": 2,
+      "kodeBarang": "BC001-WB015-270826-0001",
+      "variantId": 15,
+      "batchId": 1,
+      "status": "REGISTER",
+      "createdAt": "2026-08-27T01:17:24.037Z",
+      "updatedAt": "2026-08-27T01:17:24.037Z",
+      "variant": {
+        "id": 15,
+        "kodeVariant": "WB015",
+        "productId": 1,
+        "styleId": 1,
+        "colorId": 4,
+        "sizeId": 3,
+        "tanggal": "2026-08-26T11:50:08.829Z",
+        "createdAt": "2026-08-26T11:50:08.829Z",
+        "updatedAt": "2026-08-26T11:50:08.829Z",
+        "product": {
+          "id": 1,
+          "nama": "Windbreaker",
+          "prefix": "wb",
+          "createdAt": "2026-08-26T11:50:08.134Z",
+          "updatedAt": "2026-08-26T11:50:08.134Z"
+        },
+        "style": {
+          "id": 1,
+          "nama": "Motif",
+          "createdAt": "2026-08-26T11:50:08.165Z",
+          "updatedAt": "2026-08-26T11:50:08.165Z"
+        },
+        "color": {
+          "id": 4,
+          "nama": "Redline",
+          "createdAt": "2026-08-26T11:50:08.308Z",
+          "updatedAt": "2026-08-26T11:50:08.308Z"
+        },
+        "size": {
+          "id": 3,
+          "nama": "XL",
+          "urutan": 3,
+          "createdAt": "2026-08-26T11:50:08.533Z",
+          "updatedAt": "2026-08-26T11:50:08.533Z"
+        }
+      },
+      "batch": {
+        "id": 1,
+        "nomorBatch": 1,
+        "totalProduksi": 5,
+        "kapasitas": 5000,
+        "status": "AKTIF"
+      }
+    },
+    {
+      "id": 1,
+      "kodeBarang": "BC001-WB010-260826-0001",
+      "variantId": 10,
+      "batchId": 1,
+      "status": "REGISTER",
+      "createdAt": "2026-08-26T12:18:01.907Z",
+      "updatedAt": "2026-08-26T12:18:01.907Z",
+      "variant": {
+        "id": 10,
+        "kodeVariant": "WB010",
+        "productId": 1,
+        "styleId": 1,
+        "colorId": 3,
+        "sizeId": 2,
+        "tanggal": "2026-08-26T11:50:08.765Z",
+        "createdAt": "2026-08-26T11:50:08.765Z",
+        "updatedAt": "2026-08-26T11:50:08.765Z",
+        "product": {
+          "id": 1,
+          "nama": "Windbreaker",
+          "prefix": "wb",
+          "createdAt": "2026-08-26T11:50:08.134Z",
+          "updatedAt": "2026-08-26T11:50:08.134Z"
+        },
+        "style": {
+          "id": 1,
+          "nama": "Motif",
+          "createdAt": "2026-08-26T11:50:08.165Z",
+          "updatedAt": "2026-08-26T11:50:08.165Z"
+        },
+        "color": {
+          "id": 3,
+          "nama": "Nation",
+          "createdAt": "2026-08-26T11:50:08.279Z",
+          "updatedAt": "2026-08-26T11:50:08.279Z"
+        },
+        "size": {
+          "id": 2,
+          "nama": "MD",
+          "urutan": 2,
+          "createdAt": "2026-08-26T11:50:08.492Z",
+          "updatedAt": "2026-08-26T11:50:08.492Z"
+        }
+      },
+      "batch": {
+        "id": 1,
+        "nomorBatch": 1,
+        "totalProduksi": 5,
+        "kapasitas": 5000,
+        "status": "AKTIF"
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 5,
+    "totalPages": 1
+  }
+}
+
+
+Frontend menggabungkan data dari seluruh halaman menjadi:
+
+    {
+      "data": [ ...semua barang... ],
+      "meta": { ...meta halaman pertama... }
+    }
+
+Response error:
+
+    Halaman pertama:
+    Failed to fetch barang: <HTTP_STATUS>
+
+    Halaman berikutnya:
+    Failed to fetch barang page <N>
+
+
+4. GET /barang/generate-info
+----------------------------
+
+Kegunaan:
+
+Mengambil informasi batch dan nomor barang berikutnya sebelum proses generate.
+Informasi ini digunakan untuk preview kode barang pada modal Cetak Barang.
+
+Request:
+
+    Method: GET
+    URL: http://localhost:8000/api/barang/generate-info?variantId=10
+    Body: tidak ada
+
+Query parameter:
+
+    variantId   number      ID variant yang akan digenerate
+
+Response sukses: 200 OK
+
+    {
+      "variantId": 10,
+      "kodeVariant": "PRD-STY-COL-SZ",
+      "tanggal": "2026-08-25",
+      "batch": {
+        "kodeBatch": "BATCH-20260825-01",
+        "totalProduksi": 100,
+        "kapasitas": 100,
+        "remaining": 99
+      },
+      "nextNumber": 1
+    }
+
+Field response:
+
+    variantId       number      ID variant
+    kodeVariant     string      Kode variant
+    tanggal         string      Tanggal generate
+    batch.kodeBatch string      Kode batch aktif
+    totalProduksi   number      Total produksi batch
+    kapasitas       number      Kapasitas batch
+    remaining       number      Sisa kapasitas batch
+    nextNumber      number      Nomor barang berikutnya
+
+Penanganan error frontend:
+
+    HTTP 404: Variant tidak ditemukan
+    HTTP 500 atau lebih: Gagal generate barang
+    Error lainnya: message dari response API atau fallback
+
+
+5. POST /barang/generate
+------------------------
+
+Kegunaan:
+
+Membuat barang baru berdasarkan variant yang dipilih. Frontend mengirim jumlah
+barang sebanyak 1, kemudian menggunakan kode barang pertama untuk QR Code dan
+proses print.
+
+Request:
+
+    Method: POST
+    URL: http://localhost:8000/api/barang/generate
+    Headers:
+      Content-Type: application/json
+
+Body:
+
+    {
+      "variantId": 10,
+      "jumlah": 1
+    }
+
+Field request:
+
+    variantId   number      ID variant yang akan dibuat
+    jumlah      number      Jumlah barang yang dibuat; frontend selalu mengirim 1
+
+Response sukses: 200 OK
+
+    {
+      "message": "Barang berhasil digenerate",
+      "totalDibuat": 1,
+      "batches": [
+        {
+          "kodeBatch": "BATCH-20260825-01",
+          "batchId": 20,
+          "jumlah": 1,
+          "barang": [
+            {
+              "kodeBarang": "PRD-20260825-0001",
+              "id": 100
+            }
+          ]
+        }
+      ]
+    }
+
+Field response:
+
+    message             string      Pesan hasil proses
+    totalDibuat         number      Total barang yang dibuat
+    batches             array       Daftar batch hasil generate
+    batches.kodeBatch   string      Kode batch
+    batches.batchId     number      ID batch
+    batches.jumlah      number      Jumlah barang pada batch
+    batches.barang      array       Daftar barang hasil generate
+    barang.kodeBarang   string      Kode bisnis barang, dipakai sebagai QR Code
+    barang.id           number      ID database barang
+
+Penanganan error frontend:
+
+    HTTP 404: Variant tidak ditemukan
+    HTTP 500 atau lebih: Gagal generate barang
+    Error lainnya: message dari response API atau fallback
+
+Alur frontend setelah sukses:
+
+    1. Mengambil batches[0].barang[0].kodeBarang.
+    2. Menyimpan kode tersebut sebagai generatedCode.
+    3. Memanggil GET /barang/generate-info kembali.
+    4. Membuka dialog print melalui react-to-print.
+
+
+6. ALUR PEMAKAIAN API DI WEBSITE
+--------------------------------
+
+Halaman katalog:
+
+    GET /products
+    GET /barang?page=1&limit=100
+    GET /barang?page=2&limit=100
+    ...
+
+Halaman Cetak Barang:
+
+    GET /products
+    GET /barang/generate-info?variantId=<ID_VARIANT>
+    POST /barang/generate
+    GET /barang/generate-info?variantId=<ID_VARIANT>
+
+QR Code berisi:
+
+    barang.kodeBarang
+
+
+7. CATATAN IMPLEMENTASI
+-----------------------
+
+- Frontend menggunakan fetch API native.
+- Frontend tidak mengirim token atau header Authorization pada endpoint yang ada.
+- Base URL dapat diganti melalui VITE_API_URL.
+- Endpoint POST generate hanya dipanggil setelah variant dipilih.
+- Jika kode barang tidak ada pada batches[0].barang[0], frontend menganggap proses
+  generate gagal.
+- Contoh nilai pada dokumen bersifat ilustrasi; struktur field mengikuti tipe
+  TypeScript yang digunakan frontend.

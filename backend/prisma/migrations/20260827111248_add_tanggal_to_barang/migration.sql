@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `Barang` ADD COLUMN `tanggal` DATETIME(3) NULL;
+
+-- AlterTable
+ALTER TABLE `ProductVariant` MODIFY `tanggal` DATETIME(3) NULL DEFAULT CURRENT_TIMESTAMP(3);

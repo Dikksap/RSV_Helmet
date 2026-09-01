@@ -1,0 +1,89 @@
+# Production compose - gabungan backend + frontend + db + redis
+# Run: docker compose -f docker-compose.prod.yml up -d --build
+# Env: butuh JWT_SECRET di host atau .env di root/backend
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    container_name: rsv-backend-prod
+    ports:
+      - "8000:8000"
+    environment:
+      NODE_ENV: production
+      PORT: 8000
+      TZ: Asia/Jakarta
+      DATABASE_URL: mysql://root:rootpassword@db:3306/express_api
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: express_api
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET di .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+    container_name: rsv-frontend-prod
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
+  db:
+    image: mariadb:11
+    container_name: rsv-db-prod
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: express_api
+      TZ: Asia/Jakarta
+    command:
+      - --default-time-zone=+07:00
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - app
+
+  redis:
+    image: redis:7-alpine
+    container_name: rsv-redis-prod
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+  redis_data:

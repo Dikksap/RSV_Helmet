@@ -1,0 +1,118 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      PORT: 8000
+      TZ: Asia/Jakarta
+
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: express_api
+
+      DATABASE_URL: mysql://root:rootpassword@db:3306/express_api
+
+      REDIS_URL: redis://redis:6379
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+
+    volumes:
+      # Bind mount seluruh project
+      - .:/app
+
+      # Jangan overwrite node_modules dari container
+      - /app/node_modules
+
+      # Generated Prisma tetap di container
+      - /app/generated
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  db:
+    image: mariadb:11
+
+    ports:
+      - "3307:3306"
+
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: express_api
+      TZ: Asia/Jakarta
+
+    # Paksa timezone MariaDB menjadi WIB
+    command:
+      - --default-time-zone=+07:00
+
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "healthcheck.sh",
+          "--connect",
+          "--innodb_initialized"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+    restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+
+    ports:
+      - "8080:80"
+
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      TZ: Asia/Jakarta
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+
+    environment:
+      TZ: Asia/Jakarta
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+volumes:
+  mariadb_data:
+  redis_data:
