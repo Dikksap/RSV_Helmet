@@ -1,0 +1,275 @@
+==============================================
+API DOCUMENTATION: PRODUCT ENDPOINTS
+==============================================
+Project: express-api (RSV Helmet)
+Base URL: http://localhost:8000 (development Docker)
+Format response: JSON
+Authentication: Tidak diperlukan untuk semua endpoint produk (kecuali logout)
+==============================================
+
+GET /api/products
+Ambil semua produk dengan cache Redis 60 detik
+--------------------------------------------
+Response 200:
+[
+  {
+    "id": 1,
+    "nama": "Windbreaker",
+    "prefix": "W",
+    "createdAt": "2026-08-01T10:00:00.000Z",
+    "updatedAt": "2026-08-01T10:00:00.000Z",
+    "variants": [
+      {
+        "id": 1,
+        "kodeVariant": "W001",
+        "productId": 1,
+        "styleId": 1,
+        "colorId": 1,
+        "sizeId": 1,
+        "tanggal": "2026-08-01T00:00:00.000Z",
+        "createdAt": "2026-08-01T10:00:00.000Z",
+        "updatedAt": "2026-08-01T10:00:00.000Z",
+        "style": { "id": 1, "nama": "Motif" },
+        "color": { "id": 1, "nama": "BOB" },
+        "size": { "id": 1, "nama": "LG", "urutan": 1 }
+      }
+    ]
+  }
+]
+
+Error:
+- 500: Gagal mengambil data produk
+
+Side-effect: Menggunakan cache Redis dengan key `products:all` (TTL 60 detik)
+
+
+GET /api/products/:id
+Ambil produk by ID dengan cache
+--------------------------------
+Parameter:
+- id: numerik (wajib)
+
+Response 200: (sama struktur seperti di atas, tetapi single object)
+Error:
+- 400: Jika id bukan angka
+- 404: Produk tidak ditemukan
+- 500: Gagal mengambil data produk
+
+Side-effect: Menggunakan cache Redis dengan key `products:{id}` (TTL 60 detik)
+
+
+POST /api/products
+Buat produk baru
+----------------
+Request Body:
+{
+  "nama": "string (wajib)",
+  "prefix": "string (wajib)"
+}
+
+Response 201: Objekt produk yang dibuat (termasuk variants kosong)
+Error:
+- 400: Field 'nama', 'prefix' wajib diisi
+- 500: Gagal membuat produk
+
+Side-effect:
+- Membroadcast event WebSocket: { type: "product.created", message: "Produk berhasil dibuat", data: product }
+- Menghapus cache Redis: `products:all`
+
+
+PUT /api/products/:id
+Update nama produk
+------------------
+Parameter:
+- id: numerik (wajib)
+
+Request Body:
+{
+  "nama": "string (wajib)"
+}
+
+Response 200: Objekt produk yang diperbarui
+Error:
+- 400: Field 'nama' wajib diisi
+- 404: Produk tidak ditemukan
+- 500: Gagal mengupdate produk
+
+Side-effect:
+- Membroadcast event WebSocket: { type: "product.updated", message: "Produk berhasil diperbarui", data: product }
+- Menghapus cache Redis: `products:all` dan `products:{id}`
+
+
+DELETE /api/products/:id
+Hapus produk (dan varian terkait karena cascade)
+----------------------------------------------
+Parameter:
+- id: numerik (wajib)
+
+Response 200:
+{
+  "message": "Produk berhasil dihapus"
+}
+
+Error:
+- 400: Jika id bukan angka
+- 404: Produk tidak ditemukan
+- 500: Gagal menghapus produk
+
+Side-effect:
+- Membroadcast event WebSocket: { type: "product.deleted", message: "Produk berhasil dihapus", data: { id } }
+- Menghapus cache Redis: `products:all`, `products:{id}`, dan `products:{id}:variants`
+
+
+GET /api/products/:id/variants
+Ambil semua variant produk
+----------------------------
+Parameter:
+- id: numerik (wajib)
+
+Response 200: Array varian (sama struktur varian seperti di atas)
+Error:
+- 400: Jika id bukan angka
+- 500: Gagal mengambil variant produk
+
+Side-effect: Menggunakan cache Redis dengan key `products:{id}:variants` (TTL 60 detik)
+
+
+POST /api/products/:id/variants
+Tambah variant ke produk
+------------------------
+Parameter:
+- id: numerik (wajib, productId)
+
+Request Body:
+{
+  "styleId": "integer (wajib)",
+  "colorId": "integer (wajib)",
+  "sizeId": "integer (wajib)",
+  "tanggal": "string (opsional, format ISO date)"
+}
+
+Response 201: Objekt variant yang dibuat
+Error:
+- 400: Field 'styleId', 'colorId', 'sizeId' wajib diisi
+- 404: Produk tidak ditemukan
+- 409: Kombinasi style, color, size sudah ada untuk produk ini
+- 500: Gagal menambahkan variant
+
+Side-effect:
+- Membroadcast event WebSocket: { type: "variant.created", message: "Variant berhasil ditambahkan", data: variant }
+- Menghapus cache Redis: `products:all`, `products:{id}`, dan `products:{id}:variants`
+- Format kodeVariant: <PREFIX_UPPERCASE><nomor 3 digit>
+  Contoh: Jika prefix="W" dan ini variant pertama → W001
+
+
+PATCH /api/products/:id/variants/:variantId
+Update tanggal variant
+----------------------
+Parameter:
+- id: numerik (wajib, productId)
+- variantId: numerik (wajib)
+
+Request Body:
+{
+  "tanggal": "string (opsional, format ISO date)"
+}
+
+Response 200: Objekt variant yang diperbarui
+Error:
+- 400: Jika id atau variantId bukan angka
+- 404: Produk atau variant tidak ditemukan
+- 500: Gagal mengupdate variant
+
+Side-effect:
+- Membroadcast event WebSocket: { type: "variant.updated", message: "Variant berhasil diperbarui", data: variant }
+- Menghapus cache Redis: `products:all`, `products:{id}`, dan `products:{id}:variants`
+
+
+DELETE /api/products/:id/variants/:variantId
+Hapus variant produk
+-------------------
+Parameter:
+- id: numerik (wajib, productId)
+- variantId: numerik (wajib)
+
+Response 200:
+{
+  "message": "Variant berhasil dihapus"
+}
+
+Error:
+- 400: Jika id atau variantId bukan angka
+- 404: Produk atau variant tidak ditemukan
+- 500: Gagal menghapus variant
+
+Side-effect:
+- Membroadcast event WebSocket: { type: "variant.deleted", message: "Variant berhasil dihapus", data: { id: variantId } }
+- Menghapus cache Redis: `products:all`, `products:{id}`, dan `products:{id}:variants`
+
+
+==============================================
+CATATAN PENTING
+==============================================
+1. Kode Variant:
+   - Format: <PREFIX produk dalam huruf kapital><nomor urut 3 digit>
+   - Nomor urut = id variant terakhir milik product + 1
+   - Contoh: Product dengan prefix "W" dan variant pertama → "W001"
+
+2. Cache Redis:
+   - TTL: 60 detik untuk semua cache produk
+   - Keys:
+     * products:all → semua produk
+     * products:{id} → produk spesifik
+     * products:{id}:variants → variant spesifik produk
+   - Invalidation terjadi setelah operasi CREATE/UPDATE/DELETE berhasil
+
+3. Relasi Database:
+   - Product memiliki banyak ProductVariant (relasi Cascade on delete)
+   - ProductVariant memiliki relasi Restrict ke Style, Color, Size
+   - Kombinasi (productId, styleId, colorId, sizeId) harus unik
+
+4. WebSocket Events:
+   - product.created, product.updated, product.deleted
+   - variant.created, variant.updated, variant.deleted
+   - Event dikirim setelah operasi database berhasil
+
+5. Validasi Unik:
+   - Duplicate kombinasi product/style/color/size menghasilkan error 409
+
+==============================================
+CONTOH REQUEST
+==============================================
+# List semua produk
+curl http://localhost:8000/api/products
+
+# Detail produk id=1
+curl http://localhost:8000/api/products/1
+
+# Buat produk baru
+curl -X POST http://localhost:8000/api/products \
+  -H "Content-Type: application/json" \
+  -d '{"nama":"Jaket","prefix":"J"}'
+
+# Update nama produk id=1
+curl -X PUT http://localhost:8000/api/products/1 \
+  -H "Content-Type: application/json" \
+  -d '{"nama":"Jaket Kebel"}'
+
+# Hapus produk id=1
+curl -X DELETE http://localhost:8000/api/products/1
+
+# List variant produk id=1
+curl http://localhost:8000/api/products/1/variants
+
+# Tambah variant ke produk id=1
+curl -X POST http://localhost:8000/api/products/1/variants \
+  -H "Content-Type: application/json" \
+  -d '{"styleId":1,"colorId":2,"sizeId":3,"tanggal":"2026-08-01"}'
+
+# Update tanggal variant produk id=1 variant id=1
+curl -X PATCH http://localhost:8000/api/products/1/variants/1 \
+  -H "Content-Type: application/json" \
+  -d '{"tanggal":"2026-08-02"}'
+
+# Hapus variant produk id=1 variant id=1
+curl -X DELETE http://localhost:8000/api/products/1/variants/1

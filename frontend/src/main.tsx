@@ -13,6 +13,7 @@ import PrintManager from "./pages/PrintManager.tsx";
 import ScanBarang from "./pages/ScanBarang.tsx";
 import ScanQr from "./pages/ScanQr.tsx";
 import VariantProduk from "./pages/VariantProduk.tsx";
+import MasterData from "./pages/MasterData.tsx";
 import DaftarBarang from "./pages/DaftarBarang.tsx";
 import StatistikBarang from "./pages/StatistikBarang.tsx";
 import Login from "./pages/Login.tsx";
@@ -42,6 +43,7 @@ const routes = (
       <Route path="/admin/barang" element={<DaftarBarang />} />
       <Route path="/admin/barang/statistik" element={<StatistikBarang />} />
       <Route path="/admin/variant-produk" element={<VariantProduk />} />
+      <Route path="/admin/master-data" element={<MasterData />} />
     </Route>
   </Routes>
 );

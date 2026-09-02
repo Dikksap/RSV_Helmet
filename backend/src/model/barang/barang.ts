@@ -1,4 +1,4 @@
-import prisma from "../../lib/prisma.js";
+import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
   VALID_STATUSES,
@@ -237,7 +237,7 @@ export async function bulkScanBarang(
         continue;
       }
 
-      const updated = await prisma.$transaction(async (tx) => {
+      const updated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
         const updatedBarang = await tx.barang.update({
           where: { id: barang.id },
           data: { status: newStatus },

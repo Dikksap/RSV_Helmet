@@ -1,5 +1,4 @@
-import prisma from "../../lib/prisma.js";
-import type { PrismaClient } from "../../../generated/prisma/client.js";
+import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 
 export type GenerateBarangResult = {
   totalDibuat: number;
@@ -11,10 +10,8 @@ export type GenerateBarangResult = {
   }[];
 };
 
-type TxClient = Omit<
-  PrismaClient,
-  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
->;
+type TxClient = PrismaTransactionClient;
+type CreatedBarangRow = { id: number; kodeBarang: string };
 
 export const BATCH_KAPASITAS = 5000;
 
@@ -166,7 +163,7 @@ export async function generateBarangBulk(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx: TxClient) => {
         const batchGroups: GenerateBarangResult["batches"] = [];
         let remaining = jumlah;
 
@@ -213,7 +210,7 @@ export async function generateBarangBulk(
             })),
           });
 
-          const createdRows = await tx.barang.findMany({
+          const createdRows: CreatedBarangRow[] = await tx.barang.findMany({
             where: { kodeBarang: { in: kodeList } },
             select: { id: true, kodeBarang: true },
           });

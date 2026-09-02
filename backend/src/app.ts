@@ -4,6 +4,9 @@ import dotenv from "dotenv";
 import productsRouter from "./routes/products.js";
 import barangRouter from "./routes/barang.js";
 import variantProdukRouter from "./routes/variant-produk.js";
+import stylesRouter from "./routes/styles.js";
+import colorsRouter from "./routes/colors.js";
+import sizesRouter from "./routes/sizes.js";
 import adminRouter from "./routes/admin.js";
 import authRouter from "./routes/auth.js";
 
@@ -24,5 +27,9 @@ app.use("/api/admin", adminRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/barang", barangRouter);
 app.use("/api/variant-produk", variantProdukRouter);
+app.use("/api/styles", stylesRouter);
+app.use("/api/colors", colorsRouter);
+app.use("/api/sizes", sizesRouter);
+
 
 export default app;

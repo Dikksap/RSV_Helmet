@@ -18,6 +18,18 @@ export type FinishgoodPerBulanFilter = {
   tanggalAkhir?: Date;
 };
 
+type StatusGroup = { status: string; _count: { _all: number } };
+type VariantGroup = { variantId: number; _count: { _all: number } };
+type BatchGroup = { batchId: number | null; _count: { _all: number } };
+type VariantDetails = {
+  id: number;
+  product: { nama: string };
+  style: { nama: string };
+  color: { nama: string };
+  size: { nama: string };
+};
+type BatchDetails = { id: number; nomorBatch: number };
+
 export async function getStatusSummary(): Promise<{
   total: number;
   perStatus: Record<StatusBarang, number>;
@@ -67,7 +79,7 @@ export async function getBarangStats(filter: {
   if (filter.batchId !== undefined) batchWhere.batchId = filter.batchId;
 
   const [statusGroups, variantGroups, batchGroups, totalCount] =
-    await prisma.$transaction([
+    (await prisma.$transaction([
       prisma.barang.groupBy({
         by: ["status"],
         where,
@@ -87,7 +99,7 @@ export async function getBarangStats(filter: {
         orderBy: { batchId: "asc" },
       }),
       prisma.barang.count({ where }),
-    ]);
+    ])) as [StatusGroup[], VariantGroup[], BatchGroup[], number];
 
   const perStatus: Record<StatusBarang, number> = {
     REGISTER: 0,
@@ -103,12 +115,12 @@ export async function getBarangStats(filter: {
   }
 
   const variantIds = variantGroups.map((group) => group.variantId);
-  const variants = await prisma.productVariant.findMany({
+  const variants: VariantDetails[] = await prisma.productVariant.findMany({
     where: { id: { in: variantIds } },
     include: { product: true, style: true, color: true, size: true },
   });
 
-  const variantMap = new Map(
+  const variantMap = new Map<number, string>(
     variants.map((variant) => [
       variant.id,
       `${variant.product.nama} - ${variant.style.nama} - ${variant.color.nama} - ${variant.size.nama}`,
@@ -124,12 +136,12 @@ export async function getBarangStats(filter: {
     .sort((a, b) => b.total - a.total);
 
   const batchIds = batchGroups.map((group) => group.batchId).filter((id): id is number => id !== null);
-  const batches = await prisma.productionBatch.findMany({
+  const batches: BatchDetails[] = await prisma.productionBatch.findMany({
     where: { id: { in: batchIds } },
     select: { id: true, nomorBatch: true },
   });
 
-  const batchMap = new Map(
+  const batchMap = new Map<number, number>(
     batches.map((batch) => [batch.id, batch.nomorBatch]),
   );
 
@@ -178,7 +190,7 @@ export async function getFinishgoodPerBulan(
     WHERE ${where}
     ORDER BY v.tahun ASC, v.bulanAngka ASC, v.variantId ASC`;
 
-  const data = rows.map((row) => ({ ...row, jumlah: Number(row.jumlah) }));
+  const data = rows.map((row: FinishgoodPerBulanRow) => ({ ...row, jumlah: Number(row.jumlah) }));
 
   return { data, meta: { variantId: filter.variantId, productId: filter.productId } };
 }
@@ -254,8 +266,8 @@ export async function getBatchRentangTanggal(
         : null,
   });
 
-  const selesai = selesaiRows.map((row) => mapRow(row, row.tanggalSelesai));
-  const aktif = aktifRows.map((row) => mapRow(row, new Date()));
+  const selesai = selesaiRows.map((row: BatchRentangRawRow) => mapRow(row, row.tanggalSelesai));
+  const aktif = aktifRows.map((row: BatchRentangRawRow) => mapRow(row, new Date()));
 
   return { selesai, aktif };
 }

@@ -2,6 +2,11 @@ import "dotenv/config";
 import { PrismaClient } from "../../generated/prisma/client.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
+export type PrismaTransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
+
 const adapter = new PrismaMariaDb({
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 3306,

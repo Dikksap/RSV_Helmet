@@ -10,6 +10,7 @@ import {
   faRightFromBracket,
   faTags,
   faBell,
+  faDatabase,
 } from "@fortawesome/free-solid-svg-icons";
 import { clearAuth, getToken, isAdmin, logout } from "../api/auth";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
@@ -40,11 +41,17 @@ const BARANG_PRODUKSI = {
       end: false,
     },
     {
-    to: "/admin/variant-produk",
-    label: "Variant Produk",
-    icon: faTags,
-    end: false,
-  }
+     to: "/admin/variant-produk",
+     label: "Variant Produk",
+     icon: faTags,
+     end: false,
+   },
+    {
+      to: "/admin/master-data",
+      label: "Master Data",
+      icon: faDatabase,
+      end: false,
+    }
   ],
 };
 

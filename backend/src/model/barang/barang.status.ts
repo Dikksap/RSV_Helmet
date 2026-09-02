@@ -1,4 +1,4 @@
-import prisma from "../../lib/prisma.js";
+import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 
 export type StatusBarang = "REGISTER" | "FINISHGOOD" | "RETUR" | "OUT" | "BAD";
 
@@ -43,7 +43,7 @@ export async function updateBarangStatus(
     );
   }
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const updatedBarang = await tx.barang.update({
       where: { id: barangId },
       data: { status: newStatus },
