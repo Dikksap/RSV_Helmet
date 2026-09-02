@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import logoUrl from "../assets/logo.png";
 import {
   isAuthenticated,
   clearAuth,
@@ -8,6 +7,7 @@ import {
   getToken,
   isAdmin,
 } from "../api/auth";
+import logoUrl from "../assets/logo.svg";
 
 type NavItem = {
   to: string;
@@ -143,8 +143,8 @@ function Navbar() {
           className="flex items-center gap-3 no-underline"
           onClick={closeMenu}
         >
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-zinc-900 shadow-sm">
-            <img src={logoUrl} alt="" aria-hidden="true" className="h-7 w-7 object-contain brightness-0 invert" />
+          <span className="grid h-11 w-11 place-items-center rounded-xl bg-zinc-900 shadow-sm">
+            <img src={logoUrl} alt="" aria-hidden="true" className="h-full w-full object-contain" />
           </span>
           <span className="flex flex-col leading-none">
             <span className="text-[15px] font-black tracking-tight text-zinc-900 sm:text-base">
