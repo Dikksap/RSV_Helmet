@@ -18,6 +18,7 @@ import { VariantTable } from "../components/VariantProduk/VariantTable";
 import { ProductTable } from "../components/VariantProduk/ProductTable";
 import { ProductModal } from "../components/VariantProduk/ProductModal";
 import { VariantModal } from "../components/VariantProduk/VariantModal";
+import { VariantImportModal } from "../components/VariantProduk/VariantImportModal";
 import { EMPTY_PRODUCT_MODAL, EMPTY_VARIANT_MODAL, FILTER_RESET } from "../components/VariantProduk/constants";
 import { flattenVariants, uniqueBy } from "../components/VariantProduk/utils";
 import type { ProductModalState, Tab, VariantModalState } from "../components/VariantProduk/types";
@@ -54,6 +55,7 @@ function VariantProduk() {
   const [sizeFilter, setSizeFilter] = useState("");
   const [productModal, setProductModal] = useState<ProductModalState>(EMPTY_PRODUCT_MODAL);
   const [variantModal, setVariantModal] = useState<VariantModalState>(EMPTY_VARIANT_MODAL);
+  const [importOpen, setImportOpen] = useState(false);
 
   const loadProducts = async () => {
     setIsLoading(true);
@@ -275,7 +277,7 @@ function VariantProduk() {
 
   return (
     <div className="space-y-6">
-      <VariantHeader onCreateProduct={openCreateProduct} onCreateVariant={openCreateVariant} />
+      <VariantHeader onCreateProduct={openCreateProduct} onCreateVariant={openCreateVariant} onImport={() => setImportOpen(true)} />
       <VariantTabs tab={tab} onChange={setTab} totalVarian={allRows.length} totalProduk={products.length} />
 
       {isLoading && <p className="text-sm text-brand-grey">Memuat variant produk...</p>}
@@ -329,6 +331,15 @@ function VariantProduk() {
         onClose={() => setVariantModal(EMPTY_VARIANT_MODAL)}
         onChange={(patch) => setVariantModal((m) => ({ ...m, ...patch }))}
         onSubmit={submitVariant}
+      />
+      <VariantImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        products={products}
+        styles={masterStyles.length ? masterStyles : (allStyles as Pick<MasterStyle, "id" | "nama">[])}
+        colors={masterColors.length ? masterColors : (allColors as Pick<MasterColor, "id" | "nama">[])}
+        sizes={masterSizes.length ? masterSizes : (allSizes as Pick<MasterSize, "id" | "nama" | "urutan">[])}
+        onImported={() => { void loadProducts(); flash("Import selesai — data dimuat ulang."); }}
       />
     </div>
   );

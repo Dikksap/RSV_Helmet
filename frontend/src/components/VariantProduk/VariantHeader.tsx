@@ -1,12 +1,13 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCirclePlus } from "@fortawesome/free-solid-svg-icons";
+import { faCirclePlus, faFileArrowUp } from "@fortawesome/free-solid-svg-icons";
 
 type Props = {
   onCreateProduct: () => void;
   onCreateVariant: () => void;
+  onImport: () => void;
 };
 
-export function VariantHeader({ onCreateProduct, onCreateVariant }: Props) {
+export function VariantHeader({ onCreateProduct, onCreateVariant, onImport }: Props) {
   return (
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
@@ -19,6 +20,14 @@ export function VariantHeader({ onCreateProduct, onCreateVariant }: Props) {
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onImport}
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-border bg-brand-surface px-4 py-2.5 text-sm font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-brand-gold"
+        >
+          <FontAwesomeIcon icon={faFileArrowUp} className="h-4 w-4" />
+          Import
+        </button>
         <button
           type="button"
           onClick={onCreateProduct}

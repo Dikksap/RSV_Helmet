@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => ({
     outDir: "dist/app",
     emptyOutDir: true,
   },
+  optimizeDeps: {
+    include: ["xlsx"],
+  },
   server: {
     port: 5173,
     strictPort: true,
