@@ -7,30 +7,31 @@ import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "@fontsource/inter/800.css";
 import "./index.css";
-import CetakBarang from "./pages/CetakBarang.tsx";
-import LiveView from "./pages/LiveView.tsx";
-import PrintManager from "./pages/PrintManager.tsx";
-import ScanBarang from "./pages/ScanBarang.tsx";
-import ScanQr from "./pages/ScanQr.tsx";
-import VariantProduk from "./pages/VariantProduk.tsx";
-import MasterData from "./pages/MasterData.tsx";
-import DaftarBarang from "./pages/DaftarBarang.tsx";
-import StatistikBarang from "./pages/StatistikBarang.tsx";
-import Login from "./pages/Login.tsx";
+import App from "./App";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
 import AdminLayout from "./layouts/AdminLayout.tsx";
+import CetakBarang from "./pages/CetakBarang.tsx";
+import DaftarBarang from "./pages/DaftarBarang.tsx";
 import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
 import LandingPage from "./pages/LandingPage.tsx";
+import LiveView from "./pages/LiveView.tsx";
+import MasterData from "./pages/MasterData.tsx";
+import PrintManager from "./pages/PrintManager.tsx";
+import ScanQr from "./pages/ScanQr.tsx";
+import StatistikBarang from "./pages/StatistikBarang.tsx";
+import VariantProduk from "./pages/VariantProduk.tsx";
+import Login from "./pages/Login.tsx";
 
 const routes = (
   <Routes>
-    <Route path="/" element={<LandingPage />} />
-    <Route path="/cetak_barang" element={<CetakBarang />} />
-    <Route path="/live-view" element={<LiveView />} />
-    <Route path="/print_manager" element={<PrintManager />} />
-    <Route path="/scan-barang" element={<ScanBarang />} />
-    <Route path="/scan-qr" element={<ScanQr />} />
-    <Route path="/login" element={<Login />} />
+    <Route element={<App />}>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/cetak_barang" element={<CetakBarang />} />
+      <Route path="/live-view" element={<LiveView />} />
+      <Route path="/print_manager" element={<PrintManager />} />
+      <Route path="/scan-qr" element={<ScanQr />} />
+      <Route path="/login" element={<Login />} />
+    </Route>
 
     <Route
       element={

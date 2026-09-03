@@ -61,29 +61,36 @@ export function LivePreview({
         </div>
       ) : (
         <>
-          <div className="flex justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-            <HangtagFit
-              widthMm={labelSizeMm[printSize].width}
-              heightMm={labelSizeMm[printSize].height}
+          <div className="relative flex items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4" style={{ height: "240px" }}>
+            <div
+              style={{
+                transform: `scale(${Math.min(1, 180 / (labelSizeMm[printSize].width * 3.78), 220 / (labelSizeMm[printSize].height * 3.78))})`,
+                transformOrigin: "center center",
+              }}
             >
-              <Hangtag
-                productName={selectedProduct?.nama ?? "-"}
-                styleName={selectedVariant.style.nama}
-                colorName={selectedVariant.color.nama}
-                sizeName={selectedVariant.size.nama}
-                sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
-                selectedSizeId={Number(sizeId)}
-                kodeVariant={
-                  selectedVariant.kodeVariant ??
-                  `Variant #${selectedVariant.id}`
-                }
-                kodeBatch={generateInfo?.batch.kodeBatch}
-                tanggal={
-                  generateInfo ? formatDate(generateInfo.tanggal) : undefined
-                }
-                qrValue={generatedCode ?? previewCode ?? "-"}
-              />
-            </HangtagFit>
+              <HangtagFit
+                widthMm={labelSizeMm[printSize].width}
+                heightMm={labelSizeMm[printSize].height}
+              >
+                <Hangtag
+                  productName={selectedProduct?.nama ?? "-"}
+                  styleName={selectedVariant.style.nama}
+                  colorName={selectedVariant.color.nama}
+                  sizeName={selectedVariant.size.nama}
+                  sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
+                  selectedSizeId={Number(sizeId)}
+                  kodeVariant={
+                    selectedVariant.kodeVariant ??
+                    `Variant #${selectedVariant.id}`
+                  }
+                  kodeBatch={generateInfo?.batch.kodeBatch}
+                  tanggal={
+                    generateInfo ? formatDate(generateInfo.tanggal) : undefined
+                  }
+                  qrValue={generatedCode ?? previewCode ?? "-"}
+                />
+              </HangtagFit>
+            </div>
           </div>
           <p className="mt-3 text-center text-xs text-zinc-500">
             {generatedCode ? "Kode barang final" : "Preview kode, belum disimpan"}

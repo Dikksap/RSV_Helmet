@@ -5,12 +5,14 @@ import {
   faBoxesStacked,
   faChartPie,
   faChevronDown,
+  faChevronLeft,
   faGaugeHigh,
   faGear,
   faRightFromBracket,
   faTags,
   faBell,
   faDatabase,
+  faHouse,
 } from "@fortawesome/free-solid-svg-icons";
 import { clearAuth, getToken, isAdmin, logout } from "../api/auth";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
@@ -59,10 +61,42 @@ const NAV_MANAGEMENT = [
   { to: "/", label: "Halaman Utama", icon: faGear, end: false },
 ];
 
+const ADMIN_MOBILE_NAV = [
+  { to: "/", label: "Home", icon: faHouse, end: true, center: false },
+  { to: "/admin/barang", label: "Barang", icon: faBoxesStacked, end: true, center: false },
+  { to: "/admin/dashboard", label: "Dasbor", icon: faGaugeHigh, end: true, center: true },
+  { to: "/admin/barang/statistik", label: "Statistik", icon: faChartPie, end: false, center: false },
+  { to: "/admin/variant-produk", label: "Varian", icon: faTags, end: false, center: false },
+];
+
+type AdminMobileNavItem = (typeof ADMIN_MOBILE_NAV)[number];
+
+function AdminMobileNavLink({ item }: { item: AdminMobileNavItem }) {
+  return (
+    <NavLink
+      key={item.to}
+      to={item.to}
+      end={item.end}
+      className={({ isActive }) =>
+        [
+          "flex min-w-[52px] flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 transition-all duration-200",
+          isActive
+            ? "scale-105 bg-brand-gold/10 text-brand-gold"
+            : "text-brand-grey hover:bg-brand-surface hover:text-white",
+        ].join(" ")
+      }
+    >
+      <FontAwesomeIcon icon={item.icon} className="h-5 w-5" fixedWidth />
+      <span className="text-[10px] font-bold uppercase tracking-tight">{item.label}</span>
+    </NavLink>
+  );
+}
+
 function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [barangProduksiOpen, setBarangProduksiOpen] = useState(
     () =>
       location.pathname.startsWith("/admin/barang") ||
@@ -237,12 +271,12 @@ function AdminLayout() {
       )}
 
       <aside
-        className={`fixed bottom-0 left-0 top-0 z-50 flex w-64 transform flex-col justify-between border-r border-brand-border bg-brand-surface transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed bottom-0 left-0 top-0 z-50 flex w-64 transform flex-col border-r border-brand-border bg-brand-surface transition-all duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } ${isCollapsed ? "lg:w-20" : ""}`}
       >
-        <div>
-          <div className="flex h-20 items-center justify-between border-b border-brand-border px-6">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className={`flex h-20 shrink-0 items-center justify-between border-b border-brand-border px-6 ${isCollapsed ? "lg:justify-center lg:px-0" : ""}`}>
             <div className="flex items-center gap-3">
               <img
                 src="/rsv_logo.png"
@@ -250,7 +284,7 @@ function AdminLayout() {
                 className="h-10 w-10 rounded-xl object-contain"
               />
               <div>
-                <h1 className="text-lg font-bold tracking-wide text-white">
+                <h1 className={`text-lg font-bold tracking-wide text-white ${isCollapsed ? "lg:hidden" : ""}`}>
                   RSV<span className="text-brand-gold">.ADMIN</span>
                 </h1>
               </div>
@@ -275,8 +309,8 @@ function AdminLayout() {
             </button>
           </div>
 
-          <nav className="space-y-1 p-4">
-            <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-brand-grey">
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
+            <p className={`mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-brand-grey ${isCollapsed ? "lg:hidden" : ""}`}>
               Menu Utama
             </p>
 
@@ -286,21 +320,23 @@ function AdminLayout() {
                 to={item.to}
                 end={item.end}
                 onClick={closeSidebar}
+                title={item.label}
                 className={({ isActive }) =>
                   [
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all",
                     isActive
                       ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                       : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
+                    isCollapsed ? "lg:justify-center lg:px-0" : "",
                   ].join(" ")
                 }
               >
                 <FontAwesomeIcon
                   icon={item.icon}
-                  className="h-5 w-5"
+                  className="h-5 w-5 shrink-0"
                   fixedWidth
                 />
-                <span>{item.label}</span>
+                <span className={isCollapsed ? "lg:hidden" : ""}>{item.label}</span>
               </NavLink>
             ))}
 
@@ -308,25 +344,26 @@ function AdminLayout() {
               <button
                 type="button"
                 onClick={() => setBarangProduksiOpen((o) => !o)}
+                title={BARANG_PRODUKSI.label}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all ${
                   barangProduksiOpen
                     ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                     : "text-brand-grey hover:bg-brand-surface-card hover:text-white"
-                }`}
+                } ${isCollapsed ? "lg:justify-center lg:px-0" : ""}`}
               >
                 <FontAwesomeIcon
                   icon={BARANG_PRODUKSI.icon}
-                  className="h-5 w-5"
+                  className="h-5 w-5 shrink-0"
                   fixedWidth
                 />
-                <span className="flex-1 text-left">
+                <span className={`flex-1 text-left ${isCollapsed ? "lg:hidden" : ""}`}>
                   {BARANG_PRODUKSI.label}
                 </span>
                 <FontAwesomeIcon
                   icon={faChevronDown}
                   className={`h-4 w-4 transition-transform duration-300 ${
                     barangProduksiOpen ? "rotate-180" : ""
-                  }`}
+                  } ${isCollapsed ? "lg:hidden" : ""}`}
                 />
               </button>
               <div
@@ -344,21 +381,23 @@ function AdminLayout() {
                         to={child.to}
                         end={child.end}
                         onClick={closeSidebar}
+                        title={child.label}
                         className={({ isActive }) =>
                           [
-                            "flex items-center gap-3 rounded-lg py-2 pl-11 pr-3 text-sm font-medium transition-all",
+                            "flex items-center gap-3 rounded-lg py-2 pr-3 text-sm font-medium transition-all",
                             isActive
                               ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                               : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
+                            isCollapsed ? "lg:justify-center lg:px-0 lg:pl-0" : "pl-11",
                           ].join(" ")
                         }
                       >
                         <FontAwesomeIcon
                           icon={child.icon}
-                          className="h-4 w-4"
+                          className="h-4 w-4 shrink-0"
                           fixedWidth
                         />
-                        <span>{child.label}</span>
+                        <span className={isCollapsed ? "lg:hidden" : ""}>{child.label}</span>
                       </NavLink>
                     ))}
                   </div>
@@ -366,7 +405,7 @@ function AdminLayout() {
               </div>
             </div>
 
-            <p className="mb-2 px-3 pt-4 text-[11px] font-semibold uppercase tracking-wider text-brand-grey">
+            <p className={`mb-2 px-3 pt-4 text-[11px] font-semibold uppercase tracking-wider text-brand-grey ${isCollapsed ? "lg:hidden" : ""}`}>
               Manajemen
             </p>
 
@@ -376,28 +415,30 @@ function AdminLayout() {
                 to={item.to}
                 end={item.end}
                 onClick={closeSidebar}
+                title={item.label}
                 className={({ isActive }) =>
                   [
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all",
                     isActive
                       ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                       : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
+                    isCollapsed ? "lg:justify-center lg:px-0" : "",
                   ].join(" ")
                 }
               >
                 <FontAwesomeIcon
                   icon={item.icon}
-                  className="h-5 w-5"
+                  className="h-5 w-5 shrink-0"
                   fixedWidth
                 />
-                <span>{item.label}</span>
+                <span className={isCollapsed ? "lg:hidden" : ""}>{item.label}</span>
               </NavLink>
             ))}
           </nav>
         </div>
 
-        <div className="border-t border-brand-border p-4">
-          <div className="flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2">
+        <div className="shrink-0 border-t border-brand-border p-4">
+          <div className={`flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2 ${isCollapsed ? "lg:flex-col lg:gap-2 lg:p-2" : ""}`}>
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-brand-gold bg-neutral-800 text-sm font-bold text-white">
@@ -405,7 +446,7 @@ function AdminLayout() {
                 </div>
                 <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-brand-black bg-emerald-500"></span>
               </div>
-              <div className="overflow-hidden">
+              <div className={`overflow-hidden ${isCollapsed ? "lg:hidden" : ""}`}>
                 <h4 className="truncate text-sm font-semibold text-white">
                   Admin RSV
                 </h4>
@@ -417,7 +458,7 @@ function AdminLayout() {
             <button
               onClick={handleLogout}
               title="Keluar"
-              className="p-1 text-brand-grey transition hover:text-brand-gold"
+              className="rounded-lg p-1.5 text-brand-grey transition hover:bg-brand-surface hover:text-brand-gold"
             >
               <FontAwesomeIcon icon={faRightFromBracket} className="h-5 w-5" />
             </button>
@@ -430,6 +471,7 @@ function AdminLayout() {
           <div className="flex flex-1 items-center gap-4 max-w-xl">
             <button
               onClick={() => setIsSidebarOpen(true)}
+              aria-label="Buka sidebar"
               className="rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:hidden"
             >
               <svg
@@ -445,6 +487,14 @@ function AdminLayout() {
                   d="M4 6h16M4 12h16M4 18h16"
                 />
               </svg>
+            </button>
+            <button
+              onClick={() => setIsCollapsed((v) => !v)}
+              title={isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+              aria-label={isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+              className="hidden rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:block"
+            >
+              <FontAwesomeIcon icon={faChevronLeft} className={`h-5 w-5 transition-transform duration-300 ${isCollapsed ? "rotate-180" : ""}`} />
             </button>
             <div className="hidden sm:block">
               <p className="text-[10px] font-bold uppercase tracking-widest text-brand-grey">
@@ -542,12 +592,54 @@ function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8">
+        <main className="flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-8 sm:pt-8 lg:pb-8">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
         </main>
       </div>
+      {/* Bottom navigation khusus mobile admin */}
+      <nav aria-label="Navigasi admin mobile" className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
+        <div className="mx-3 mb-3 rounded-2xl border border-brand-border bg-brand-surface-card/95 shadow-2xl backdrop-blur-xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="flex items-center p-1">
+            {(() => {
+              const centerIndex = ADMIN_MOBILE_NAV.findIndex((i) => i.center);
+              const leftItems = ADMIN_MOBILE_NAV.slice(0, centerIndex);
+              const centerItem = ADMIN_MOBILE_NAV[centerIndex];
+              const rightItems = ADMIN_MOBILE_NAV.slice(centerIndex + 1);
+              return (
+                <>
+                  <div className="flex flex-1 items-center justify-around">
+                    {leftItems.map((item) => (
+                      <AdminMobileNavLink key={item.to} item={item} />
+                    ))}
+                  </div>
+                  <NavLink
+                    to={centerItem.to}
+                    end={centerItem.end}
+                    aria-label="Dasbor utama"
+                    className="flex min-w-[64px] shrink-0 flex-col items-center gap-1 px-2 pb-2 pt-0"
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span className="-mt-7 grid h-14 w-14 place-items-center rounded-full bg-brand-gold text-brand-black shadow-lg ring-4 ring-brand-surface-card transition active:scale-95">
+                          <FontAwesomeIcon icon={centerItem.icon} className="h-6 w-6" fixedWidth />
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase tracking-tight ${isActive ? "text-brand-gold" : "text-brand-grey"}`}>{centerItem.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                  <div className="flex flex-1 items-center justify-around">
+                    {rightItems.map((item) => (
+                      <AdminMobileNavLink key={item.to} item={item} />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      </nav>
       {selectedNotif && (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="presentation" onClick={() => setSelectedNotif(null)}>
           <div className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>

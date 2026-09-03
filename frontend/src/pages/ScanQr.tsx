@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { bulkScanBarang, getScanBarang, type BulkScanResponse, type StatusBarang } from "../api/barang";
-import Navbar from "../components/Navbar";
 
 const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
   { value: "FINISHGOOD", label: "Finish Good" },
@@ -58,6 +57,8 @@ function ScanQr() {
 
     if (!kode) {
       setError("Kode barang belum diisi.");
+      setInputValue("");
+      inputRef.current?.focus();
       return;
     }
 
@@ -69,8 +70,6 @@ function ScanQr() {
 
       if (alreadyExists) {
         setError("Kode barang sudah ada di tabel.");
-        setInputValue("");
-        inputRef.current?.focus();
         return;
       }
 
@@ -94,7 +93,6 @@ function ScanQr() {
       };
 
       setScannedItems((prev) => [newItem, ...prev]);
-      setInputValue("");
       setError("");
       setSuccessMsg("");
       setBulkResult(null);
@@ -104,9 +102,10 @@ function ScanQr() {
           ? requestError.message
           : "Kode barang tidak ditemukan.",
       );
+    } finally {
+      setInputValue("");
+      inputRef.current?.focus();
     }
-
-    inputRef.current?.focus();
   };
 
   const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,9 +229,16 @@ function ScanQr() {
     };
   }, [handleSubmit, inputValue]);
 
+  const scannedItemsCount = scannedItems.length;
+  
+  // Hitung jumlah barang per variant
+  const itemsPerVariant = scannedItems.reduce((acc, item) => {
+    acc[item.variant] = (acc[item.variant] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-950">
-      <Navbar />
       {toast && (
         <div className={`fixed right-4 top-20 z-50 flex w-[calc(100%-2rem)] max-w-md items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-xl backdrop-blur sm:right-6 sm:top-24 ${toast.type === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`} role={toast.type === "error" ? "alert" : "status"} aria-live="polite">
           <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${toast.type === "error" ? "bg-red-600 text-white" : "bg-emerald-600 text-white"}`}>{toast.type === "error" ? "!" : "✓"}</span>
@@ -242,82 +248,89 @@ function ScanQr() {
       )}
 
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <header className="space-y-1">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-            SCAN QR / INPUT BARANG
-          </p>
-          <h1 className="text-3xl font-black tracking-tight text-zinc-950">
-            Entry Barang
-          </h1>
+        <header className="flex items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+              SCAN QR / INPUT BARANG
+            </p>
+            <h1 className="text-3xl font-black tracking-tight text-zinc-950">
+              Entry Barang
+            </h1>
+          </div>
+          {scannedItemsCount > 0 && (
+            <div className="rounded-2xl border border-zinc-200 bg-white px-5 py-3 shadow-sm">
+              <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Total Barang</p>
+              <p className="text-2xl font-black text-zinc-950">{scannedItemsCount}</p>
+            </div>
+          )}
         </header>
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
           <form
             onSubmit={handleSubmit}
-            className="flex flex-col gap-3 sm:flex-row"
+            className="flex flex-col gap-4"
           >
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Masukkan kode barang atau scan QR"
-              autoComplete="off"
-              className="h-12 flex-1 rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-base text-zinc-900 outline-none transition focus:border-zinc-950 focus:bg-white focus:ring-4 focus:ring-zinc-100"
-            />
-            <button
-              type="submit"
-              className="h-12 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white transition hover:bg-zinc-800"
-            >
-              Cari
-            </button>
+            <div className="flex gap-3">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Masukkan kode barang atau scan QR"
+                autoComplete="off"
+                className="h-14 flex-1 rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-base text-zinc-950 outline-none transition focus:border-zinc-500 focus:ring-4 focus:ring-zinc-100"
+              />
+              <button
+                type="submit"
+                className="h-14 rounded-xl bg-zinc-950 px-8 text-sm font-semibold text-white transition hover:bg-zinc-800 active:scale-95"
+              >
+                Cari
+              </button>
+            </div>
           </form>
 
-          {error ? (
-            <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
-          ) : null}
-          {successMsg ? (
-            <p className="mt-3 text-sm font-medium text-emerald-600">{successMsg}</p>
-          ) : null}
+          {error && <p className="mt-4 text-sm font-medium text-red-600 bg-red-50 px-4 py-2 rounded-lg">{error}</p>}
+          {successMsg && <p className="mt-4 text-sm font-medium text-emerald-700 bg-emerald-50 px-4 py-2 rounded-lg">{successMsg}</p>}
 
-          {/* Bulk controls — POST /api/barang/scan/bulk */}
-          <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-700">Bulk Scan</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">Kirim semua kode di tabel via <code className="rounded bg-white px-1 py-0.5 font-mono text-xs ring-1 ring-zinc-200">POST /api/barang/scan/bulk</code> — status sama untuk semua, partial success allowed, duplicate & transisi invalid masuk failed.</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <label className="grid gap-1">
-                <span className="text-xs font-bold uppercase tracking-wide text-zinc-700">Status</span>
-                <select value={status} onChange={(e) => setStatus(e.target.value as StatusBarang)} className="h-10 w-full rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 focus:border-zinc-900 focus:outline-none">
+          <div className="mt-6 border-t border-zinc-100 pt-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Status</span>
+                <select value={status} onChange={(e) => setStatus(e.target.value as StatusBarang)} className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-semibold text-zinc-950 focus:border-zinc-500 focus:outline-none">
                   {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
-              <label className="grid gap-1 sm:col-span-2">
-                <span className="text-xs font-bold uppercase tracking-wide text-zinc-700">Keterangan (opsional)</span>
-                <input value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="QC pass - optional" className="h-10 w-full rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none" />
+              <label className="grid gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Keterangan (opsional)</span>
+                <input value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Misal: QC Pass" className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none" />
               </label>
             </div>
-            <input ref={bulkInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleBulkUpload} />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => bulkInputRef.current?.click()} className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-900 bg-white px-4 text-xs font-bold text-zinc-900 hover:bg-zinc-900 hover:text-white">Upload Bulk File</button>
-              <button type="button" onClick={handleBulkSubmit} disabled={isBulkSubmitting || scannedItems.length === 0} className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-950 px-5 text-xs font-bold text-white hover:bg-zinc-800 disabled:opacity-40">{isBulkSubmitting ? "Mengirim Bulk..." : `Simpan Bulk (${scannedItems.length})`}</button>
-              {scannedItems.length > 0 && <button type="button" onClick={() => { setScannedItems([]); setBulkResult(null); setSuccessMsg(""); }} className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-600 hover:bg-zinc-100">Clear Tabel</button>}
+            
+            <div className="mt-6 flex items-center gap-3">
+              <input ref={bulkInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleBulkUpload} />
+              <button type="button" onClick={() => bulkInputRef.current?.click()} className="inline-flex h-12 items-center justify-center rounded-xl border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-950 hover:bg-zinc-50 transition">Upload File</button>
+              <button type="button" onClick={handleBulkSubmit} disabled={isBulkSubmitting || scannedItemsCount === 0} className="inline-flex h-12 items-center justify-center rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40 transition">
+                {isBulkSubmitting ? "Mengirim..." : `Simpan Semua (${scannedItemsCount})`}
+              </button>
+              {scannedItemsCount > 0 && <button type="button" onClick={() => { setScannedItems([]); setBulkResult(null); setSuccessMsg(""); }} className="ml-auto inline-flex h-12 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-600 hover:text-red-600 hover:border-red-200 transition">Clear</button>}
             </div>
-            {bulkResult && (
-              <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-3 text-xs leading-5">
-                <p className="font-bold text-zinc-800">Ringkasan: {bulkResult.success.length} berhasil • {bulkResult.failed.length} gagal</p>
-                {bulkResult.failed.length > 0 && (
-                  <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-auto pl-4 text-zinc-600">
-                    {bulkResult.failed.slice(0, 20).map((f, i) => {
-                      const fe = f as unknown as { kodeBarang: string; error?: string; reason?: string };
-                      return <li key={i}><span className="font-mono font-bold">{fe.kodeBarang}</span> — {fe.error ?? fe.reason ?? "Gagal"}</li>;
-                    })}
-                    {bulkResult.failed.length > 20 ? <li>... +{bulkResult.failed.length - 20} lagi</li> : null}
-                  </ul>
-                )}
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Ringkasan Variant */}
+        {scannedItemsCount > 0 && (
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
+            <h3 className="text-sm font-bold text-zinc-950 mb-4 uppercase tracking-wider">Ringkasan per Variant</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {Object.entries(itemsPerVariant).map(([variant, count]) => (
+                <div key={variant} className="flex justify-between items-center bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3">
+                  <span className="text-sm font-medium text-zinc-700 truncate mr-4">{variant}</span>
+                  <span className="text-sm font-black text-zinc-950 bg-white px-3 py-1 rounded-lg border border-zinc-200 shadow-sm">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-5 py-4">
@@ -325,11 +338,11 @@ function ScanQr() {
               Daftar Input Terbaru
             </h2>
             <span className="rounded-full bg-zinc-200 px-3 py-1 text-xs font-bold text-zinc-700">
-              {scannedItems.length} item
+              {scannedItemsCount} item
             </span>
           </div>
 
-          {scannedItems.length === 0 ? (
+          {scannedItemsCount === 0 ? (
             <div className="px-5 py-12 text-center text-sm text-zinc-500">
               Belum ada data yang sesuai dengan kode barang.
             </div>

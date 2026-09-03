@@ -164,6 +164,13 @@ function AdminDashboard() {
 
   const statusEntries = Object.entries(stats?.perStatus ?? {});
 
+  const pct = (part: number, total: number) =>
+    total > 0 ? `${Math.round((part / total) * 100)}%` : "—";
+  const totalValue = showToday ? todayStats.total : (stats?.total ?? 0);
+  const finishGoodValue = showToday ? todayStats.finishGood : (stats?.perStatus.FINISHGOOD ?? 0);
+  const prosesValue = showToday ? todayStats.proses : (stats?.perStatus.REGISTER ?? 0);
+  const batchValue = showToday ? todayStats.batch : (stats?.perBatch.length ?? 0);
+
   const NAMA_BULAN = [
     "Januari",
     "Februari",
@@ -221,7 +228,7 @@ function AdminDashboard() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
         <KpiCard
           label={showToday ? "Total Barang Hari Ini" : "Total Barang"}
           value={
@@ -231,6 +238,7 @@ function AdminDashboard() {
                 ? String(stats.total)
                 : "—"
           }
+          sub={`${batchValue} batch`}
           icon={faBoxesStacked}
           accent="gold"
         />
@@ -243,6 +251,7 @@ function AdminDashboard() {
                 ? String(stats.perStatus.FINISHGOOD ?? 0)
                 : "—"
           }
+          sub={`${pct(finishGoodValue, totalValue)} dari total`}
           icon={faCartShopping}
           accent="grey"
         />
@@ -255,6 +264,7 @@ function AdminDashboard() {
                 ? String(stats.perStatus.REGISTER ?? 0)
                 : "—"
           }
+          sub={`${pct(prosesValue, totalValue)} dari total`}
           icon={faUserCheck}
           accent="gold"
         />
@@ -267,6 +277,7 @@ function AdminDashboard() {
                 ? String(stats.perBatch.length)
                 : "—"
           }
+          sub={showToday ? "batch hari ini" : "batch keseluruhan"}
           icon={faWallet}
           accent="grey"
         />
@@ -532,11 +543,13 @@ function AdminDashboard() {
 function KpiCard({
   label,
   value,
+  sub,
   icon,
   accent,
 }: {
   label: string;
   value: string;
+  sub?: string;
   icon: React.ComponentProps<typeof FontAwesomeIcon>["icon"];
   accent: "gold" | "grey";
 }) {
@@ -545,21 +558,26 @@ function KpiCard({
       ? "border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
       : "border-brand-grey/20 bg-brand-grey/10 text-brand-grey-light";
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card p-5 transition duration-300 hover:border-brand-gold/50">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-brand-grey">
+    <div className="group relative overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card p-3 transition duration-300 hover:border-brand-gold/50 sm:p-5">
+      <div className="mb-2 flex items-center justify-between gap-2 sm:mb-4">
+        <span className="text-[11px] font-semibold uppercase leading-tight tracking-wider text-brand-grey sm:text-xs">
           {label}
         </span>
         <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl border transition duration-300 group-hover:scale-110 ${iconCls}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition duration-300 group-hover:scale-110 sm:h-10 sm:w-10 ${iconCls}`}
         >
-          <FontAwesomeIcon icon={icon} className="h-5 w-5" />
+          <FontAwesomeIcon icon={icon} className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
       </div>
       <div className="space-y-1">
-        <h3 className="text-2xl font-bold tracking-tight text-white">
+        <h3 className="text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">
           {value}
         </h3>
+        {sub && (
+          <p className="truncate text-[11px] text-brand-grey sm:text-xs">
+            {sub}
+          </p>
+        )}
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-brand-gold to-transparent opacity-0 transition group-hover:opacity-100"></div>
     </div>

@@ -9,7 +9,6 @@ import {
   type PrinterInfo,
 } from "../lib/print";
 import { Hangtag } from "../components/Hangtag/Hangtag";
-import Navbar from "../components/Navbar";
 import "../App.css";
 
 function PrintManager() {
@@ -92,8 +91,6 @@ function PrintManager() {
 
   return (
     <main className="generate-page">
-      <Navbar />
-
       <header className="generate-header">
         <div>
           <p className="eyebrow">DESKTOP / PRINT SETTINGS</p>

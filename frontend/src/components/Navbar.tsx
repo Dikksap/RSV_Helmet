@@ -84,12 +84,6 @@ function Navbar() {
       <path d="M7 8h3v8H7zM14 8h3v5h-3z" />
     </svg>
   );
-  const icScan = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
-      <rect x="8" y="8" width="8" height="8" rx="1.3" />
-    </svg>
-  );
   const icPrinter = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
       <path d="M6 9V4h12v5" />
@@ -109,7 +103,6 @@ function Navbar() {
   const NAV_ITEMS: NavItem[] = [
     { to: "/", label: "Home", end: true, icon: icHome },
     { to: "/cetak_barang", label: "Generate", end: false, icon: icGenerate },
-    { to: "/scan-barang", label: "Scan", end: false, icon: icScan },
     { to: "/print_manager", label: "Printer", end: false, icon: icPrinter },
     { to: "/scan-qr", label: "Scan QR", end: false, icon: icQr },
   ];

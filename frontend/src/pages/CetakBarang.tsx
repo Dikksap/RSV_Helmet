@@ -16,7 +16,6 @@ import {
   type LabelSize,
   type PrinterInfo,
 } from "../lib/print";
-import Navbar from "../components/Navbar";
 import { PageHeader } from "../components/CetakBarang/PageHeader";
 import { ErrorAlert } from "../components/CetakBarang/ErrorAlert";
 import { LoadingState } from "../components/CetakBarang/LoadingState";
@@ -69,8 +68,7 @@ function CetakBarang() {
       setError(`Gagal print: ${printError.message}`);
     },
     onAfterPrint: () => {
-      setGeneratedCode(null);
-      setIsPreviewOpen(false);
+      window.location.reload();
     },
   });
 
@@ -202,8 +200,7 @@ function CetakBarang() {
         if (result.status === "error") {
           setError(`Gagal print: ${result.message}`);
         } else {
-          setGeneratedCode(null);
-          setIsPreviewOpen(false);
+          window.location.reload();
         }
       } else {
         window.setTimeout(() => printFn(), 100);
@@ -235,8 +232,6 @@ function CetakBarang() {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <Navbar />
-
       <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:px-8">
         <PageHeader completionSteps={completionSteps} />
 
