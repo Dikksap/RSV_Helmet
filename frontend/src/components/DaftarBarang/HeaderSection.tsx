@@ -3,6 +3,7 @@ type HeaderSectionProps = {
   isExporting: boolean;
   onExportCSV: () => void;
   onExportJSON: () => void;
+  onCreate?: () => void;
 };
 
 export function HeaderSection({
@@ -10,6 +11,7 @@ export function HeaderSection({
   isExporting,
   onExportCSV,
   onExportJSON,
+  onCreate,
 }: HeaderSectionProps) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -46,9 +48,18 @@ export function HeaderSection({
             Export JSON
           </button>
         </div>
+        {onCreate && (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light active:scale-[0.98]"
+          >
+            + Tambah Barang
+          </button>
+        )}
         <a
           href="/admin/barang/statistik"
-          className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light active:scale-[0.98]"
+          className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-white"
         >
           Lihat Statistik
         </a>

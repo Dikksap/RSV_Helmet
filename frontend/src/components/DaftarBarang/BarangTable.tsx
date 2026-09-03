@@ -7,17 +7,20 @@ type BarangTableProps = {
   totalBarang: number;
   now: number;
   onRowClick: (item: Barang) => void;
+  onEdit?: (item: Barang) => void;
+  onDelete?: (item: Barang) => void;
   formatDate: (date: string) => string;
   formatRelativeTime: (date: string, nowMs: number) => string;
 };
 
 export function BarangTable({
-  
   barang,
   currentPage,
   totalBarang,
   now,
   onRowClick,
+  onEdit,
+  onDelete,
   formatDate,
   formatRelativeTime,
 }: BarangTableProps) {
@@ -35,6 +38,7 @@ export function BarangTable({
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Dibuat</th>
               <th className="px-4 py-3">Waktu</th>
+              {(onEdit || onDelete) && <th className="px-4 py-3 text-right">Aksi</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-border/60 text-sm">
@@ -74,6 +78,36 @@ export function BarangTable({
                     {formatRelativeTime(item.createdAt, now)}
                   </span>
                 </td>
+                {(onEdit || onDelete) && (
+                  <td className="px-4 py-2.5">
+                    <div className="flex justify-end gap-1.5">
+                      {onEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(item);
+                          }}
+                          className="rounded-lg border border-brand-border bg-brand-surface px-2.5 py-1 text-[11px] font-bold text-brand-grey-light transition hover:border-amber-500/40 hover:text-amber-400"
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(item);
+                          }}
+                          className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-[11px] font-bold text-rose-400 transition hover:bg-rose-500/20"
+                        >
+                          Hapus
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

@@ -13,6 +13,13 @@ import {
   getFinishgoodPerBulan,
   getStatusSummary,
 } from "./barang.stats.js";
+import {
+  createBarang,
+  updateBarang,
+  deleteBarang,
+  type CreateBarangInput,
+  type UpdateBarangInput,
+} from "./barang.crud.js";
 
 export {
   generateBarangBulk,
@@ -25,8 +32,12 @@ export {
   getBatchRentangTanggal,
   getFinishgoodPerBulan,
   getStatusSummary,
+  createBarang,
+  updateBarang,
+  deleteBarang,
 };
 export type { StatusBarang };
+export type { CreateBarangInput, UpdateBarangInput } from "./barang.crud.js";
 export type {
   FinishgoodPerBulanRow,
   FinishgoodPerBulanFilter,
@@ -64,6 +75,27 @@ export interface BarangListFilter {
   tanggalAkhir?: Date;
 }
 
+function normalizeStart(d: Date): Date {
+  const c = new Date(d);
+  c.setUTCHours(0, 0, 0, 0);
+  return c;
+}
+
+function normalizeEnd(d: Date): Date {
+  const c = new Date(d);
+  // Jika sudah di 23:59:59.999 biarkan, jika masih midnight paksa ke end-of-day
+  // Ini buat defensive: controller sudah kirim end-of-day, tapi direct call juga aman
+  if (
+    c.getUTCHours() === 0 &&
+    c.getUTCMinutes() === 0 &&
+    c.getUTCSeconds() === 0 &&
+    c.getUTCMilliseconds() === 0
+  ) {
+    c.setUTCHours(23, 59, 59, 999);
+  }
+  return c;
+}
+
 export async function listBarang(filter: BarangListFilter) {
   const { page, limit, variantId, batchId, status, tanggalAwal, tanggalAkhir } =
     filter;
@@ -80,8 +112,8 @@ export async function listBarang(filter: BarangListFilter) {
   if (status) where.status = status;
   if (tanggalAwal || tanggalAkhir) {
     where.tanggal = {};
-    if (tanggalAwal) where.tanggal.gte = tanggalAwal;
-    if (tanggalAkhir) where.tanggal.lte = tanggalAkhir;
+    if (tanggalAwal) where.tanggal.gte = normalizeStart(tanggalAwal);
+    if (tanggalAkhir) where.tanggal.lte = normalizeEnd(tanggalAkhir);
   }
 
   const [total, data] = await prisma.$transaction([

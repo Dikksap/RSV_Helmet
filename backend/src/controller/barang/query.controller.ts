@@ -11,11 +11,35 @@ import {
 } from "../../model/barang/barang.js";
 import type { StatusBarang } from "../../model/barang/barang.js";
 
+function toStartOfDay(d: Date): Date {
+  const c = new Date(d);
+  c.setUTCHours(0, 0, 0, 0);
+  return c;
+}
+
+function toEndOfDay(d: Date): Date {
+  const c = new Date(d);
+  c.setUTCHours(23, 59, 59, 999);
+  return c;
+}
+
+function parseTanggalAwal(value: string): Date | null {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return toStartOfDay(d);
+}
+
+function parseTanggalAkhir(value: string): Date | null {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return toEndOfDay(d);
+}
+
 export async function listBarangHandler(req: Request, res: Response) {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { variantId, batchId, status, tanggalAwal, tanggalAkhir } = req.query;
+    const { variantId, batchId, status, tanggalAwal, tanggalAkhir, tanggal } = req.query;
 
     if (status && !["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"].includes(String(status))) {
       return res.status(400).json({
@@ -41,23 +65,44 @@ export async function listBarangHandler(req: Request, res: Response) {
     }
 
     let tAwal: Date | undefined;
-    if (tanggalAwal) {
-      tAwal = new Date(tanggalAwal as string);
-      if (Number.isNaN(tAwal.getTime())) {
+    let tAkhir: Date | undefined;
+
+    // Shortcut: ?tanggal=YYYY-MM-DD  -> filter satu hari penuh
+    if (tanggal && !tanggalAwal && !tanggalAkhir) {
+      const parsed = parseTanggalAwal(tanggal as string);
+      if (!parsed) {
         return res.status(400).json({
-          message: "Parameter 'tanggalAwal' harus tanggal valid (YYYY-MM-DD)",
+          message: "Parameter 'tanggal' harus tanggal valid (YYYY-MM-DD)",
         });
+      }
+      tAwal = toStartOfDay(parsed);
+      tAkhir = toEndOfDay(parsed);
+    } else {
+      if (tanggalAwal) {
+        const parsed = parseTanggalAwal(tanggalAwal as string);
+        if (!parsed) {
+          return res.status(400).json({
+            message: "Parameter 'tanggalAwal' harus tanggal valid (YYYY-MM-DD)",
+          });
+        }
+        tAwal = parsed;
+      }
+
+      if (tanggalAkhir) {
+        const parsed = parseTanggalAkhir(tanggalAkhir as string);
+        if (!parsed) {
+          return res.status(400).json({
+            message: "Parameter 'tanggalAkhir' harus tanggal valid (YYYY-MM-DD)",
+          });
+        }
+        tAkhir = parsed;
       }
     }
 
-    let tAkhir: Date | undefined;
-    if (tanggalAkhir) {
-      tAkhir = new Date(tanggalAkhir as string);
-      if (Number.isNaN(tAkhir.getTime())) {
-        return res.status(400).json({
-          message: "Parameter 'tanggalAkhir' harus tanggal valid (YYYY-MM-DD)",
-        });
-      }
+    if (tAwal && tAkhir && tAwal.getTime() > tAkhir.getTime()) {
+      return res.status(400).json({
+        message: "Parameter 'tanggalAwal' tidak boleh lebih besar dari 'tanggalAkhir'",
+      });
     }
 
     const result = await listBarang({
@@ -165,7 +210,7 @@ export async function getBatchRentangTanggalHandler(req: Request, res: Response)
           message: "Parameter 'tanggalAwal' harus tanggal valid (YYYY-MM-DD)",
         });
       }
-      filter.tanggalAwal = t;
+      filter.tanggalAwal = toStartOfDay(t);
     }
 
     if (tanggalAkhir) {
@@ -175,7 +220,13 @@ export async function getBatchRentangTanggalHandler(req: Request, res: Response)
           message: "Parameter 'tanggalAkhir' harus tanggal valid (YYYY-MM-DD)",
         });
       }
-      filter.tanggalAkhir = t;
+      filter.tanggalAkhir = toEndOfDay(t);
+    }
+
+    if (filter.tanggalAwal && filter.tanggalAkhir && filter.tanggalAwal.getTime() > filter.tanggalAkhir.getTime()) {
+      return res.status(400).json({
+        message: "Parameter 'tanggalAwal' tidak boleh lebih besar dari 'tanggalAkhir'",
+      });
     }
 
     const result = await getBatchRentangTanggal(filter);
@@ -218,7 +269,7 @@ export async function getFinishgoodPerBulanHandler(req: Request, res: Response) 
           message: "Parameter 'tanggalAwal' harus tanggal valid (YYYY-MM-DD)",
         });
       }
-      filter.tanggalAwal = t;
+      filter.tanggalAwal = toStartOfDay(t);
     }
 
     if (tanggalAkhir) {
@@ -228,7 +279,13 @@ export async function getFinishgoodPerBulanHandler(req: Request, res: Response) 
           message: "Parameter 'tanggalAkhir' harus tanggal valid (YYYY-MM-DD)",
         });
       }
-      filter.tanggalAkhir = t;
+      filter.tanggalAkhir = toEndOfDay(t);
+    }
+
+    if (filter.tanggalAwal && filter.tanggalAkhir && filter.tanggalAwal.getTime() > filter.tanggalAkhir.getTime()) {
+      return res.status(400).json({
+        message: "Parameter 'tanggalAwal' tidak boleh lebih besar dari 'tanggalAkhir'",
+      });
     }
 
     const result = await getFinishgoodPerBulan(filter);

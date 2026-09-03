@@ -60,6 +60,24 @@ type BarangStatusUpdatedEvent = {
   data: Barang;
 };
 
+type BarangCreatedEvent = {
+  type: "barang.created";
+  message: string;
+  data: Barang;
+};
+
+type BarangUpdatedEvent = {
+  type: "barang.updated";
+  message: string;
+  data: Barang;
+};
+
+type BarangDeletedEvent = {
+  type: "barang.deleted";
+  message: string;
+  data: { id: number };
+};
+
 export type AppEvent =
   | ProductCreatedEvent
   | ProductUpdatedEvent
@@ -68,7 +86,10 @@ export type AppEvent =
   | VariantUpdatedEvent
   | VariantDeletedEvent
   | BarangGeneratedEvent
-  | BarangStatusUpdatedEvent;
+  | BarangStatusUpdatedEvent
+  | BarangCreatedEvent
+  | BarangUpdatedEvent
+  | BarangDeletedEvent;
 
 // =============================================
 // Redis Pub/Sub

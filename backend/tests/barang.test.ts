@@ -513,10 +513,14 @@ describe("GET /api/barang/batch-rentang-tanggal", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mocked.getBatchRentangTanggal).toHaveBeenCalledWith({
-      tanggalAwal: new Date("2026-01-01"),
-      tanggalAkhir: new Date("2026-08-31"),
-    });
+    const call = mocked.getBatchRentangTanggal.mock.calls[0][0] as {
+      tanggalAwal: Date;
+      tanggalAkhir: Date;
+    };
+    expect(call.tanggalAwal.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(call.tanggalAwal.getUTCHours()).toBe(0);
+    expect(call.tanggalAkhir.toISOString().slice(0, 10)).toBe("2026-08-31");
+    expect(call.tanggalAkhir.getUTCHours()).toBe(23);
   });
 });
 
@@ -582,12 +586,18 @@ describe("GET /api/barang/finishgood-per-bulan", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].jumlah).toBe(30);
-    expect(mocked.getFinishgoodPerBulan).toHaveBeenCalledWith({
-      variantId: 1,
-      productId: 1,
-      tanggalAwal: new Date("2026-01-01"),
-      tanggalAkhir: new Date("2026-08-31"),
-    });
+    const call = mocked.getFinishgoodPerBulan.mock.calls[0][0] as {
+      variantId: number;
+      productId: number;
+      tanggalAwal: Date;
+      tanggalAkhir: Date;
+    };
+    expect(call.variantId).toBe(1);
+    expect(call.productId).toBe(1);
+    expect(call.tanggalAwal.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(call.tanggalAwal.getUTCHours()).toBe(0);
+    expect(call.tanggalAkhir.toISOString().slice(0, 10)).toBe("2026-08-31");
+    expect(call.tanggalAkhir.getUTCHours()).toBe(23);
   });
 
   it("200 tanpa filter panggil getFinishgoodPerBulan kosong", async () => {

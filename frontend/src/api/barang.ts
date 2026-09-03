@@ -19,9 +19,9 @@ export interface Barang {
   id: number;
   kodeBarang: string;
   variantId: number;
-  batchId: number;
+  batchId: number | null;
   status: StatusBarang;
-  tanggal: string;
+  tanggal: string | null;
   createdAt: string;
   updatedAt: string;
   variant: BarangVariant;
@@ -31,7 +31,7 @@ export interface Barang {
     totalProduksi: number;
     kapasitas: number;
     status: string;
-  };
+  } | null;
 }
 
 interface BarangPageResponse {
@@ -54,6 +54,7 @@ export interface BarangListParams {
   variantId?: number;
   batchId?: number;
   status?: StatusBarang;
+  tanggal?: string; // shortcut 1 hari penuh, diabaikan jika tanggalAwal/tanggalAkhir dikirim
   tanggalAwal?: string;
   tanggalAkhir?: string;
 }
@@ -61,19 +62,23 @@ export interface BarangListParams {
 export async function getBarangPage(
   params: BarangListParams = {},
 ): Promise<BarangResponse> {
+  const page = Math.max(1, params.page ?? 1);
+  const limit = Math.min(100, Math.max(1, params.limit ?? 20));
   const query = new URLSearchParams({
-    page: String(params.page ?? 1),
-    limit: String(params.limit ?? 20),
+    page: String(page),
+    limit: String(limit),
   });
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
   if (params.status) query.set("status", params.status);
+  if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
 
   const response = await fetch(`${apiUrl}/barang?${query}`);
   if (!response.ok) {
-    throw new Error(`Gagal mengambil data barang: ${response.status}`);
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message || `Gagal mengambil data barang: ${response.status}`);
   }
   return response.json() as Promise<BarangResponse>;
 }
@@ -100,6 +105,7 @@ export interface ExportBarangParams {
   variantId?: number;
   batchId?: number;
   status?: StatusBarang;
+  tanggal?: string;
   tanggalAwal?: string;
   tanggalAkhir?: string;
 }
@@ -115,6 +121,7 @@ export async function exportBarang(
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
   if (params.status) query.set("status", params.status);
+  if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
 
@@ -153,9 +160,10 @@ export interface BatchRentangTanggalResponse {
 }
 
 export async function getBatchRentangTanggal(
-  params: { tanggalAwal?: string; tanggalAkhir?: string } = {},
+  params: { tanggal?: string; tanggalAwal?: string; tanggalAkhir?: string } = {},
 ): Promise<BatchRentangTanggalResponse> {
   const query = new URLSearchParams();
+  if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
   const queryString = query.toString();
@@ -212,8 +220,9 @@ export async function getFinishgoodPerBulan(
     }`,
   );
   if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(
-      `Gagal mengambil data finishgood per bulan: ${response.status}`,
+      payload?.message || `Gagal mengambil data finishgood per bulan: ${response.status}`,
     );
   }
   return response.json() as Promise<FinishgoodPerBulanResponse>;
@@ -233,9 +242,39 @@ export async function getBarangStats(
     `${apiUrl}/barang/stats${queryString ? `?${queryString}` : ""}`,
   );
   if (!response.ok) {
-    throw new Error(`Gagal mengambil statistik barang: ${response.status}`);
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message || `Gagal mengambil statistik barang: ${response.status}`);
   }
   return response.json() as Promise<BarangStats>;
+}
+
+export interface StatusSummary {
+  REGISTER: number;
+  FINISHGOOD: number;
+  RETUR: number;
+  OUT: number;
+  BAD: number;
+  total: number;
+  perVariant?: Array<{ variantId: number; nama: string; total: number }>;
+  perBatch?: Array<{ batchId: number; nomorBatch: string | number; total: number }>;
+}
+
+export async function getStatusSummary(): Promise<StatusSummary> {
+  const response = await fetch(`${apiUrl}/barang/status-summary`);
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message || `Gagal mengambil status summary: ${response.status}`);
+  }
+  return response.json() as Promise<StatusSummary>;
+}
+
+export async function getBarangSummary(): Promise<StatusSummary> {
+  const response = await fetch(`${apiUrl}/barang/summary`);
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message || `Gagal mengambil summary: ${response.status}`);
+  }
+  return response.json() as Promise<StatusSummary>;
 }
 
 export async function getBarang(): Promise<BarangResponse> {
@@ -357,4 +396,66 @@ export async function bulkScanBarang(
   if (!response.ok)
     throw await parseApiError(response, "Gagal simpan hasil scan");
   return response.json() as Promise<BulkScanResponse>;
+}
+
+// ===================== CRUD BARANG (POST / PUT / DELETE) =====================
+
+export interface CreateBarangPayload {
+  variantId: number;
+  batchId?: number | null;
+  kodeBarang?: string;
+  tanggal?: string;
+  status?: StatusBarang;
+  keterangan?: string;
+}
+
+export interface UpdateBarangPayload {
+  variantId?: number;
+  batchId?: number | null;
+  kodeBarang?: string;
+  tanggal?: string;
+  status?: StatusBarang;
+  keterangan?: string;
+}
+
+async function parseCrudError(response: Response, fallback: string): Promise<never> {
+  let message = fallback;
+  try {
+    const body = (await response.json()) as { message?: string; error?: string };
+    if (typeof body?.message === "string" && body.message.trim()) message = body.message;
+    else if (typeof body?.error === "string" && body.error.trim()) message = body.error;
+  } catch { /* ignore */ }
+  throw new Error(message);
+}
+
+export async function createBarang(payload: CreateBarangPayload): Promise<Barang> {
+  const response = await fetch(`${apiUrl}/barang`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) await parseCrudError(response, `Gagal membuat barang: ${response.status}`);
+  return response.json() as Promise<Barang>;
+}
+
+export async function getBarangById(id: number): Promise<Barang> {
+  const response = await fetch(`${apiUrl}/barang/${id}`);
+  if (!response.ok) await parseCrudError(response, `Gagal mengambil detail barang: ${response.status}`);
+  return response.json() as Promise<Barang>;
+}
+
+export async function updateBarang(id: number, payload: UpdateBarangPayload): Promise<Barang> {
+  const response = await fetch(`${apiUrl}/barang/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) await parseCrudError(response, `Gagal memperbarui barang: ${response.status}`);
+  return response.json() as Promise<Barang>;
+}
+
+export async function deleteBarang(id: number): Promise<{ message: string; id: number }> {
+  const response = await fetch(`${apiUrl}/barang/${id}`, { method: "DELETE" });
+  if (!response.ok) await parseCrudError(response, `Gagal menghapus barang: ${response.status}`);
+  return response.json() as Promise<{ message: string; id: number }>;
 }

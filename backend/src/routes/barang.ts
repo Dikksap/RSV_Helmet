@@ -22,6 +22,11 @@ import {
   searchBarangHandler,
 } from "../controller/barang/query.controller.js";
 import { exportBarangHandler } from "../controller/barang/export.controller.js";
+import {
+  createBarangHandler,
+  updateBarangHandler,
+  deleteBarangHandler,
+} from "../controller/barang/crud.controller.js";
 
 const router = Router();
 
@@ -34,6 +39,9 @@ router.get("/generate-info", getGenerateInfoHandler);
 
 // POST /api/barang/generate
 router.post("/generate", generateBarang);
+
+// POST /api/barang - Create single barang (CRUD)
+router.post("/", createBarangHandler);
 
 // GET /api/barang - List semua barang
 router.get("/", listBarangHandler);
@@ -64,6 +72,12 @@ router.post("/scan/bulk", bulkScanBarangHandler);
 
 // POST /api/barang/bulk-status
 router.post("/bulk-status", bulkStatusBarangHandler);
+
+// PUT /api/barang/:id - Update barang (CRUD)
+router.put("/:id", updateBarangHandler);
+
+// DELETE /api/barang/:id - Hapus barang (CRUD)
+router.delete("/:id", deleteBarangHandler);
 
 // PATCH /api/barang/:id/status
 router.patch("/:id/status", updateStatusBarangHandler);

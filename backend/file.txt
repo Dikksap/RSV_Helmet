@@ -1,256 +1,282 @@
-==============================================
-CARA PENGGUNAAN API
-==============================================
-Project: express-api (RSV Helmet)
-Base URL: http://localhost:8000 (development Docker)
-Format response: JSON
+# DOKUMENTASI CRUD API BARANG
+# Base URL: http://localhost:3000/api/barang
+# File terkait: src/routes/barang.ts | src/controller/barang/crud.controller.ts | src/model/barang/barang.crud.ts
 
-==============================================
-ENDPOINT BARU: Jumlah Barang FINISHGOOD per Bulan
-==============================================
-GET /api/barang/finishgood-per-bulan
+================================================================================
+RINGKASAN
+================================================================================
+Barang = unit fisik hasil produksi. Relasi:
+  Product (1) -> ProductVariant (N) -> Barang (N)
+  ProductionBatch (1) -> Barang (N)
+  Barang (1) -> RiwayatBarang (N)
 
-Deskripsi:
-  Menghitung jumlah Barang yang SAAT INI berstatus FINISHGOOD,
-  dikelompokkan per bulan (tahun-bulan) berdasarkan kolom `tanggal`
-  barang (tanggal produksi). Data diambil live dari SQL view
-  `ViewBarangFinishgoodPerBulan`.
+CRUD classic yang ditambahkan (selain generate/status/scan yang sudah ada):
+  POST   /api/barang       -> Create single barang (manual atau auto-generate kode)
+  GET    /api/barang       -> List + filter + pagination (sudah ada)
+  GET    /api/barang/:id   -> Detail by ID (sudah ada)
+  PUT    /api/barang/:id   -> Update barang
+  DELETE /api/barang/:id   -> Hapus barang
 
-Query param (semua OPSIONAL):
-  variantId  -> filter khusus satu variant (angka)
-  productId  -> filter khusus satu product (angka)
-  tanggalAwal  -> batas awal bulan (tanggal valid, "YYYY-MM-DD" atau "YYYY-MM")
-  tanggalAkhir -> batas akhir bulan (tanggal valid)
+Auth: saat ini TIDAK memakai middleware auth (sesuai src/app.ts & src/routes/barang.ts).
+Format body: JSON. Semua response JSON.
 
-Contoh request:
-  # Semua data
-  curl http://localhost:8000/api/barang/finishgood-per-bulan
+================================================================================
+MODEL & ENUM
+================================================================================
+Model Barang (prisma/schema.prisma):
+  id         Int @id autoincrement
+  kodeBarang String @unique  // format: BC{batch3}-{kodeVariant}-{DDMMYY}-{urut4} ex: BC001-W001-250826-0001
+  variantId  Int             // FK ProductVariant (Restrict)
+  batchId    Int?            // FK ProductionBatch (Restrict, nullable)
+  tanggal    DateTime?       // default now()
+  status     StatusBarang @default(REGISTER)
+  createdAt  DateTime
+  updatedAt  DateTime
 
-  # Filter product id=1
-  curl "http://localhost:8000/api/barang/finishgood-per-bulan?productId=1"
+StatusBarang:
+  REGISTER | FINISHGOOD | RETUR | OUT | BAD
 
-  # Filter variant id=5
-  curl "http://localhost:8000/api/barang/finishgood-per-bulan?variantId=5"
-
-  # Filter rentang bulan 2026-01 s/d 2026-08 + product 1
-  curl "http://localhost:8000/api/barang/finishgood-per-bulan?productId=1&tanggalAwal=2026-01-01&tanggalAkhir=2026-08-31"
-
-Contoh response 200:
-{
-  "data": [
-    {
-      "bulan": "2026-08",
-      "tahun": 2026,
-      "bulanAngka": 8,
-      "variantId": 1,
-      "productId": 1,
-      "jumlah": 30
-    }
-  ],
-  "meta": {
-    "variantId": 1,
-    "productId": 1
-  }
-}
-
-Keterangan field `data`:
-  bulan       -> key "YYYY-MM"
-  tahun       -> tahun (int)
-  bulanAngka  -> nomor bulan 1-12 (int)
-  variantId   -> id variant
-  productId   -> id product (hasil join via ProductVariant)
-  jumlah      -> banyak barang FINISHGOOD pada bulan tsb
-
-Response error:
-  400 - Parameter tidak valid (opsi benar, mis. variantId bukan angka,
-        atau tanggal tidak valid). Pesan di field `message`.
-  500 - Gagal mengambil data. Pesan di field `message`.
-
-========================================================================
-ENDPOINT STATISTIK BARANG (sudah ada, terkait)
-========================================================================
-GET /api/barang/status-summary
-  Ringkasan total barang + jumlah per status (REGISTER, FINISHGOOD,
-  RETUR, OUT, BAD). Tanpa param.
-
-GET /api/barang/stats
-  Statistik barang: total, perStatus, perVariant, perBatch.
-  Query param OPSIONAL: variantId, batchId.
-  Catatan: perBatch.total hanya menghitung barang berstatus TIDAK
-  REGISTER (FINISHGOOD/RETUR/OUT/BAD). REGISTER tidak dihitung.
-
-GET /api/barang/batch-rentang-tanggal
-  Rentang tanggal produksi per batch (status SELESAI & AKTIF).
-  Data diambil live dari view `ViewBatchRentangTanggal`; tanggal
-  didasarkan pada tanggal barang (barcode): tanggalMulai = MIN,
-  tanggalSelesai = MAX. Untuk batch AKTIF, tanggalSelesai diisi
-  waktu sekarang.
-
-  Query param (semua OPSIONAL):
-    tanggalAwal  -> batas awal rentang (tanggal valid, "YYYY-MM-DD")
-    tanggalAkhir -> batas akhir rentang (tanggal valid, "YYYY-MM-DD")
-
-  Aturan filter:
-    - batch SELESAI: disaring berdasar tanggalSelesai (MAX) dalam
-      rentang [tanggalAwal, tanggalAkhir].
-    - batch AKTIF : disaring berdasar tanggalMulai (MIN) <= tanggalAkhir
-      (karena akhirnya = sekarang).
-
-  Contoh request:
-    curl http://localhost:8000/api/barang/batch-rentang-tanggal
-    curl "http://localhost:8000/api/barang/batch-rentang-tanggal?tanggalAwal=2026-01-01&tanggalAkhir=2026-08-31"
-
-  Contoh response 200:
-  {
-    "selesai": [
-      {
-        "batchId": 1,
-        "nomorBatch": "BC001",
-        "jumlah": 5000,
-        "tanggalMulai": "2026-01-01...",
-        "tanggalSelesai": "2026-01-31..."
-      }
-    ],
-    "aktif": [
-      {
-        "batchId": 2,
-        "nomorBatch": "BC002",
-        "jumlah": 1200,
-        "tanggalMulai": "2026-08-01...",
-        "tanggalSelesai": "2026-08-30..."   // = waktu sekarang
-      }
-    ]
-  }
-
-  Keterangan field:
-    batchId        -> id batch
-    nomorBatch     -> kode batch ("BC001")
-    jumlah         -> banyak barang di batch yang berstatus TIDAK
-                      REGISTER (FINISHGOOD, RETUR, OUT, BAD). Barang
-                      yang masih REGISTER (baru generate/belum scan)
-                      TIDAK dihitung. Angka ini monotonik naik & tak
-                      pernah turun walau status berubah (mis. FINISHGOOD
-                      -> RETUR tetap dihitung).
-    tanggalMulai   -> produksi pertama di batch (MIN tanggal)
-    tanggalSelesai -> produksi terakhir di batch (MAX tanggal);
-                      untuk AKTIF = waktu sekarang
-
-  Response error:
-    400 - Parameter tanggal tidak valid.
-    500 - Gagal mengambil data. Pesan di field `message`.
-
-GET /api/barang
-
-
-  List barang dengan pagination & filter.
-  Query param: page (default 1), limit (default 20, maks 100),
-  variantId, batchId, status, tanggalAwal, tanggalAkhir.
-
-GET /api/barang/:id
-  Detail barang by id.
-
-GET /api/barang/:id/riwayat
-  Riwayat perubahan status barang.
-
-GET /api/barang/scan/:kodeBarang
-  Cari barang berdasarkan barcode.
-
-GET /api/barang/search?q=...
-  Cari barang by kode (contains). Param: q (wajib), limit (default 20, maks 50).
-
-GET /api/barang/export?format=json|csv
-  Ekspor data barang (unduh file attachment).
-
-  Query param (semua OPSIONAL):
-    format       -> "json" atau "csv". Default "json". Wajib salah satu, selain itu 400.
-    page         -> halaman, default 1.
-    limit        -> jumlah per halaman, default 10000, maks 10000.
-    variantId    -> filter khusus variant (angka).
-    batchId      -> filter khusus batch (angka).
-    status       -> filter status: REGISTER, FINISHGOOD, RETUR, OUT, BAD.
-    tanggalAwal  -> batas awal tanggal barang (valid, "YYYY-MM-DD").
-    tanggalAkhir -> batas akhir tanggal barang (valid, "YYYY-MM-DD").
-
-  Contoh request:
-    curl "http://localhost:8000/api/barang/export?format=csv"
-    curl "http://localhost:8000/api/barang/export?format=json&status=FINISHGOOD"
-    curl "http://localhost:8000/api/barang/export?format=csv&variantId=1&tanggalAwal=2026-01-01&tanggalAkhir=2026-08-31"
-
-  Response:
-    - format=json -> Content-Type application/json, attachment "barang-export-<ts>.json",
-                     body berisi { data, meta } (minat listBarang).
-    - format=csv  -> Content-Type text/csv, attachment "barang-export-<ts>.csv",
-                     kolom: id, kodeBarang, status, tanggal, variantId, kodeVariant,
-                     product, style, color, size, batchId, nomorBatch.
-                     Nilai mengandung koma/quote/newline di-escape CSV.
-
-  Response error:
-    400 - format bukan json/csv, atau param tidak valid.
-    500 - Gagal export. Pesan di field `message`.
-
-POST /api/barang/generate
-  Generate barang baru. Body: { "variantId": 1, "jumlah": 100 }.
-
-POST /api/barang/scan/bulk
-  Scan banyak barcode + ubah status. Body:
-  { "kodeBarang": ["BC001-V001-250826-0001"], "status": "FINISHGOOD", "keterangan": "..." }
-
-PATCH /api/barang/:id/status
-  Ubah status satu barang. Body: { "status": "FINISHGOOD", "keterangan": "..." }
-
-POST /api/barang/bulk-status
-  Ubah status banyak barang dalam satu request.
-
-========================================================================
-ENDPOINT PRODUCT & VARIANT
-========================================================================
-GET  /api/products
-GET  /api/products/:id
-POST /api/products                Body: { "nama": "...", "prefix": "..." }
-PUT  /api/products/:id            Body: { "nama": "..." }
-DELETE /api/products/:id
-GET  /api/products/:id/variants
-POST /api/products/:id/variants   Body: { "styleId": 1, "colorId": 1, "sizeId": 1, "tanggal?": "2026-08-01" }
-PATCH /api/products/:id/variants/:variantId  Body: { "tanggal?": "..." }
-DELETE /api/products/:id/variants/:variantId
-
-GET  /api/variant-produk          Filter OPSIONAL: productId, styleId, colorId, sizeId
-GET  /api/variant-produk/:id
-POST /api/variant-produk          Body: { "productId":1, "styleId":1, "colorId":1, "sizeId":1, "tanggal?" }
-PUT  /api/variant-produk/:id      Body: partial style/color/size/tanggal
-DELETE /api/variant-produk/:id
-
-========================================================================
-ENDPOINT AUTH
-========================================================================
-POST /api/auth/login   Body: { "email": "...", "password": "..." }
-                       Response: { "message", "token", "user" }
-POST /api/auth/logout  Header: Authorization: Bearer <token>
-                       (satu-satunya endpoint yang wajib login)
-
-========================================================================
-VALIDASI & DEPLOYMENT (Docker)
-========================================================================
-# Jalankan dari root backend:
-
-npm run docker:up          # pastikan container api/db/redis jalan
-npm run db:migrate         # terapkan migrasi (termasuk view) ke MariaDB di container
-npm run db:seed            # (opsional) isi data awal
-npm run build              # TypeScript strict
-npm test                   # jalankan seluruh test (vitest)
-
-# Cek via Docker kalau mau:
-# docker compose exec api npm run build
-# docker compose exec api npm test
-
-========================================================================
-STATUS BARANG (enum)
-========================================================================
-REGISTER, FINISHGOOD, RETUR, OUT, BAD
-
-Transition (singkat):
-  REGISTER   -> FINISHGOOD | OUT | RETUR | BAD
+Transisi valid (VALID_TRANSITIONS di barang.status.ts):
+  REGISTER   -> FINISHGOOD | OUT | RETUR | BAD (atau tetap REGISTER)
   FINISHGOOD -> OUT | RETUR | BAD
   RETUR      -> FINISHGOOD | OUT | BAD
-  OUT        -> terminal
+  OUT        -> terminal (tidak bisa pindah)
   BAD        -> terminal
+
+Batch:
+  nomorBatch Int @unique, totalProduksi Int, kapasitas Int default 5000, status AKTIF|SELESAI
+
+================================================================================
+1. CREATE BARANG - POST /api/barang
+================================================================================
+Handler: createBarangHandler (src/controller/barang/crud.controller.ts:16)
+Model:   createBarang (src/model/barang/barang.crud.ts:43)
+Route:   router.post("/", createBarangHandler) (src/routes/barang.ts:44)
+Broadcast WS: type "barang.created"
+
+Request Body (JSON):
+{
+  "variantId": 1,              // required, number, harus ada di ProductVariant
+  "batchId": 1,                // optional, number|null. Jika null/omit -> pakai batch AKTIF atau buat BC001
+  "kodeBarang": "BC001-W001-250826-0001", // optional, string. Jika omit/kosong -> AUTO-GENERATE
+  "tanggal": "2026-09-03T00:00:00.000Z",   // optional, ISO/ YYYY-MM-DD, default now()
+  "status": "REGISTER",        // optional, salah satu StatusBarang, default REGISTER
+  "keterangan": "Barang dibuat (manual)" // optional, string, disimpan ke RiwayatBarang
+}
+
+Validasi:
+  - variantId wajib angka dan variant harus ada -> 404 "Variant tidak ditemukan"
+  - batchId jika diisi harus angka dan batch harus ada -> 404 "Batch tidak ditemukan"
+  - status jika diisi harus valid -> 400
+  - kodeBarang jika diisi harus string unik -> 409 "Kode barang sudah ada"
+  - tanggal jika diisi harus valid Date -> 400
+
+Logic auto-generate (jika kodeBarang tidak diisi):
+  1. Tentukan targetBatch:
+     - Jika batchId diisi -> pakai batch itu
+     - Jika tidak -> SELECT ... FOR UPDATE batch AKTIF desc, jika tidak ada buat nomorBatch=1, jika penuh (totalProduksi >= kapasitas) -> update SELESAI + create batch baru nomor+1
+  2. Allocate BarangCounter FOR UPDATE where (batchId, variantId, tanggal dateOnly):
+     - jika belum ada -> create currentCount=1, nomorUrut=1
+     - jika ada -> nomorUrut = currentCount+1, update currentCount
+  3. Generate kode: BC{pad3(nomorBatch)}-{kodeVariant}-{DDMMYY}-{pad4(nomorUrut)}
+  4. Transaction: create barang + create riwayatBarang + increment productionBatch.totalProduksi (dan set SELESAI jika penuh)
+
+Logic manual kodeBarang:
+  - Transaction: create barang + create riwayatBarang + increment batch.totalProduksi jika batchId ada
+  - Counter TIDAK diupdate (karena kode manual)
+
+Response 201:
+{
+  "id": 101,
+  "kodeBarang": "BC001-W001-030926-0001",
+  "variantId": 1,
+  "batchId": 1,
+  "tanggal": "2026-09-03T00:00:00.000Z",
+  "status": "REGISTER",
+  "createdAt": "...",
+  "updatedAt": "...",
+  "variant": { "id": 1, "kodeVariant": "W001", "product": {...}, "style": {...}, "color": {...}, "size": {...} },
+  "batch": { "id": 1, "nomorBatch": 1, "totalProduksi": 101, "kapasitas": 5000, "status": "AKTIF" }
+}
+
+Error:
+  400 - Field 'variantId' wajib diisi dan berupa angka
+  400 - Field 'tanggal' harus tanggal valid
+  400 - Field 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD
+  404 - Variant tidak ditemukan / Batch tidak ditemukan
+  409 - Kode barang sudah ada
+  500 - Gagal membuat barang
+
+Contoh cURL:
+  # Auto-generate
+  curl -X POST http://localhost:3000/api/barang -H "Content-Type: application/json" -d "{\"variantId\":1}"
+
+  # Manual kode
+  curl -X POST http://localhost:3000/api/barang -H "Content-Type: application/json" -d "{\"variantId\":1,\"batchId\":1,\"kodeBarang\":\"CUSTOM-001\",\"status\":\"REGISTER\"}"
+
+================================================================================
+2. LIST BARANG - GET /api/barang
+================================================================================
+Handler: listBarangHandler (src/controller/barang/query.controller.ts:14)
+Model:   listBarang (src/model/barang/barang.ts:67)
+Route:   router.get("/", listBarangHandler)
+
+Query Params (semua optional):
+  page=1          // default 1, min 1
+  limit=20        // default 20, min 1 max 100
+  variantId=1     // filter by variant
+  batchId=1       // filter by batch
+  status=REGISTER // filter by status
+  tanggalAwal=2026-09-01 // ISO date
+  tanggalAkhir=2026-09-30
+
+Response 200:
+{
+  "data": [ { "id": 1, "kodeBarang": "...", "status": "REGISTER", "variant": {...}, "batch": {...} } ],
+  "meta": { "page": 1, "limit": 20, "total": 150, "totalPages": 8 }
+}
+
+Error 400: status tidak valid, variantId/batchId bukan angka, tanggal invalid
+
+cURL:
+  curl "http://localhost:3000/api/barang?page=1&limit=20&status=REGISTER&variantId=1"
+
+================================================================================
+3. DETAIL BARANG - GET /api/barang/:id
+================================================================================
+Handler: getBarangDetail (src/controller/barang/query.controller.ts:79)
+Route:   router.get("/:id", getBarangDetail) // didaftarkan TERAKHIR agar tidak tabrakan dengan /generate-info dll
+
+Params: id number
+
+Response 200: objek barang + include variant.product/style/color/size + batch
+Response 400: Parameter 'id' tidak valid
+Response 404: Barang tidak ditemukan
+
+cURL:
+  curl http://localhost:3000/api/barang/101
+
+================================================================================
+4. UPDATE BARANG - PUT /api/barang/:id
+================================================================================
+Handler: updateBarangHandler (src/controller/barang/crud.controller.ts:85)
+Model:   updateBarang (src/model/barang/barang.crud.ts:255)
+Route:   router.put("/:id", updateBarangHandler) (src/routes/barang.ts:77)
+Broadcast WS: type "barang.updated"
+
+Params: id number
+
+Request Body (minimal 1 field wajib):
+{
+  "variantId": 2,              // optional, number
+  "batchId": 2,                // optional, number|null (null untuk lepas dari batch)
+  "kodeBarang": "BC001-W001-030926-0002", // optional, string unik
+  "tanggal": "2026-09-04T00:00:00.000Z",   // optional, Date
+  "status": "FINISHGOOD",      // optional, StatusBarang (divalidasi transisi)
+  "keterangan": "Update via PUT" // optional, dipakai jika status berubah -> masuk RiwayatBarang
+}
+
+Validasi:
+  - minimal satu dari variantId/batchId/kodeBarang/tanggal/status harus ada -> 400
+  - variantId jika ada harus ada di DB -> 404
+  - batchId jika ada harus ada di DB -> 404, null diperbolehkan
+  - kodeBarang jika ada harus unik (kecuali milik sendiri) -> 409
+  - tanggal harus valid -> 400
+  - status harus valid dan transisi dari status sekarang harus diperbolehkan (lihat VALID_TRANSITIONS) -> 400 "Transisi status dari X ke Y tidak valid"
+  - id harus angka -> 400, barang harus ada -> 404
+
+Logic batch:
+  - Jika batchId berubah (old != new) -> transaction decrement oldBatch.totalProduksi dan increment newBatch.totalProduksi
+
+Logic status:
+  - Jika status berubah -> update barang.status + create riwayatBarang baru
+
+Transaction: update barang + adjust batch + create riwayat (jika perlu)
+
+Response 200: objek barang updated (sama seperti create)
+
+Error:
+  400 - Minimal satu field harus diisi / Field tidak valid / Transisi tidak valid
+  404 - Barang tidak ditemukan / Variant/Batch tidak ditemukan
+  409 - Kode barang sudah ada
+
+cURL:
+  curl -X PUT http://localhost:3000/api/barang/101 -H "Content-Type: application/json" -d "{\"status\":\"FINISHGOOD\",\"keterangan\":\"QC pass\"}"
+  curl -X PUT http://localhost:3000/api/barang/101 -H "Content-Type: application/json" -d "{\"variantId\":2,\"batchId\":2}"
+
+================================================================================
+5. DELETE BARANG - DELETE /api/barang/:id
+================================================================================
+Handler: deleteBarangHandler (src/controller/barang/crud.controller.ts:172)
+Model:   deleteBarang (src/model/barang/barang.crud.ts:369)
+Route:   router.delete("/:id", deleteBarangHandler) (src/routes/barang.ts:80)
+Broadcast WS: type "barang.deleted"
+
+Params: id number
+
+Logic:
+  - Cari barang, jika tidak ada -> 404
+  - Transaction:
+      deleteMany riwayatBarang where barangId=id  (karena FK Restrict)
+      delete barang where id=id
+      jika barang.batchId ada -> decrement productionBatch.totalProduksi by 1
+  - Catatan: BarangCounter TIDAK didecrement (counter tetap)
+
+Response 200:
+{ "message": "Barang berhasil dihapus", "id": 101 }
+
+Error:
+  400 - Parameter 'id' tidak valid
+  404 - Barang tidak ditemukan
+  500 - Gagal menghapus barang
+
+cURL:
+  curl -X DELETE http://localhost:3000/api/barang/101
+
+================================================================================
+ENDPOINT TERKAIT (bukan CRUD classic tapi masih barang)
+================================================================================
+POST   /api/barang/generate            -> bulk generate 1..50000 (src/controller/barang/generate.controller.ts:27)
+GET    /api/barang/generate-info?variantId=1 -> info batch & nextNumber
+PATCH  /api/barang/:id/status          -> update status single (alternatif PUT status)
+POST   /api/barang/bulk-status         -> bulk update status by id[]
+GET    /api/barang/scan/:kodeBarang    -> scan single
+POST   /api/barang/scan/bulk           -> bulk scan by kodeBarang[]
+GET    /api/barang/:id/riwayat         -> histori status desc
+GET    /api/barang/search?q=&limit=    -> search contains kodeBarang
+GET    /api/barang/export?format=json|csv
+GET    /api/barang/status-summary, /stats, /summary, /batch-rentang-tanggal, /finishgood-per-bulan
+
+================================================================================
+WEBSOCKET EVENT
+================================================================================
+Channel Redis: product-events -> broadcast ke WS clients
+Event baru CRUD:
+  { "type": "barang.created", "message": "Barang BC... berhasil dibuat", "data": Barang }
+  { "type": "barang.updated", "message": "Barang BC... berhasil diperbarui", "data": Barang }
+  { "type": "barang.deleted", "message": "Barang 101 berhasil dihapus", "data": { "id": 101 } }
+Event lama: barang.generated, barang.status_updated, product.*, variant.*
+
+================================================================================
+CONTOH FLOW LENGKAP
+================================================================================
+1. Create auto:
+   POST /api/barang {"variantId":1}
+   -> 201 { kodeBarang: "BC001-W001-030926-0001", ... }
+
+2. List:
+   GET /api/barang?variantId=1&page=1&limit=5
+   -> 200 { data: [...], meta: {...} }
+
+3. Detail:
+   GET /api/barang/1
+   -> 200 { id:1, kodeBarang:... }
+
+4. Update status + pindah batch:
+   PUT /api/barang/1 {"status":"FINISHGOOD","batchId":2,"keterangan":"QC lolos"}
+   -> 200 { status:"FINISHGOOD", ... }
+
+5. Delete:
+   DELETE /api/barang/1
+   -> 200 { message:"Barang berhasil dihapus" }
+

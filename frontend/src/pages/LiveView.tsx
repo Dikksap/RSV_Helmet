@@ -4,7 +4,8 @@ import { useLiveSocket } from "../lib/useLiveSocket";
 import "@fontsource/roboto/400.css";
 import "@fontsource/roboto/900.css";
 
-function isToday(dateString: string): boolean {
+function isToday(dateString: string | null | undefined): boolean {
+  if (!dateString) return false;
   const date = new Date(dateString);
   const now = new Date();
   return (

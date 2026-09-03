@@ -3,6 +3,17 @@ import { listBarang } from "../../model/barang/barang.js";
 import type { StatusBarang } from "../../model/barang/barang.js";
 import { isValidStatus } from "./helpers.js";
 
+function toStartOfDay(d: Date): Date {
+  const c = new Date(d);
+  c.setUTCHours(0, 0, 0, 0);
+  return c;
+}
+function toEndOfDay(d: Date): Date {
+  const c = new Date(d);
+  c.setUTCHours(23, 59, 59, 999);
+  return c;
+}
+
 export function escapeCsv(value: unknown): string {
   if (value === null || value === undefined) return "";
   const str = String(value);
@@ -68,7 +79,7 @@ export async function exportBarangHandler(req: Request, res: Response) {
           message: "Parameter 'tanggalAwal' harus tanggal valid (YYYY-MM-DD)",
         });
       }
-      filter.tanggalAwal = t;
+      filter.tanggalAwal = toStartOfDay(t);
     }
     if (tanggalAkhir) {
       const t = new Date(tanggalAkhir as string);
@@ -77,7 +88,12 @@ export async function exportBarangHandler(req: Request, res: Response) {
           message: "Parameter 'tanggalAkhir' harus tanggal valid (YYYY-MM-DD)",
         });
       }
-      filter.tanggalAkhir = t;
+      filter.tanggalAkhir = toEndOfDay(t);
+    }
+    if (filter.tanggalAwal && filter.tanggalAkhir && filter.tanggalAwal.getTime() > filter.tanggalAkhir.getTime()) {
+      return res.status(400).json({
+        message: "Parameter 'tanggalAwal' tidak boleh lebih besar dari 'tanggalAkhir'",
+      });
     }
 
     const result = await listBarang(filter);

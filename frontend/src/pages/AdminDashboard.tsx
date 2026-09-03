@@ -71,7 +71,8 @@ const CHART_TOOLTIP = {
   padding: 10,
 };
 
-function isToday(dateString: string): boolean {
+function isToday(dateString: string | null | undefined): boolean {
+  if (!dateString) return false;
   const date = new Date(dateString);
   const now = new Date();
   return (
@@ -138,7 +139,7 @@ function AdminDashboard() {
         const proses = today.filter(
           (item) => item.status === "REGISTER",
         ).length;
-        const batches = new Set(today.map((item) => item.batch.id)).size;
+        const batches = new Set(today.map((item) => item.batch?.id).filter((v): v is number => typeof v === "number")).size;
         setTodayStats({
           total: today.length,
           finishGood,
@@ -464,7 +465,7 @@ function AdminDashboard() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-xs">
-                      BC{String(item.batch.nomorBatch).padStart(3, "0")}
+                      {item.batch ? `BC${String(item.batch.nomorBatch).padStart(3, "0")}` : "-"}
                     </td>
                     <td className="px-6 py-4">
                       <span
