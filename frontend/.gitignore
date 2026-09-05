@@ -7,23 +7,45 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Environment
 .env
-electron
-node_modules
-dist
-dist-ssr
+
+# Dependencies
+node_modules/
+
+# Build
+dist/
+dist-ssr/
+
+# Local files
 *.local
 
-# Editor directories and files
+# Electron
+electron/
+
+# Android generated files
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+android/local.properties
+android/**/captures/
+android/**/.cxx/
+
+# Editor
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Project tools
 .codegraph
 .agent
-release
+
+# Release
+release/
