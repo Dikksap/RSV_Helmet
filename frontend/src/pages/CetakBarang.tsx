@@ -9,10 +9,11 @@ import { getProducts, type Product } from "../api/products";
 import {
   fetchPrinters,
   isInElectron,
-  labelSizeConfig,
+  resolveLabelPage,
   loadDefaultPrinter,
   printHangtagSilently,
   saveDefaultPrinter,
+  type CustomLabelMm,
   type LabelSize,
   type PrinterInfo,
 } from "../lib/print";
@@ -29,8 +30,6 @@ import { PrintDocument } from "../components/CetakBarang/PrintDocument";
 
 type PrintSize = LabelSize;
 
-const printSizeConfig = labelSizeConfig;
-
 function CetakBarang() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
@@ -44,21 +43,22 @@ function CetakBarang() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [printSize, setPrintSize] = useState<PrintSize>("50x50mm");
+  const [printSize, setPrintSize] = useState<PrintSize>("100x75mm");
+  const [customMm, setCustomMm] = useState<CustomLabelMm>({ width: 80, height: 80 });
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>(() =>
     loadDefaultPrinter(),
   );
   const contentRef = useRef<HTMLDivElement>(null);
-  const selectedPrintConfig = printSizeConfig[printSize];
+  const selectedPrintPage = resolveLabelPage(printSize, customMm);
 
   const printFn = useReactToPrint({
     contentRef,
     documentTitle: `Label-Barang-${new Date().toISOString().split("T")[0]}`,
     pageStyle: `
-      @page { size: ${selectedPrintConfig.page}; page-orientation: portrait; margin: 0; }
+      @page { size: ${selectedPrintPage}; page-orientation: portrait; margin: 0; }
       @media print {
-        html, body { width: ${selectedPrintConfig.page.split(" ")[0]} !important; height: ${selectedPrintConfig.page.split(" ")[1]} !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; background: #ffffff !important; }
+        html, body { width: ${selectedPrintPage.split(" ")[0]} !important; height: ${selectedPrintPage.split(" ")[1]} !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; background: #ffffff !important; }
         body > *:not(.print-document) { display: none !important; }
         .print-document { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; overflow: visible !important; visibility: visible !important; }
       }
@@ -196,6 +196,7 @@ function CetakBarang() {
         const result = await printHangtagSilently({
           hangtagHtml: hangtagMarkup,
           size: printSize,
+          customMm,
         });
         if (result.status === "error") {
           setError(`Gagal print: ${result.message}`);
@@ -290,11 +291,13 @@ function CetakBarang() {
                   generatedCode={generatedCode}
                   previewCode={previewCode}
                   printSize={printSize}
+                  customMm={customMm}
                   printers={printers}
                   selectedPrinter={selectedPrinter}
                   isGenerating={isGenerating}
                   formatDate={formatDate}
                   onPrintSizeChange={setPrintSize}
+                  onCustomMmChange={setCustomMm}
                   onPrinterChange={setSelectedPrinter}
                   onGenerate={handleGenerate}
                   onSaveDefaultPrinter={saveDefaultPrinter}
@@ -319,12 +322,14 @@ function CetakBarang() {
         generatedCode={generatedCode}
         previewCode={previewCode}
         printSize={printSize}
+        customMm={customMm}
         printers={printers}
         selectedPrinter={selectedPrinter}
         isGenerating={isGenerating}
         formatDate={formatDate}
         onClose={() => setIsPreviewOpen(false)}
         onPrintSizeChange={setPrintSize}
+        onCustomMmChange={setCustomMm}
         onPrinterChange={setSelectedPrinter}
         onGenerate={handleGenerate}
         onSaveDefaultPrinter={saveDefaultPrinter}
@@ -339,6 +344,7 @@ function CetakBarang() {
         sizeId={sizeId}
         generateInfo={generateInfo}
         printSize={printSize}
+        customMm={customMm}
         formatDate={formatDate}
       />
     </div>

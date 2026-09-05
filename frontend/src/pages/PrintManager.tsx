@@ -5,6 +5,7 @@ import {
   loadDefaultPrinter,
   printHangtagSilently,
   saveDefaultPrinter,
+  type CustomLabelMm,
   type LabelSize,
   type PrinterInfo,
 } from "../lib/print";
@@ -16,7 +17,8 @@ function PrintManager() {
   const [selectedPrinter, setSelectedPrinter] = useState<string>(() =>
     loadDefaultPrinter(),
   );
-  const [testSize, setTestSize] = useState<LabelSize>("50x50mm");
+  const [testSize, setTestSize] = useState<LabelSize>("100x75mm");
+  const [customMm, setCustomMm] = useState<CustomLabelMm>({ width: 80, height: 80 });
   const [isLoading, setIsLoading] = useState(true);
   const [isPrinting, setIsPrinting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -76,6 +78,7 @@ function PrintManager() {
       const result = await printHangtagSilently({
         hangtagHtml: hangtagMarkup,
         size: testSize,
+        customMm,
       });
       if (result.status === "success") {
         showMessage("Test print terkirim ke printer.", "success");
@@ -202,13 +205,42 @@ function PrintManager() {
                 <option value="33x15mm">33 × 15 mm (Thermal Kecil)</option>
                 <option value="50x50mm">50 × 50 mm (5 × 5 cm)</option>
                 <option value="58x58mm">58 × 58 mm (Thermal Printer)</option>
+                <option value="100x75mm">100 × 75 mm (Hangtag)</option>
                 <option value="100x100mm">100 × 100 mm (Medium Label)</option>
                 <option value="100x140mm">100 × 140 mm</option>
                 <option value="100x200mm">100 × 200 mm (10 × 20 cm)</option>
                 <option value="4x6inch">4 × 6 inch (Standard)</option>
-                <option value="custom">80 × 80 mm (Custom)</option>
+                <option value="custom">Custom (atur manual)</option>
               </select>
             </label>
+            {testSize === "custom" && (
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <label className="print-size-selector no-print">
+                  <span>Lebar (mm)</span>
+                  <input
+                    type="number"
+                    min={10}
+                    max={500}
+                    value={customMm.width}
+                    onChange={(event) =>
+                      setCustomMm({ ...customMm, width: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                <label className="print-size-selector no-print">
+                  <span>Tinggi (mm)</span>
+                  <input
+                    type="number"
+                    min={10}
+                    max={500}
+                    value={customMm.height}
+                    onChange={(event) =>
+                      setCustomMm({ ...customMm, height: Number(event.target.value) })
+                    }
+                  />
+                </label>
+              </div>
+            )}
             <div className="printer-actions">
               <button
                 className="print-button generate-button"

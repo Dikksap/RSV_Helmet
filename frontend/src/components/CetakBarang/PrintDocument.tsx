@@ -3,9 +3,9 @@ import type { Product } from "../../api/products";
 import type { GenerateInfo } from "../../api/barang";
 import type { ProductSize } from "../../api/products";
 import type { ProductVariant } from "../../api/products";
-import type { LabelSize } from "../../lib/print";
+import type { LabelSize, CustomLabelMm } from "../../lib/print";
 import { Hangtag, HangtagFit } from "../Hangtag/Hangtag";
-import { labelSizeMm } from "../../lib/print";
+import { resolveLabelMm } from "../../lib/print";
 
 type PrintDocumentProps = {
   contentRef: RefObject<HTMLDivElement | null>;
@@ -16,6 +16,7 @@ type PrintDocumentProps = {
   sizeId: string;
   generateInfo: GenerateInfo | null;
   printSize: LabelSize;
+  customMm: CustomLabelMm;
   formatDate: (date: string) => string;
 };
 
@@ -28,8 +29,10 @@ export function PrintDocument({
   sizeId,
   generateInfo,
   printSize,
+  customMm,
   formatDate,
 }: PrintDocumentProps) {
+  const labelMm = resolveLabelMm(printSize, customMm);
   return (
     <div
       ref={contentRef}
@@ -38,8 +41,8 @@ export function PrintDocument({
     >
       {generatedCode && selectedVariant && (
         <HangtagFit
-          widthMm={labelSizeMm[printSize].width}
-          heightMm={labelSizeMm[printSize].height}
+          widthMm={labelMm.width}
+          heightMm={labelMm.height}
         >
           <Hangtag
             productName={selectedProduct?.nama ?? "-"}

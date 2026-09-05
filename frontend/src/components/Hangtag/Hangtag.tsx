@@ -1,10 +1,12 @@
 import { QRCodeSVG } from "qrcode.react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faInstagram } from "@fortawesome/free-brands-svg-icons";
-import { faHardHat } from "@fortawesome/free-solid-svg-icons"; // Menggunakan ikon helm safety/proyek sebagai pengganti line art helm
+// `?inline` -> data URL base64. Wajib agar <img> tetap tampil di dokumen
+// print terisolasi (Electron silent print pakai data:text/html, URL relatif
+// seperti /assets/... tidak bisa resolve di sana dan gambar hilang).
+import helmetArtUrl from "../../assets/gambar_helm.jpg?inline";
+import kickerArtUrl from "../../assets/windbreaker_font.svg?inline";
 import "./hangtag.css";
 
-const HANGTAG_DESIGN_MM = { width: 100, height: 130 };
+const HANGTAG_DESIGN_MM = { width: 100, height: 75 };
 
 export interface HangtagSizeOption {
   id: number | string;
@@ -41,13 +43,6 @@ function PosterWord({ word }: { word: string }) {
   );
 }
 
-function getTitleFontSize(styleName: string, colorName: string) {
-  const titleLength = Array.from(`${styleName} ${colorName}`).length;
-  const baseSize = 8.5;
-  const targetLength = 20;
-  return Math.max(4.8, Math.min(baseSize, (baseSize * targetLength) / titleLength));
-}
-
 export function Hangtag({
   productName,
   styleName,
@@ -55,22 +50,18 @@ export function Hangtag({
   sizeName,
   sizes = [],
   selectedSizeId,
-  kodeVariant,
-  kodeBatch,
-  tanggal,
   qrValue,
 }: HangtagProps) {
-  const titleFontSize = getTitleFontSize(styleName, colorName);
+  // "motif" bukan nama style tampil -> kosongkan saja
+  const displayStyle =
+    styleName.trim().toLowerCase() === "motif" ? "" : styleName;
 
   return (
     <article className="hangtag" aria-label={`Hangtag ${productName}`}>
       <header className="hangtag-header">
-        <p className="hangtag-kicker">{productName}</p>
-        <h1
-          className="hangtag-title"
-          style={{ "--hangtag-title-font-size": `${titleFontSize}mm` } as React.CSSProperties}
-        >
-          <span>{styleName}</span>
+        <img src={kickerArtUrl} alt="RSV" className="hangtag-kicker-img" />
+        <h1 className="hangtag-title">
+          {displayStyle ? <PosterWord word={displayStyle} /> : null}
           <PosterWord word={colorName} />
         </h1>
       </header>
@@ -100,24 +91,21 @@ export function Hangtag({
           </div>
         )}
 
+        <p className="hangtag-openface">OPEN FACE</p>
+
         <div className="hangtag-middle">
-          {/* Mengganti SVG Helm kustom dengan Icon Font Awesome */}
-          <FontAwesomeIcon icon={faHardHat} className="hangtag-art" aria-label="Helmet line art" />
+          <img src={helmetArtUrl} alt="Helmet line art" className="hangtag-art" />
 
           <div className="hangtag-meta">
-            <p className="hangtag-meta-label">{sizeName ?? colorName}</p>
             <p className="hangtag-meta-name">
               {productName}
               {styleName ? <br /> : null}
               {styleName || colorName}
             </p>
-            <p className="hangtag-meta-code">
-              {kodeVariant ?? "-"}
-              <br />
-              {[kodeBatch, tanggal].filter(Boolean).join(" · ") || "-"}
-            </p>
+            <p className="hangtag-meta-code">{qrValue}</p>
           </div>
           <div className="hangtag-qr-block">
+           
             <div className="hangtag-qr">
               <QRCodeSVG
                 value={qrValue}
@@ -128,8 +116,9 @@ export function Hangtag({
                 fgColor="#111111"
                 title={`QR code ${qrValue}`}
               />
+              
             </div>
-            <p className="hangtag-qr-code">{qrValue}</p>
+             <p className="hangtag-qr-label">barcode manufacture</p>
           </div>
         </div>
 
@@ -145,8 +134,9 @@ export function Hangtag({
             className="hangtag-brand"
           >
             {/* Mengganti SVG Instagram kustom dengan Icon Font Awesome */}
-            <FontAwesomeIcon icon={faInstagram} className="hangtag-brand-icon" aria-hidden="true" />
-            <span className="hangtag-brand-mark">RSVHELMETS</span>
+            {/* <FontAwesomeIcon icon={faInstagram} className="hangtag-brand-icon" aria-hidden="true" />
+            <span className="hangtag-brand-mark">RSVHELMETS</span> */}
+             <span className="hangtag-brand-mark">www.rsvhelmets.co.id</span>
           </a>
         </div>
       </div>

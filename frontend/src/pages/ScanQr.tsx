@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { bulkScanBarang, getScanBarang, type BulkScanResponse, type StatusBarang } from "../api/barang";
+import { bulkScanBarang, getScanBarang, type StatusBarang } from "../api/barang";
 
 const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
   { value: "FINISHGOOD", label: "Finish Good" },
@@ -22,7 +22,6 @@ function ScanQr() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState<StatusBarang>("FINISHGOOD");
   const [keterangan, setKeterangan] = useState("");
-  const [bulkResult, setBulkResult] = useState<BulkScanResponse | null>(null);
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -95,7 +94,6 @@ function ScanQr() {
       setScannedItems((prev) => [newItem, ...prev]);
       setError("");
       setSuccessMsg("");
-      setBulkResult(null);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -113,7 +111,6 @@ function ScanQr() {
     if (!file) return;
     setError("");
     setSuccessMsg("");
-    setBulkResult(null);
     try {
       const text = await file.text();
       let codes: string[] = [];
@@ -168,10 +165,8 @@ function ScanQr() {
     setIsBulkSubmitting(true);
     setError("");
     setSuccessMsg("");
-    setBulkResult(null);
     try {
       const result = await bulkScanBarang(kodeBarang, status, keterangan || undefined);
-      setBulkResult(result);
       const msg = `Bulk selesai: ${result.success.length} berhasil, ${result.failed.length} gagal dari ${kodeBarang.length} kode.`;
       setSuccessMsg(msg);
       setToast({ type: result.failed.length === 0 ? "success" : "success", msg });
@@ -312,7 +307,7 @@ function ScanQr() {
               <button type="button" onClick={handleBulkSubmit} disabled={isBulkSubmitting || scannedItemsCount === 0} className="inline-flex h-12 items-center justify-center rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40 transition">
                 {isBulkSubmitting ? "Mengirim..." : `Simpan Semua (${scannedItemsCount})`}
               </button>
-              {scannedItemsCount > 0 && <button type="button" onClick={() => { setScannedItems([]); setBulkResult(null); setSuccessMsg(""); }} className="ml-auto inline-flex h-12 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-600 hover:text-red-600 hover:border-red-200 transition">Clear</button>}
+              {scannedItemsCount > 0 && <button type="button" onClick={() => { setScannedItems([]); setSuccessMsg(""); }} className="ml-auto inline-flex h-12 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-600 hover:text-red-600 hover:border-red-200 transition">Clear</button>}
             </div>
           </div>
         </div>

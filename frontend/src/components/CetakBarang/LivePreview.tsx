@@ -2,9 +2,9 @@ import type { Product } from "../../api/products";
 import type { GenerateInfo } from "../../api/barang";
 import type { ProductSize } from "../../api/products";
 import type { ProductVariant } from "../../api/products";
-import type { LabelSize, PrinterInfo } from "../../lib/print";
+import type { LabelSize, PrinterInfo, CustomLabelMm } from "../../lib/print";
 import { Hangtag, HangtagFit } from "../Hangtag/Hangtag";
-import { labelSizeMm, isInElectron } from "../../lib/print";
+import { resolveLabelMm, isInElectron } from "../../lib/print";
 
 type LivePreviewProps = {
   selectedProduct: Product | undefined;
@@ -15,11 +15,13 @@ type LivePreviewProps = {
   generatedCode: string | null;
   previewCode: string | null;
   printSize: LabelSize;
+  customMm: CustomLabelMm;
   printers: PrinterInfo[];
   selectedPrinter: string;
   isGenerating: boolean;
   formatDate: (date: string) => string;
   onPrintSizeChange: (size: LabelSize) => void;
+  onCustomMmChange: (custom: CustomLabelMm) => void;
   onPrinterChange: (printer: string) => void;
   onGenerate: () => void;
   onSaveDefaultPrinter: (printer: string) => void;
@@ -34,15 +36,18 @@ export function LivePreview({
   generatedCode,
   previewCode,
   printSize,
+  customMm,
   printers,
   selectedPrinter,
   isGenerating,
   formatDate,
   onPrintSizeChange,
+  onCustomMmChange,
   onPrinterChange,
   onGenerate,
   onSaveDefaultPrinter,
 }: LivePreviewProps) {
+  const labelMm = resolveLabelMm(printSize, customMm);
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
@@ -64,13 +69,13 @@ export function LivePreview({
           <div className="relative flex items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4" style={{ height: "240px" }}>
             <div
               style={{
-                transform: `scale(${Math.min(1, 180 / (labelSizeMm[printSize].width * 3.78), 220 / (labelSizeMm[printSize].height * 3.78))})`,
+                transform: `scale(${Math.min(1, 180 / (labelMm.width * 3.78), 220 / (labelMm.height * 3.78))})`,
                 transformOrigin: "center center",
               }}
             >
               <HangtagFit
-                widthMm={labelSizeMm[printSize].width}
-                heightMm={labelSizeMm[printSize].height}
+                widthMm={labelMm.width}
+                heightMm={labelMm.height}
               >
                 <Hangtag
                   productName={selectedProduct?.nama ?? "-"}
@@ -127,13 +132,44 @@ export function LivePreview({
             <option value="33x15mm">33 × 15 mm (Thermal Kecil)</option>
             <option value="50x50mm">50 × 50 mm (5 × 5 cm)</option>
             <option value="58x58mm">58 × 58 mm (Thermal Printer)</option>
+            <option value="100x75mm">100 × 75 mm (Hangtag)</option>
             <option value="100x100mm">100 × 100 mm (Medium)</option>
             <option value="100x140mm">100 × 140 mm</option>
             <option value="100x200mm">100 × 200 mm</option>
             <option value="4x6inch">4 × 6 inch (Standard)</option>
-            <option value="custom">80 × 80 mm (Custom)</option>
+            <option value="custom">Custom (atur manual)</option>
           </select>
         </label>
+        {printSize === "custom" && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
+              <span>Lebar (mm)</span>
+              <input
+                type="number"
+                min={10}
+                max={500}
+                value={customMm.width}
+                onChange={(e) =>
+                  onCustomMmChange({ ...customMm, width: Number(e.target.value) })
+                }
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+              />
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
+              <span>Tinggi (mm)</span>
+              <input
+                type="number"
+                min={10}
+                max={500}
+                value={customMm.height}
+                onChange={(e) =>
+                  onCustomMmChange({ ...customMm, height: Number(e.target.value) })
+                }
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+              />
+            </label>
+          </div>
+        )}
         {isInElectron() && (
           <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
             <span>Printer</span>
