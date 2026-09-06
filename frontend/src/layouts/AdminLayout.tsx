@@ -237,7 +237,7 @@ const BARANG_PRODUKSI = {
       to: "/admin/barang",
       label: "Daftar Barang",
       icon: faBoxesStacked,
-      end: false,
+      end: true,
     },
     {
       to: "/admin/barang/statistik",

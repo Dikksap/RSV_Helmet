@@ -75,6 +75,7 @@ function AdminDashboard() {
   const [stats, setStats] = useState<{
     total: number;
     perStatus: Record<string, number>;
+    perVariant: Array<{ variantId: number; nama: string; total: number }>;
     perBatch: Array<{ nomorBatch: string | number; total: number }>;
   } | null>(null);
   const [recent, setRecent] = useState<Barang[]>([]);
@@ -107,6 +108,7 @@ function AdminDashboard() {
         setStats({
           total: s.total,
           perStatus: s.perStatus,
+          perVariant: s.perVariant,
           perBatch: s.perBatch.slice(0, 5),
         });
       })
@@ -155,7 +157,34 @@ function AdminDashboard() {
     });
   }, [subscribe, fetchOverview]);
 
-  const statusEntries = Object.entries(stats?.perStatus ?? {});
+  const variantEntries = useMemo(() => {
+    const groups = new Map<string, number>();
+    for (const v of stats?.perVariant ?? []) {
+      const parts = v.nama.split(" - ").map((s) => s.trim());
+      const key = parts.length > 1 ? parts.slice(0, -1).join(" - ") : v.nama;
+      groups.set(key, (groups.get(key) ?? 0) + v.total);
+    }
+    return [...groups.entries()]
+      .map(([nama, total]) => ({ nama, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [stats?.perVariant]);
+
+  const VARIANT_COLORS = [
+    "#E6AA5A",
+    "#34D399",
+    "#60A5FA",
+    "#F472B6",
+    "#A78BFA",
+    "#FACC15",
+    "#9B9B9C",
+    "#F87171",
+    "#22D3EE",
+    "#A3E635",
+  ];
+
+  const variantColors = variantEntries.map(
+    (_, i) => VARIANT_COLORS[i % VARIANT_COLORS.length],
+  );
 
   const pct = (part: number, total: number) =>
     total > 0 ? `${Math.round((part / total) * 100)}%` : "—";
@@ -368,28 +397,23 @@ function AdminDashboard() {
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">
-                Distribusi Status
+                Distribusi Varian
               </h3>
             </div>
             <p className="mb-4 text-xs text-brand-grey">
-              Distribusi stok per status produksi
+              Jumlah disatukan per style + color (tanpa ukuran)
             </p>
           </div>
 
           <div className="relative h-52 w-full">
             <Doughnut
               data={{
-                labels: statusEntries.map(([s]) => STATUS_LABEL[s] ?? s),
+                labels: variantEntries.map((v) => v.nama),
                 datasets: [
                   {
-                    data: statusEntries.map(([, v]) => v),
-                    backgroundColor: [
-                      "#E6AA5A",
-                      "#9B9B9C",
-                      "#3A3A3D",
-                      "#F2C889",
-                      "#5A5A5C",
-                    ],
+                    data: variantEntries.map((v) => v.total),
+                    backgroundColor:
+                      variantColors.length > 0 ? variantColors : ["#3A3A3D"],
                     borderColor: "#141416",
                     borderWidth: 3,
                     hoverOffset: 6,
@@ -408,13 +432,25 @@ function AdminDashboard() {
             />
           </div>
 
-          <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-brand-grey">
-            {statusEntries.map(([s]) => (
-              <span key={s} className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-brand-gold/60"></span>
-                {STATUS_LABEL[s] ?? s}
+          <div className="mt-2 flex max-h-20 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto text-[11px] text-brand-grey">
+            {variantEntries.map((v, i) => (
+              <span
+                key={v.nama}
+                title={`${v.nama}: ${v.total}`}
+                className="inline-flex max-w-full items-center gap-1.5"
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor: VARIANT_COLORS[i % VARIANT_COLORS.length],
+                  }}
+                ></span>
+                <span className="truncate">
+                  {v.nama} ({v.total})
+                </span>
               </span>
             ))}
+            {variantEntries.length === 0 && <span>Belum ada data.</span>}
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2 border-t border-brand-border pt-4 text-center text-xs">
@@ -433,7 +469,7 @@ function AdminDashboard() {
             <div>
               <p className="text-brand-grey">Varian</p>
               <p className="mt-0.5 font-bold text-brand-grey-light">
-                {stats ? Object.keys(stats.perStatus).length : "-"}
+                {stats ? variantEntries.length : "-"}
               </p>
             </div>
           </div>
