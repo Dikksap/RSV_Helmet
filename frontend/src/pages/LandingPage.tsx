@@ -3,7 +3,7 @@ import logoUrl from "../assets/logo.png";
 
 const FEATURES = [
   {
-    title: "Generate Barang",
+    title: "Cetak Label",
     desc: "Generate Barcode & QR Code unik otomatis dalam satu klik",
     to: "/cetak_barang",
     icon: (

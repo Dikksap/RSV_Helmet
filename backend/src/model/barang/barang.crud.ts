@@ -1,4 +1,5 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
+import { clearBarangCache } from "../../lib/barangCache.js";
 import { barangInclude } from "./barang.js";
 import {
   VALID_STATUSES,
@@ -81,7 +82,7 @@ export async function createBarang(input: CreateBarangInput) {
     const finalTanggal = tanggal ?? new Date();
     const finalStatus = (status as StatusBarang) ?? "REGISTER";
 
-    return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+    const created = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
       const barang = await tx.barang.create({
         data: {
           kodeBarang: kode,
@@ -110,6 +111,9 @@ export async function createBarang(input: CreateBarangInput) {
 
       return barang;
     });
+
+    await clearBarangCache();
+    return created;
   }
 
   // Auto-generate kodeBarang (ikut counter + batch allocation)
@@ -118,7 +122,7 @@ export async function createBarang(input: CreateBarangInput) {
   const dateOnly = new Date(finalTanggal);
   dateOnly.setHours(0, 0, 0, 0);
 
-  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+  const autoCreated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
     let targetBatch: { id: number; nomorBatch: number; totalProduksi: number; kapasitas: number };
 
     if (batchId !== undefined && batchId !== null) {
@@ -237,6 +241,9 @@ export async function createBarang(input: CreateBarangInput) {
 
     return barang;
   });
+
+  await clearBarangCache();
+  return autoCreated;
 }
 
 // =============================================
@@ -322,7 +329,7 @@ export async function updateBarang(id: number, input: UpdateBarangInput) {
     throw new Error("Tidak ada field yang diupdate");
   }
 
-  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+  const updatedResult = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
     // Adjust batch totalProduksi jika batchId berpindah (perhatikan: null = lepas batch, jangan fallback via ??)
     const oldBatchId = existing.batchId;
     const newBatchId = data.batchId !== undefined ? (data.batchId as number | null) : oldBatchId;
@@ -360,6 +367,9 @@ export async function updateBarang(id: number, input: UpdateBarangInput) {
 
     return updated;
   });
+
+  await clearBarangCache();
+  return updatedResult;
 }
 
 // =============================================
@@ -372,7 +382,7 @@ export async function deleteBarang(id: number) {
   const existing = await prisma.barang.findUnique({ where: { id } });
   if (!existing) throw new Error("Barang tidak ditemukan");
 
-  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+  const deleted = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
     await tx.riwayatBarang.deleteMany({ where: { barangId: id } });
 
     await tx.barang.delete({ where: { id } });
@@ -386,4 +396,7 @@ export async function deleteBarang(id: number) {
 
     return { id };
   });
+
+  await clearBarangCache();
+  return deleted;
 }

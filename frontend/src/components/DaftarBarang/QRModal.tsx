@@ -28,7 +28,7 @@ export function QRModal({ barang, onClose }: QRModalProps) {
   };
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm transition-opacity"
+      className="fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm transition-opacity"
       role="presentation"
       onClick={onClose}
     >

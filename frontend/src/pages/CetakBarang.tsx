@@ -25,7 +25,6 @@ import { StyleColorSelector } from "../components/CetakBarang/StyleColorSelector
 import { SizeSelector } from "../components/CetakBarang/SizeSelector";
 import { VariantSummary } from "../components/CetakBarang/VariantSummary";
 import { LivePreview } from "../components/CetakBarang/LivePreview";
-import { PreviewModal } from "../components/CetakBarang/PreviewModal";
 import { PrintDocument } from "../components/CetakBarang/PrintDocument";
 
 type PrintSize = LabelSize;
@@ -42,7 +41,6 @@ function CetakBarang() {
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [printSize, setPrintSize] = useState<PrintSize>("100x75mm");
   const [customMm, setCustomMm] = useState<CustomLabelMm>({ width: 80, height: 80 });
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
@@ -68,7 +66,10 @@ function CetakBarang() {
       setError(`Gagal print: ${printError.message}`);
     },
     onAfterPrint: () => {
-      window.location.reload();
+      // Jangan reload: seleksi produk/style/warna/ukuran dipertahankan.
+      // generateInfo sudah di-refresh di handleGenerate, cukup kembalikan
+      // preview ke kode berikutnya.
+      setGeneratedCode(null);
     },
   });
 
@@ -169,10 +170,23 @@ function CetakBarang() {
   };
 
   const handleSizeSelect = (id: string) => {
+    const isSameSize = id === sizeId;
     setSizeId(id);
-    setGenerateInfo(null);
     setGeneratedCode(null);
-    setIsPreviewOpen(true);
+    if (isSameSize) {
+      // Varian ref tak berubah -> useEffect di atas tak refire.
+      // Fetch manual agar kode preview muncul lagi.
+      const variant = colorVariants.find((v) => v.sizeId === Number(id));
+      if (!variant) {
+        setGenerateInfo(null);
+        return;
+      }
+      getGenerateInfo(variant.id)
+        .then(setGenerateInfo)
+        .catch((requestError: Error) => setError(requestError.message));
+    } else {
+      setGenerateInfo(null);
+    }
   };
 
   const handleGenerate = async () => {
@@ -201,7 +215,9 @@ function CetakBarang() {
         if (result.status === "error") {
           setError(`Gagal print: ${result.message}`);
         } else {
-          window.location.reload();
+          // Jangan reload: seleksi dipertahankan, preview lanjut ke nomor
+          // berikut.
+          setGeneratedCode(null);
         }
       } else {
         window.setTimeout(() => printFn(), 100);
@@ -275,7 +291,8 @@ function CetakBarang() {
                 selectedSizeName={selectedSizeName}
                 previewCode={previewCode}
                 generateInfo={generateInfo}
-                onPreviewOpen={() => setIsPreviewOpen(true)}
+                isGenerating={isGenerating}
+                onGenerate={handleGenerate}
                 disabled={!selectedVariant}
               />
             </div>
@@ -311,29 +328,6 @@ function CetakBarang() {
           </div>
         )}
       </div>
-
-      <PreviewModal
-        isOpen={isPreviewOpen}
-        selectedProduct={selectedProduct}
-        selectedVariant={selectedVariant}
-        sizes={sizes}
-        sizeId={sizeId}
-        generateInfo={generateInfo}
-        generatedCode={generatedCode}
-        previewCode={previewCode}
-        printSize={printSize}
-        customMm={customMm}
-        printers={printers}
-        selectedPrinter={selectedPrinter}
-        isGenerating={isGenerating}
-        formatDate={formatDate}
-        onClose={() => setIsPreviewOpen(false)}
-        onPrintSizeChange={setPrintSize}
-        onCustomMmChange={setCustomMm}
-        onPrinterChange={setSelectedPrinter}
-        onGenerate={handleGenerate}
-        onSaveDefaultPrinter={saveDefaultPrinter}
-      />
 
       <PrintDocument
         contentRef={contentRef}

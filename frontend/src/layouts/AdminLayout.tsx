@@ -17,6 +17,209 @@ import {
 import { clearAuth, getToken, isAdmin, logout } from "../api/auth";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
 
+type NotifItem = {
+  type: string;
+  message: string;
+  data: string;
+  fullData: string;
+  time: string;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function nestedName(v: unknown): string | null {
+  return isRecord(v) ? str(v.nama) : null;
+}
+
+function tryParseJson(raw: string): unknown {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function formatTanggal(iso: unknown): string | null {
+  if (typeof iso !== "string" || !iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function batchLabel(batch: unknown): string | null {
+  if (!isRecord(batch)) return null;
+  if (typeof batch.nomorBatch === "number")
+    return `BC${String(batch.nomorBatch).padStart(3, "0")}`;
+  return str(batch.nomorBatch) ?? str(batch.kodeBatch);
+}
+
+// Ringkasan satu baris untuk daftar notifikasi (ganti slice JSON mentah).
+function summarizeNotif(fullData: string): string {
+  const data = tryParseJson(fullData);
+  if (!isRecord(data)) return "";
+  const kode = str(data.kodeBarang);
+  if (kode) {
+    const status = str(data.status);
+    return status ? `${kode} • ${status}` : kode;
+  }
+  if (typeof data.totalDibuat === "number" && Array.isArray(data.batches)) {
+    return `${data.totalDibuat} barang • ${data.batches.length} batch`;
+  }
+  const kv = str(data.kodeVariant);
+  if (kv) return kv;
+  const nama = str(data.nama);
+  if (nama) return nama;
+  if (typeof data.id === "number") return `ID ${data.id}`;
+  return "";
+}
+
+function DetailRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-brand-border/50 py-2 last:border-0">
+      <span className="shrink-0 text-xs text-brand-grey">{label}</span>
+      <span
+        className={`text-right text-xs font-semibold text-white ${mono ? "break-all font-mono" : ""}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function NotifDetail({ fullData }: { fullData: string }) {
+  const data = tryParseJson(fullData);
+  if (!isRecord(data)) {
+    return <p className="text-sm text-brand-grey">Tidak ada data tambahan.</p>;
+  }
+
+  // Barang: created / updated / status_updated
+  const kodeBarang = str(data.kodeBarang);
+  if (kodeBarang) {
+    const v = isRecord(data.variant) ? data.variant : null;
+    const parts = [
+      v && isRecord(v.product) ? str(v.product.nama) : null,
+      v ? nestedName(v.style) : null,
+      v ? nestedName(v.color) : null,
+      v ? nestedName(v.size) : null,
+    ].filter((x): x is string => x !== null);
+    const varian =
+      parts.length > 0 ? parts.join(" / ") : (str(data.kodeVariant) ?? "-");
+    return (
+      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+        <DetailRow label="Kode Barang" value={kodeBarang} mono />
+        <DetailRow label="Status" value={str(data.status) ?? "-"} />
+        <DetailRow label="Varian" value={varian} />
+        <DetailRow label="Batch" value={batchLabel(data.batch) ?? "No Batch"} mono />
+        <DetailRow label="Tanggal" value={formatTanggal(data.tanggal) ?? "-"} />
+        <DetailRow
+          label="Diperbarui"
+          value={formatTanggal(data.updatedAt) ?? "-"}
+        />
+      </div>
+    );
+  }
+
+  // Hasil generate: { totalDibuat, batches: [{ kodeBatch, jumlah, barang }] }
+  if (typeof data.totalDibuat === "number" && Array.isArray(data.batches)) {
+    const batches = (data.batches as unknown[]).filter(isRecord);
+    const contoh = batches
+      .flatMap((b) => (Array.isArray(b.barang) ? b.barang : []))
+      .filter(isRecord)
+      .map((b) => str(b.kodeBarang))
+      .filter((x): x is string => x !== null)
+      .slice(0, 3);
+    return (
+      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+        <DetailRow label="Total Dibuat" value={String(data.totalDibuat)} />
+        {batches.map((b, i) => (
+          <DetailRow
+            key={i}
+            label={`Batch ${str(b.kodeBatch) ?? `#${i + 1}`}`}
+            value={`${typeof b.jumlah === "number" ? b.jumlah : "?"} barang`}
+          />
+        ))}
+        {contoh.length > 0 && (
+          <DetailRow label="Contoh Kode" value={contoh.join(", ")} mono />
+        )}
+      </div>
+    );
+  }
+
+  // Variant: { kodeVariant } atau id style/color/size
+  const kodeVariant = str(data.kodeVariant);
+  if (
+    kodeVariant ||
+    (typeof data.styleId === "number" && typeof data.colorId === "number")
+  ) {
+    const varian = [nestedName(data.style), nestedName(data.color), nestedName(data.size)]
+      .filter((x): x is string => x !== null)
+      .join(" / ");
+    return (
+      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+        <DetailRow
+          label="Kode Variant"
+          value={kodeVariant ?? `Variant #${typeof data.id === "number" ? data.id : "-"}`}
+          mono
+        />
+        {varian && <DetailRow label="Varian" value={varian} />}
+        {typeof data.id === "number" && (
+          <DetailRow label="ID" value={String(data.id)} />
+        )}
+      </div>
+    );
+  }
+
+  // Product: { nama, prefix }
+  if (str(data.nama) && str(data.prefix)) {
+    return (
+      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+        <DetailRow label="Nama" value={str(data.nama) ?? "-"} />
+        <DetailRow label="Prefix" value={str(data.prefix) ?? "-"} mono />
+        {typeof data.id === "number" && (
+          <DetailRow label="ID" value={String(data.id)} />
+        )}
+      </div>
+    );
+  }
+
+  // Deleted / fallback ID saja
+  if (typeof data.id === "number" && Object.keys(data).length === 1) {
+    return (
+      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+        <DetailRow label="ID" value={String(data.id)} />
+      </div>
+    );
+  }
+
+  // Bentuk tak dikenal: tampilkan JSON rapi sebagai fallback terakhir.
+  return (
+    <pre className="whitespace-pre-wrap break-words rounded-xl border border-brand-border bg-brand-black p-4 font-mono text-xs text-brand-grey-light">
+      {fullData}
+    </pre>
+  );
+}
+
 const NAV_MAIN = [
   {
     to: "/admin/dashboard",
@@ -103,16 +306,14 @@ function AdminLayout() {
       location.pathname.startsWith("/admin/barang/statistik"),
   );
   const [notifCount, setNotifCount] = useState(0);
-  const [notifList, setNotifList] = useState<
-    { type: string; message: string; data: string; fullData: string; time: string }[]
-  >([]);
+  const [notifList, setNotifList] = useState<NotifItem[]>([]);
   const [showNotif, setShowNotif] = useState(false);
-  const [liveToasts, setLiveToasts] = useState<{ id: number; type: string; message: string }[]>([]);
+  const [liveToasts, setLiveToasts] = useState<{ id: number; type: string; message: string; leaving?: boolean }[]>([]);
   const [notifHeight, setNotifHeight] = useState(208);
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef<number>(0);
   const resizeStartH = useRef<number>(208);
-  const [selectedNotif, setSelectedNotif] = useState<{ type: string; message: string; data: string; fullData: string; time: string } | null>(null);
+  const [selectedNotif, setSelectedNotif] = useState<NotifItem | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const { subscribe } = useLiveSocketContext();
@@ -124,19 +325,28 @@ function AdminLayout() {
     }
   }, [navigate]);
 
+  // Animasi keluar dulu, baru hapus dari DOM
+  const dismissToast = (id: number) => {
+    setLiveToasts((prev) => {
+      if (!prev.some((t) => t.id === id && !t.leaving)) return prev;
+      return prev.map((t) => (t.id === id ? { ...t, leaving: true } : t));
+    });
+    window.setTimeout(() => setLiveToasts((prev) => prev.filter((t) => t.id !== id)), 240);
+  };
+
   useEffect(() => {
     const pushToast = (type: string, message: string) => {
       const id = Date.now() + Math.floor(Math.random() * 1000);
       const toast = { id, type, message: message || type };
       setLiveToasts((prev) => [...prev, toast].slice(-5));
-      window.setTimeout(() => setLiveToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+      window.setTimeout(() => dismissToast(id), 4000);
     };
     const unsub = subscribe((payload) => {
       const full = payload.data !== null && payload.data !== undefined ? JSON.stringify(payload.data, null, 2) : "";
       const notif = {
         type: payload.type,
         message: payload.message,
-        data: full.slice(0, 120),
+        data: summarizeNotif(full),
         fullData: full,
         time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
       };
@@ -250,17 +460,54 @@ function AdminLayout() {
   return (
     <div className="app-admin flex min-h-screen w-full bg-brand-black font-sans text-brand-grey-light antialiased">
       {liveToasts.length > 0 && (
-        <div className="pointer-events-none fixed left-1/2 top-4 z-[70] flex w-[min(92vw,560px)] -translate-x-1/2 flex-col gap-2">
-          {liveToasts.map((t) => (
-            <div key={t.id} className="pointer-events-auto flex w-full items-start gap-3 rounded-2xl border border-brand-gold/30 bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur">
-              <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-gold text-xs font-bold text-brand-black">✓</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold uppercase tracking-wide text-brand-gold">{t.type}</p>
-                <p className="truncate text-sm font-medium text-white">{t.message}</p>
+        <div
+          className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2 sm:bottom-6 sm:right-6"
+          role="region"
+          aria-label="Notifikasi"
+        >
+          {liveToasts.length > 3 && (
+            <button
+              type="button"
+              onClick={() => {
+                setLiveToasts([]);
+                setShowNotif(true);
+              }}
+              className="live-toast-enter pointer-events-auto self-end rounded-full border border-brand-gold/30 bg-brand-surface-card/95 px-3 py-1.5 text-[11px] font-bold text-brand-gold shadow-xl backdrop-blur transition hover:border-brand-gold"
+            >
+              +{liveToasts.length - 3} lainnya — lihat semua
+            </button>
+          )}
+          {[...liveToasts].slice(-3).reverse().map((t) => {
+            const isError = /error|gagal|hapus|deleted|bad|retur/i.test(`${t.type} ${t.message}`);
+            return (
+              <div
+                key={t.id}
+                role="status"
+                className={`pointer-events-auto relative w-full overflow-hidden rounded-2xl border bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur ${t.leaving ? "live-toast-exit" : "live-toast-enter"} ${isError ? "border-rose-500/30" : "border-brand-gold/30"}`}
+              >
+                <div className="flex w-full items-start gap-3">
+                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${isError ? "bg-rose-500 text-white" : "bg-brand-gold text-brand-black"}`}>
+                    {isError ? "!" : "✓"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate text-[11px] font-bold uppercase tracking-wide ${isError ? "text-rose-400" : "text-brand-gold"}`}>{t.type}</p>
+                    <p className="line-clamp-2 text-sm font-medium text-white">{t.message}</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Tutup notifikasi"
+                    onClick={() => dismissToast(t.id)}
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                  >
+                    ×
+                  </button>
+                </div>
+                {!t.leaving && (
+                  <span className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${isError ? "bg-rose-500" : "bg-brand-gold"}`} aria-hidden="true" />
+                )}
               </div>
-              <button type="button" onClick={() => setLiveToasts((prev) => prev.filter((x) => x.id !== t.id))} className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20">×</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {isSidebarOpen && (
@@ -548,7 +795,9 @@ function AdminLayout() {
                         Tidak ada notifikasi
                       </p>
                     ) : (
-                      notifList.map((item, i) => (
+                      notifList.map((item, i) => {
+                        const preview = summarizeNotif(item.fullData) || item.data;
+                        return (
                         <button
                           key={i}
                           type="button"
@@ -566,13 +815,14 @@ function AdminLayout() {
                           <span className="line-clamp-2 text-brand-grey-light">
                             {item.message}
                           </span>
-                          {item.data && (
-                            <span className="truncate text-[10px] text-brand-grey">
-                              {item.data}
+                          {preview && (
+                            <span className="truncate font-mono text-[10px] text-brand-grey">
+                              {preview}
                             </span>
                           )}
                         </button>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                   <div
@@ -650,11 +900,7 @@ function AdminLayout() {
               <p className="mt-1 text-xs text-brand-grey">{selectedNotif.time}</p>
             </div>
             <div className="overflow-auto p-6">
-              {selectedNotif.fullData ? (
-                <pre className="whitespace-pre-wrap break-words rounded-xl border border-brand-border bg-brand-black p-4 font-mono text-xs text-brand-grey-light">{selectedNotif.fullData}</pre>
-              ) : (
-                <p className="text-sm text-brand-grey">Tidak ada data tambahan.</p>
-              )}
+              <NotifDetail fullData={selectedNotif.fullData} />
             </div>
             <div className="flex justify-end border-t border-brand-border bg-brand-surface/50 px-6 py-3">
               <button type="button" onClick={() => setSelectedNotif(null)} className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black hover:bg-brand-gold-light">Tutup</button>

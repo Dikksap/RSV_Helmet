@@ -17,10 +17,12 @@
     "electron-build-win": "npm run build && electron-builder --win",
     "electron-build-mac": "npm run build && electron-builder --mac",
     "electron-build-linux": "npm run build && electron-builder --linux",
-     "android:sync": "npm run build && npx cap sync android",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
     "android:build": "npm run build && npx cap sync android && cd android && gradlew.bat assembleDebug",
     "android:install": "npm run android:build && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
-    "android:run": "npm run android:install && adb shell monkey -p com.rsvhelmet.app 1"
+    "android:run": "npm run android:install && adb shell am start -n com.rsvhelmet.app/.MainActivity",
+    "android:dev": "npm run build && set CAP_LIVE=1&& npx cap sync android && cd android && gradlew.bat assembleDebug"
   },
   "build": {
     "appId": "com.operator.app",
@@ -59,6 +61,7 @@
     "@fortawesome/react-fontawesome": "^3.5.0",
     "chart.js": "^4.5.1",
     "dotenv": "^17.4.2",
+    "html-to-image": "^1.11.13",
     "jsqr": "^1.4.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",

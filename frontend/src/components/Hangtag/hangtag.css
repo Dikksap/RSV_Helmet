@@ -3,7 +3,11 @@
   --ht-paper: #ffffff;
   --ht-muted: rgba(17, 17, 17, 0.62);
   --ht-hairline: rgba(17, 17, 17, 0.1);
-  --ht-font-display: "Arial Black", "adineue", Arial, sans-serif;
+  /* Stack sistem — konsisten di semua device (400/700/800 selalu ada).
+     Jangan taruh "Arial Black" di sini: ia cuma punya 1 weight sehingga
+     font-weight diabaikan dan hasil beda antara Windows vs HP/lainnya. */
+  --ht-font-display: "adineue", Arial, Helvetica, sans-serif;
+  --ht-font-mono: "Consolas", "Menlo", "Courier New", monospace;
 
   box-sizing: border-box;
   width: 100mm;
@@ -231,7 +235,7 @@
   text-align: left;
   font-family: var(--ht-font-display);
   font-size: 1.8mm;
-  font-weight: 100;
+  font-weight: 700;
   line-height: 1.45;
   letter-spacing: 0.3mm;
   text-transform: uppercase;
@@ -242,7 +246,7 @@
   text-align: left;
   font-family: var(--ht-font-display);
   font-size: 2.5mm;
-  font-weight: 100;
+  font-weight: 700;
   line-height: 1.45;
   letter-spacing: 0.15mm;
   text-transform: uppercase;
@@ -252,11 +256,11 @@
 .hangtag-meta-code {
   margin: 1mm 0 0;
   text-align: left;
-  font-family: var(--ht-font-display);
-  font-size: 1.7mm;
-  font-weight: 400;
+  font-family: var(--ht-font-mono);
+  font-size: 1.9mm;
+  font-weight: 700;
   line-height: 1.45;
-  letter-spacing: 0.15mm;
+  letter-spacing: 0.1mm;
   text-transform: uppercase;
   color: var(--ht-ink);
   overflow-wrap: break-word;
@@ -280,7 +284,6 @@
   font-size: 1.5mm;
   font-weight: 700;
   line-height: 1.2;
-  font-height: 2mm;
   letter-spacing: 0.1mm;
   text-transform: uppercase;
   color: var(--ht-muted);
@@ -336,7 +339,7 @@
   text-align: center;
   font-family: var(--ht-font-display);
   font-size: 4mm;
-  font-weight: 100;
+  font-weight: 800;
   line-height: 1.2;
   letter-spacing: 0.1mm;
 }

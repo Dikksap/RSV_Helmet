@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -30,6 +31,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const disposedRef = useRef(false);
 
   useEffect(() => {
+    disposedRef.current = false;
     let socket: WebSocket | null = null;
 
     const connect = () => {
@@ -86,12 +88,12 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const subscribe = (callback: (payload: NotifPayload) => void) => {
+  const subscribe = useCallback((callback: (payload: NotifPayload) => void) => {
     subscribersRef.current.add(callback);
     return () => {
       subscribersRef.current.delete(callback);
     };
-  };
+  }, []);
 
   return (
     <LiveSocketContext.Provider value={{ isConnected, subscribe }}>

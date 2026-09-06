@@ -1,4 +1,5 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
+import { clearBarangCache } from "../../lib/barangCache.js";
 
 export type GenerateBarangResult = {
   totalDibuat: number;
@@ -163,8 +164,7 @@ export async function generateBarangBulk(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const result = await prisma.$transaction(async (tx: TxClient) => {
-        const batchGroups: GenerateBarangResult["batches"] = [];
+      const result = await prisma.$transaction(async (tx: TxClient) => {        const batchGroups: GenerateBarangResult["batches"] = [];
         let remaining = jumlah;
 
         await tx.$executeRaw`SELECT id FROM ProductionBatch WHERE status = 'AKTIF' ORDER BY nomorBatch DESC LIMIT 1 FOR UPDATE`;
@@ -281,6 +281,7 @@ export async function generateBarangBulk(
         } satisfies GenerateBarangResult;
       });
 
+      await clearBarangCache();
       return result;
     } catch (error: unknown) {
       if (isRetryableTxError(error) && attempt < MAX_RETRIES - 1) {

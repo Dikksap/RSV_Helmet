@@ -8,7 +8,8 @@ type VariantSummaryProps = {
   selectedSizeName: string | undefined;
   previewCode: string | null;
   generateInfo: GenerateInfo | null;
-  onPreviewOpen: () => void;
+  isGenerating: boolean;
+  onGenerate: () => void;
   disabled: boolean;
 };
 
@@ -19,7 +20,8 @@ export function VariantSummary({
   selectedSizeName,
   previewCode,
   generateInfo,
-  onPreviewOpen,
+  isGenerating,
+  onGenerate,
   disabled,
 }: VariantSummaryProps) {
   const variantDescription = [selectedProduct?.nama, selectedStyleName, selectedColorName, selectedSizeName]
@@ -43,11 +45,11 @@ export function VariantSummary({
       </div>
       <button
         type="button"
-        disabled={disabled}
-        onClick={onPreviewOpen}
+        disabled={disabled || isGenerating || !generateInfo}
+        onClick={onGenerate}
         className="inline-flex shrink-0 items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-bold text-zinc-900 shadow-sm transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Preview & Generate
+        {isGenerating ? "Membuat..." : "Generate & Print"}
       </button>
     </div>
   );

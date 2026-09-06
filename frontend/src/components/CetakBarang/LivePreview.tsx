@@ -3,8 +3,8 @@ import type { GenerateInfo } from "../../api/barang";
 import type { ProductSize } from "../../api/products";
 import type { ProductVariant } from "../../api/products";
 import type { LabelSize, PrinterInfo, CustomLabelMm } from "../../lib/print";
-import { Hangtag, HangtagFit } from "../Hangtag/Hangtag";
-import { resolveLabelMm, isInElectron } from "../../lib/print";
+import { Hangtag } from "../Hangtag/Hangtag";
+import { isInElectron } from "../../lib/print";
 
 type LivePreviewProps = {
   selectedProduct: Product | undefined;
@@ -47,7 +47,8 @@ export function LivePreview({
   onGenerate,
   onSaveDefaultPrinter,
 }: LivePreviewProps) {
-  const labelMm = resolveLabelMm(printSize, customMm);
+  // Preview dikunci di ukuran desain (100x75mm) — pilihan ukuran label
+  // hanya dipakai saat print, tidak mengubah tampilan preview.
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
@@ -66,35 +67,29 @@ export function LivePreview({
         </div>
       ) : (
         <>
-          <div className="relative flex items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4" style={{ height: "240px" }}>
-            <div
-              style={{
-                transform: `scale(${Math.min(1, 180 / (labelMm.width * 3.78), 220 / (labelMm.height * 3.78))})`,
-                transformOrigin: "center center",
-              }}
-            >
-              <HangtagFit
-                widthMm={labelMm.width}
-                heightMm={labelMm.height}
-              >
-                <Hangtag
-                  productName={selectedProduct?.nama ?? "-"}
-                  styleName={selectedVariant.style.nama}
-                  colorName={selectedVariant.color.nama}
-                  sizeName={selectedVariant.size.nama}
-                  sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
-                  selectedSizeId={Number(sizeId)}
-                  kodeVariant={
-                    selectedVariant.kodeVariant ??
-                    `Variant #${selectedVariant.id}`
-                  }
-                  kodeBatch={generateInfo?.batch.kodeBatch}
-                  tanggal={
-                    generateInfo ? formatDate(generateInfo.tanggal) : undefined
-                  }
-                  qrValue={generatedCode ?? previewCode ?? "-"}
-                />
-              </HangtagFit>
+          <div className="relative flex h-[180px] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4 sm:h-[240px]">
+            {/* Box luar = ukuran visual hasil scale (159x119 mobile, 227x170 sm+).
+                Layout Hangtag tetap 378px — tanpa box ini kolom grid ikut melebar. */}
+            <div className="h-[119px] w-[159px] shrink-0 sm:h-[170px] sm:w-[227px]">
+              <div className="h-[284px] w-[378px] origin-top-left scale-[0.42] sm:scale-[0.6]">
+              <Hangtag
+                productName={selectedProduct?.nama ?? "-"}
+                styleName={selectedVariant.style.nama}
+                colorName={selectedVariant.color.nama}
+                sizeName={selectedVariant.size.nama}
+                sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
+                selectedSizeId={Number(sizeId)}
+                kodeVariant={
+                  selectedVariant.kodeVariant ??
+                  `Variant #${selectedVariant.id}`
+                }
+                kodeBatch={generateInfo?.batch.kodeBatch}
+                tanggal={
+                  generateInfo ? formatDate(generateInfo.tanggal) : undefined
+                }
+                qrValue={generatedCode ?? previewCode ?? "-"}
+              />
+              </div>
             </div>
           </div>
           <p className="mt-3 text-center text-xs text-zinc-500">

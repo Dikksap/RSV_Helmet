@@ -1,5 +1,11 @@
 import { Prisma } from "../../../generated/prisma/client.js";
 import prisma from "../../lib/prisma.js";
+import {
+  BARANG_TTL_STATS,
+  barangStatsKey,
+  getBarangCache,
+  setBarangCache,
+} from "../../lib/barangCache.js";
 import type { StatusBarang } from "./barang.status.js";
 
 export type FinishgoodPerBulanRow = {
@@ -34,6 +40,10 @@ export async function getStatusSummary(): Promise<{
   total: number;
   perStatus: Record<StatusBarang, number>;
 }> {
+  const cacheKey = barangStatsKey("status-summary", {});
+  const cached = await getBarangCache<{ total: number; perStatus: Record<StatusBarang, number> }>(cacheKey);
+  if (cached) return cached;
+
   const groups = await prisma.barang.groupBy({
     by: ["status"],
     _count: { _all: true },
@@ -56,10 +66,34 @@ export async function getStatusSummary(): Promise<{
     total += count;
   }
 
-  return { total, perStatus };
+  const result = { total, perStatus };
+  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
+  return result;
 }
 
 export async function getBarangStats(filter: {
+  variantId?: number;
+  batchId?: number;
+}): Promise<{
+  total: number;
+  perStatus: Record<StatusBarang, number>;
+  perVariant: { variantId: number; nama: string; total: number }[];
+  perBatch: { batchId: number; nomorBatch: string; total: number }[];
+}> {
+  const where: { variantId?: number; batchId?: number } = {};
+  if (filter.variantId !== undefined) where.variantId = filter.variantId;
+  if (filter.batchId !== undefined) where.batchId = filter.batchId;
+
+  const cacheKey = barangStatsKey("stats", where);
+  const cachedStats = await getBarangCache<Awaited<ReturnType<typeof getBarangStatsUncached>>>(cacheKey);
+  if (cachedStats) return cachedStats;
+
+  const result = await getBarangStatsUncached(filter);
+  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
+  return result;
+}
+
+async function getBarangStatsUncached(filter: {
   variantId?: number;
   batchId?: number;
 }): Promise<{
@@ -182,6 +216,18 @@ export async function getFinishgoodPerBulan(
   data: FinishgoodPerBulanRow[];
   meta: { variantId?: number; productId?: number };
 }> {
+  const cacheKey = barangStatsKey("finishgood-per-bulan", {
+    variantId: filter.variantId ?? "",
+    productId: filter.productId ?? "",
+    tanggalAwal: filter.tanggalAwal?.toISOString() ?? "",
+    tanggalAkhir: filter.tanggalAkhir?.toISOString() ?? "",
+  });
+  const cached = await getBarangCache<{
+    data: FinishgoodPerBulanRow[];
+    meta: { variantId?: number; productId?: number };
+  }>(cacheKey);
+  if (cached) return cached;
+
   const where = buildFinishgoodWhere(filter);
 
   const rows = await prisma.$queryRaw<FinishgoodPerBulanRow[]>`
@@ -192,7 +238,9 @@ export async function getFinishgoodPerBulan(
 
   const data = rows.map((row: FinishgoodPerBulanRow) => ({ ...row, jumlah: Number(row.jumlah) }));
 
-  return { data, meta: { variantId: filter.variantId, productId: filter.productId } };
+  const result = { data, meta: { variantId: filter.variantId, productId: filter.productId } };
+  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
+  return result;
 }
 
 // =============================================
@@ -241,6 +289,21 @@ export async function getBatchRentangTanggal(
   selesai: BatchRentangRow[];
   aktif: BatchRentangRow[];
 }> {
+  const cacheKey = barangStatsKey("batch-rentang", {
+    tanggalAwal: filter.tanggalAwal?.toISOString() ?? "",
+    tanggalAkhir: filter.tanggalAkhir?.toISOString() ?? "",
+  });
+  const cached = await getBarangCache<{
+    selesai: BatchRentangRow[];
+    aktif: BatchRentangRow[];
+  }>(cacheKey);
+  if (cached) {
+    return {
+      selesai: cached.selesai.map((r) => ({ ...r, tanggalMulai: r.tanggalMulai ? new Date(r.tanggalMulai) : null, tanggalSelesai: r.tanggalSelesai ? new Date(r.tanggalSelesai) : null })),
+      aktif: cached.aktif.map((r) => ({ ...r, tanggalMulai: r.tanggalMulai ? new Date(r.tanggalMulai) : null, tanggalSelesai: r.tanggalSelesai ? new Date(r.tanggalSelesai) : null })),
+    };
+  }
+
   const [selesaiRows, aktifRows] = await prisma.$transaction([
     prisma.$queryRaw<BatchRentangRawRow[]>`
       SELECT v.batchId, v.nomorBatch, v.jumlahNonRegister, v.tanggalMulai, v.tanggalSelesai
@@ -269,5 +332,7 @@ export async function getBatchRentangTanggal(
   const selesai = selesaiRows.map((row: BatchRentangRawRow) => mapRow(row, row.tanggalSelesai));
   const aktif = aktifRows.map((row: BatchRentangRawRow) => mapRow(row, new Date()));
 
-  return { selesai, aktif };
+  const result = { selesai, aktif };
+  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
+  return result;
 }

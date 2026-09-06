@@ -14,7 +14,7 @@ import { HeaderSection } from "../components/DaftarBarang/HeaderSection";
 import { FilterSection } from "../components/DaftarBarang/FilterSection";
 import { BarangTable } from "../components/DaftarBarang/BarangTable";
 import { Pagination } from "../components/DaftarBarang/Pagination";
-import { QRModal } from "../components/DaftarBarang/QRModal";
+import { HangtagModal } from "../components/DaftarBarang/HangtagModal";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
 
 const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
@@ -31,6 +31,7 @@ function DaftarBarang() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [variantFilter, setVariantFilter] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -79,18 +80,31 @@ function DaftarBarang() {
     return () => window.clearInterval(id);
   }, []);
 
+  const hasActiveFilters =
+    Boolean(search) ||
+    Boolean(statusFilter) ||
+    Boolean(variantFilter) ||
+    Boolean(tanggalAwal) ||
+    Boolean(tanggalAkhir);
+
+  // Debounce ketikan search 400ms agar tidak hit /barang/search tiap keystroke
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => window.clearTimeout(t);
+  }, [search]);
+
   const fetchBarang = useCallback(
     async (page = 1) => {
       setIsLoading(true);
       setError(null);
       try {
         const data =
-          search &&
+          debouncedSearch &&
           !statusFilter &&
           !variantFilter &&
           !tanggalAwal &&
           !tanggalAkhir
-            ? await searchBarang(search, 20)
+            ? await searchBarang(debouncedSearch, 20)
             : await getBarangPage({
                 page,
                 limit: 20,
@@ -113,7 +127,7 @@ function DaftarBarang() {
         setIsLoading(false);
       }
     },
-    [tanggalAwal, tanggalAkhir, variantFilter, search, statusFilter],
+    [tanggalAwal, tanggalAkhir, variantFilter, debouncedSearch, statusFilter],
   );
 
   useEffect(() => {
@@ -169,13 +183,6 @@ function DaftarBarang() {
         .sort((a, b) => a.nama.localeCompare(b.nama)),
     [products],
   );
-
-  const hasActiveFilters =
-    Boolean(search) ||
-    Boolean(statusFilter) ||
-    Boolean(variantFilter) ||
-    Boolean(tanggalAwal) ||
-    Boolean(tanggalAkhir);
 
   const handleResetFilters = () => {
     setSearch("");
@@ -387,13 +394,13 @@ function DaftarBarang() {
   };
 
   const inputCls =
-    "h-10 w-full rounded-xl border border-brand-border bg-brand-surface px-3 text-sm text-white outline-none transition placeholder:text-brand-grey focus:border-brand-gold focus:ring-1 focus:ring-brand-gold";
+    "min-h-[44px] w-full rounded-xl border border-brand-border bg-brand-surface px-3 text-sm text-white outline-none transition placeholder:text-brand-grey/70 focus:border-brand-gold focus:ring-1 focus:ring-brand-gold [color-scheme:dark]";
   const labelCls = "flex flex-col gap-1.5 text-xs font-semibold text-brand-grey";
   const textareaCls =
-    "min-h-[72px] w-full rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-sm text-white outline-none transition placeholder:text-brand-grey focus:border-brand-gold focus:ring-1 focus:ring-brand-gold";
+    "min-h-[88px] w-full rounded-xl border border-brand-border bg-brand-surface px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-brand-grey/70 focus:border-brand-gold focus:ring-1 focus:ring-brand-gold";
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-4 sm:space-y-6">
       <HeaderSection
         totalBarang={totalBarang}
         isExporting={isExporting}
@@ -423,32 +430,77 @@ function DaftarBarang() {
       />
 
       {successMsg && (
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">
-          {successMsg}
+        <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-sm text-emerald-300">
+          <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+          <span>{successMsg}</span>
         </div>
       )}
 
       {isLoading && (
-        <div className="flex items-center justify-center rounded-2xl border border-brand-border bg-brand-surface-card p-12">
-          <p className="animate-pulse text-sm text-brand-grey">
-            Memuat data barang...
-          </p>
+        <div className="space-y-2.5" aria-label="Memuat data barang">
+          {/* Mobile skeleton cards */}
+          <div className="grid gap-2.5 md:hidden">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card p-3.5">
+                <div className="h-3 w-2/5 rounded bg-white/10" />
+                <div className="mt-2 h-4 w-3/5 rounded bg-white/10" />
+                <div className="mt-2 h-3 w-4/5 rounded bg-white/5" />
+              </div>
+            ))}
+          </div>
+          {/* Desktop skeleton */}
+          <div className="hidden overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card p-4 md:block">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex animate-pulse gap-4 border-b border-brand-border/40 py-3 last:border-0">
+                <div className="h-4 w-8 rounded bg-white/10" />
+                <div className="h-4 flex-1 rounded bg-white/10" />
+                <div className="h-4 w-24 rounded bg-white/5" />
+              </div>
+            ))}
+            <p className="pt-2 text-center text-xs text-brand-grey">Memuat data barang...</p>
+          </div>
         </div>
       )}
 
       {error && !isLoading && (
-        <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-          {error}
+        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-sm text-rose-300">
+          <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+          <span>{error}</span>
         </div>
       )}
 
       {!isLoading && !error && (
-        <section className="space-y-4">
+        <section className="space-y-3 sm:space-y-4">
           {barang.length === 0 ? (
-            <div className="rounded-2xl border border-brand-border bg-brand-surface-card p-12 text-center text-sm italic text-brand-grey">
-              {hasActiveFilters
-                ? "Tidak ada barang yang memenuhi kriteria filter."
-                : "Belum ada data barang."}
+            <div className="rounded-2xl border border-dashed border-brand-border bg-brand-surface-card p-8 text-center sm:p-12">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-surface text-brand-grey">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+              </div>
+              <p className="mt-3 text-sm font-semibold text-white">
+                {hasActiveFilters ? "Tidak ada hasil" : "Belum ada data barang"}
+              </p>
+              <p className="mx-auto mt-1 max-w-xs text-xs text-brand-grey">
+                {hasActiveFilters
+                  ? "Coba ubah kata kunci atau reset filter untuk melihat data lain."
+                  : "Tambahkan barang pertama untuk mulai mengelola inventory."}
+              </p>
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="mt-4 inline-flex min-h-[44px] items-center rounded-xl border border-brand-border bg-brand-surface px-5 text-xs font-bold text-white transition hover:border-brand-gold active:scale-[0.98]"
+                >
+                  Reset Filter
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="mt-4 inline-flex min-h-[44px] items-center rounded-xl bg-brand-gold px-5 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light active:scale-[0.98]"
+                >
+                  + Tambah Barang
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -476,26 +528,32 @@ function DaftarBarang() {
       )}
 
       {selectedBarang && (
-        <QRModal barang={selectedBarang} onClose={() => setSelectedBarang(null)} />
+        <HangtagModal
+          barang={selectedBarang}
+          products={products}
+          onClose={() => setSelectedBarang(null)}
+        />
       )}
 
-      {/* CREATE MODAL */}
+      {/* CREATE MODAL — bottom sheet on mobile */}
       {showCreate && (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onClick={() => setShowCreate(false)}
         >
           <div
-            className="relative w-full max-w-lg rounded-2xl border border-brand-border bg-brand-surface-card p-6 shadow-2xl"
+            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-2xl sm:p-6"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
             <button
               type="button"
               onClick={() => setShowCreate(false)}
-              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-brand-border bg-brand-surface text-brand-grey-light hover:border-brand-gold hover:text-white"
+              aria-label="Tutup"
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-grey-light hover:border-brand-gold hover:text-white"
             >
               ✕
             </button>
@@ -518,10 +576,10 @@ function DaftarBarang() {
                 </select>
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className={labelCls}>
                   <span>Batch ID (opsional)</span>
-                  <input type="number" className={inputCls} placeholder="Kosong = auto" value={cBatchId} onChange={(e) => setCBatchId(e.target.value)} />
+                  <input type="number" inputMode="numeric" className={inputCls} placeholder="Kosong = auto" value={cBatchId} onChange={(e) => setCBatchId(e.target.value)} />
                 </label>
                 <label className={labelCls}>
                   <span>Status</span>
@@ -549,11 +607,11 @@ function DaftarBarang() {
               </label>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-brand-border/60 bg-brand-surface-card/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-brand-grey-light hover:text-white"
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-bold text-brand-grey-light hover:text-white sm:flex-none"
               >
                 Batal
               </button>
@@ -561,7 +619,7 @@ function DaftarBarang() {
                 type="button"
                 onClick={handleCreate}
                 disabled={crudLoading}
-                className="rounded-xl bg-brand-gold px-5 py-2 text-xs font-bold text-brand-black hover:bg-brand-gold-light disabled:opacity-50"
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-brand-gold px-5 py-2.5 text-xs font-bold text-brand-black hover:bg-brand-gold-light disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menyimpan..." : "Simpan"}
               </button>
@@ -570,23 +628,25 @@ function DaftarBarang() {
         </div>
       )}
 
-      {/* EDIT MODAL */}
+      {/* EDIT MODAL — bottom sheet on mobile */}
       {editingBarang && (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onClick={() => setEditingBarang(null)}
         >
           <div
-            className="relative w-full max-w-lg rounded-2xl border border-brand-border bg-brand-surface-card p-6 shadow-2xl"
+            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-2xl sm:p-6"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
             <button
               type="button"
               onClick={() => setEditingBarang(null)}
-              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-brand-border bg-brand-surface text-brand-grey-light hover:border-brand-gold hover:text-white"
+              aria-label="Tutup"
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-grey-light hover:border-brand-gold hover:text-white"
             >
               ✕
             </button>
@@ -607,11 +667,12 @@ function DaftarBarang() {
                 </select>
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className={labelCls}>
                   <span>Batch ID</span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className={inputCls}
                     placeholder="ID batch"
                     value={eBatchId}
@@ -649,11 +710,11 @@ function DaftarBarang() {
               </label>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-brand-border/60 bg-brand-surface-card/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
               <button
                 type="button"
                 onClick={() => setEditingBarang(null)}
-                className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-brand-grey-light hover:text-white"
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-bold text-brand-grey-light hover:text-white sm:flex-none"
               >
                 Batal
               </button>
@@ -661,7 +722,7 @@ function DaftarBarang() {
                 type="button"
                 onClick={handleUpdate}
                 disabled={crudLoading}
-                className="rounded-xl bg-brand-gold px-5 py-2 text-xs font-bold text-brand-black hover:bg-brand-gold-light disabled:opacity-50"
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-brand-gold px-5 py-2.5 text-xs font-bold text-brand-black hover:bg-brand-gold-light disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menyimpan..." : "Update"}
               </button>
@@ -670,31 +731,32 @@ function DaftarBarang() {
         </div>
       )}
 
-      {/* DELETE CONFIRM */}
+      {/* DELETE CONFIRM — bottom sheet on mobile */}
       {deletingBarang && (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onClick={() => setDeletingBarang(null)}
         >
           <div
-            className="relative w-full max-w-md rounded-2xl border border-brand-border bg-brand-surface-card p-6 shadow-2xl"
+            className="relative w-full rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-md sm:rounded-2xl sm:p-6"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold text-white">Hapus Barang?</h2>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
+            <h2 className="pr-8 text-base font-bold text-white sm:text-lg">Hapus Barang?</h2>
             <p className="mt-2 text-sm text-brand-grey">
               Yakin hapus <span className="font-mono font-bold text-brand-gold">{deletingBarang.kodeBarang}</span>? Tindakan ini tidak dapat dibatalkan.
             </p>
             {crudError && (
               <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{crudError}</div>
             )}
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 flex gap-2">
               <button
                 type="button"
                 onClick={() => setDeletingBarang(null)}
-                className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-brand-grey-light hover:text-white"
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-bold text-brand-grey-light hover:text-white sm:flex-none sm:px-5"
               >
                 Batal
               </button>
@@ -702,7 +764,7 @@ function DaftarBarang() {
                 type="button"
                 onClick={handleDelete}
                 disabled={crudLoading}
-                className="rounded-xl bg-rose-600 px-5 py-2 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-50"
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menghapus..." : "Ya, Hapus"}
               </button>

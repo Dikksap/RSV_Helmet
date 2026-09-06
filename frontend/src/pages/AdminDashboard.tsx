@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
 import {
@@ -21,9 +21,9 @@ import {
   faWallet,
 } from "@fortawesome/free-solid-svg-icons";
 import {
-  getBarang,
   getBarangPage,
   getBarangStats,
+  getBarangTodayStats,
   getFinishgoodPerBulan,
   type Barang,
   type FinishgoodPerBulan,
@@ -71,17 +71,6 @@ const CHART_TOOLTIP = {
   padding: 10,
 };
 
-function isToday(dateString: string | null | undefined): boolean {
-  if (!dateString) return false;
-  const date = new Date(dateString);
-  const now = new Date();
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  );
-}
-
 function AdminDashboard() {
   const [stats, setStats] = useState<{
     total: number;
@@ -101,14 +90,18 @@ function AdminDashboard() {
 
   const tahunSekarang = new Date().getFullYear();
   const bulanTerpilihNum = bulanTerpilih ? Number(bulanTerpilih) : 0;
-  const tanggalAwalBulan = bulanTerpilihNum
-    ? `${tahunSekarang}-${String(bulanTerpilihNum).padStart(2, "0")}-01`
-    : undefined;
-  const tanggalAkhirBulan = bulanTerpilihNum
-    ? `${tahunSekarang}-${String(bulanTerpilihNum).padStart(2, "0")}-${new Date(tahunSekarang, bulanTerpilihNum, 0).getDate()}`
-    : undefined;
+  const { tanggalAwalBulan, tanggalAkhirBulan } = useMemo(() => {
+    if (!bulanTerpilihNum) return { tanggalAwalBulan: undefined, tanggalAkhirBulan: undefined };
+    const mm = String(bulanTerpilihNum).padStart(2, "0");
+    return {
+      tanggalAwalBulan: `${tahunSekarang}-${mm}-01`,
+      tanggalAkhirBulan: `${tahunSekarang}-${mm}-${new Date(tahunSekarang, bulanTerpilihNum, 0).getDate()}`,
+    };
+  }, [tahunSekarang, bulanTerpilihNum]);
 
-  const fetchData = useCallback(async () => {
+  // Overview ringan: stats (cache Redis 30 dtk) + 6 terbaru (cache list 15 dtk)
+  // + KPI hari ini via filter tanggal (bukan full getBarang() seluruh histori).
+  const fetchOverview = useCallback(async () => {
     getBarangStats()
       .then((s) => {
         setStats({
@@ -123,44 +116,44 @@ function AdminDashboard() {
       .then((res) => setRecent(res.data))
       .catch(() => undefined);
 
-    getFinishgoodPerBulan({
-      tanggalAwal: tanggalAwalBulan,
-      tanggalAkhir: tanggalAkhirBulan,
-    })
-      .then((res) => setPerBulan(res.data))
+    getBarangTodayStats()
+      .then(setTodayStats)
       .catch(() => undefined);
+  }, []);
 
-    getBarang()
-      .then((res) => {
-        const today = res.data.filter((item) => isToday(item.tanggal));
-        const finishGood = today.filter(
-          (item) => item.status === "FINISHGOOD",
-        ).length;
-        const proses = today.filter(
-          (item) => item.status === "REGISTER",
-        ).length;
-        const batches = new Set(today.map((item) => item.batch?.id).filter((v): v is number => typeof v === "number")).size;
-        setTodayStats({
-          total: today.length,
-          finishGood,
-          proses,
-          batch: batches,
-        });
+  // Chart per bulan: hanya refetch saat filter bulan berubah (debounce 300ms).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      getFinishgoodPerBulan({
+        tanggalAwal: tanggalAwalBulan,
+        tanggalAkhir: tanggalAkhirBulan,
       })
-      .catch(() => undefined);
-  }, [bulanTerpilih, tanggalAwalBulan, tanggalAkhirBulan]);
+        .then((res) => setPerBulan(res.data))
+        .catch(() => undefined);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [tanggalAwalBulan, tanggalAkhirBulan]);
 
-  const { subscribe } = useLiveSocketContext();
+  const { subscribe, isConnected } = useLiveSocketContext();
 
   useEffect(() => {
-    return subscribe(() => {
-      fetchData();
+    void fetchOverview();
+    // Polling fallback 30 dtk: KPI tetap live meski WebSocket putus.
+    // Murah karena stats/list/today ikut cache Redis backend.
+    const pollId = window.setInterval(() => {
+      void fetchOverview();
+    }, 30000);
+    return () => window.clearInterval(pollId);
+  }, [fetchOverview]);
+
+  useEffect(() => {
+    return subscribe((payload) => {
+      // Sama seperti DaftarBarang: refetch langsung tiap event barang.*.
+      // Aman untuk DB karena stats/list/today ikut cache Redis backend.
+      if (payload.type && !payload.type.startsWith("barang.")) return;
+      void fetchOverview();
     });
-  }, [subscribe, fetchData]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  }, [subscribe, fetchOverview]);
 
   const statusEntries = Object.entries(stats?.perStatus ?? {});
 
@@ -197,8 +190,24 @@ function AdminDashboard() {
     <div className="space-y-8">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <h2 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Ringkasan Eksekutif
+            <span
+              title={isConnected ? "WebSocket terhubung — KPI update otomatis" : "WebSocket terputus — refresh tiap 30 detik"}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                isConnected
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                  : "border-brand-border bg-brand-surface text-brand-grey"
+              }`}
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                {isConnected && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-400" : "bg-brand-grey"}`}></span>
+              </span>
+              {isConnected ? "Live" : "Offline"}
+            </span>
           </h2>
           <p className="mt-1 text-sm text-brand-grey-light">
             Performa inventaris dan data analitik terkini.
@@ -206,7 +215,10 @@ function AdminDashboard() {
         </div>
         <button
           type="button"
-          onClick={() => setShowToday((v) => !v)}
+          onClick={() => {
+            setShowToday((v) => !v);
+            void fetchOverview();
+          }}
           className={`inline-flex items-center gap-2 self-start rounded-xl border px-3 py-1.5 text-xs font-medium transition sm:self-auto ${
             showToday
               ? "border-brand-gold/40 bg-brand-gold/10 text-brand-gold"

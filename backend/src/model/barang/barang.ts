@@ -1,4 +1,12 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
+import {
+  BARANG_TTL_LIST,
+  barangListKey,
+  barangSearchKey,
+  clearBarangCache,
+  getBarangCache,
+  setBarangCache,
+} from "../../lib/barangCache.js";
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
   VALID_STATUSES,
@@ -35,6 +43,7 @@ export {
   createBarang,
   updateBarang,
   deleteBarang,
+  clearBarangCache,
 };
 export type { StatusBarang };
 export type { CreateBarangInput, UpdateBarangInput } from "./barang.crud.js";
@@ -100,6 +109,27 @@ export async function listBarang(filter: BarangListFilter) {
   const { page, limit, variantId, batchId, status, tanggalAwal, tanggalAkhir } =
     filter;
 
+  const cacheKey = barangListKey({
+    page,
+    limit,
+    variantId: variantId ?? "",
+    batchId: batchId ?? "",
+    status: status ?? "",
+    tanggalAwal: tanggalAwal ?? "",
+    tanggalAkhir: tanggalAkhir ?? "",
+  });
+  const cached = await getBarangCache<{ data: unknown[]; meta: unknown }>(cacheKey);
+  if (cached) return cached as Awaited<ReturnType<typeof listBarangUncached>>;
+
+  const result = await listBarangUncached(filter);
+  await setBarangCache(cacheKey, result, BARANG_TTL_LIST);
+  return result;
+}
+
+async function listBarangUncached(filter: BarangListFilter) {
+  const { page, limit, variantId, batchId, status, tanggalAwal, tanggalAkhir } =
+    filter;
+
   const where: {
     variantId?: number;
     batchId?: number;
@@ -153,6 +183,12 @@ export async function searchBarangByKode(opts: {
   meta: { q: string; count: number };
 }> {
   const kode = opts.q.trim();
+  const cacheKey = barangSearchKey(kode, opts.limit);
+  const cached = await getBarangCache<{
+    data: Awaited<ReturnType<typeof prisma.barang.findMany>>;
+    meta: { q: string; count: number };
+  }>(cacheKey);
+  if (cached) return cached;
   const data = await prisma.barang.findMany({
     where: { kodeBarang: { contains: kode } },
     include: barangInclude,
@@ -160,7 +196,9 @@ export async function searchBarangByKode(opts: {
     take: opts.limit,
   });
 
-  return { data, meta: { q: kode, count: data.length } };
+  const result = { data, meta: { q: kode, count: data.length } };
+  await setBarangCache(cacheKey, result, BARANG_TTL_LIST);
+  return result;
 }
 
 export async function findBarangByKodeList(
@@ -320,6 +358,8 @@ export async function bulkScanBarang(
       error: "Duplicate barcode dalam request",
     });
   }
+
+  if (results.length > 0) await clearBarangCache();
 
   return { success: results, failed };
 }

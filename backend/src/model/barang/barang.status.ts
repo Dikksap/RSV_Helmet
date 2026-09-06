@@ -1,4 +1,5 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
+import { clearBarangCache } from "../../lib/barangCache.js";
 
 export type StatusBarang = "REGISTER" | "FINISHGOOD" | "RETUR" | "OUT" | "BAD";
 
@@ -43,7 +44,7 @@ export async function updateBarangStatus(
     );
   }
 
-  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+  const updated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const updatedBarang = await tx.barang.update({
       where: { id: barangId },
       data: { status: newStatus },
@@ -78,6 +79,9 @@ export async function updateBarangStatus(
 
     return updatedBarang;
   });
+
+  await clearBarangCache();
+  return updated;
 }
 
 export async function bulkUpdateBarangStatus(

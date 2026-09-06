@@ -303,6 +303,57 @@ export async function getBarang(): Promise<BarangResponse> {
   };
 }
 
+export interface TodayStats {
+  total: number;
+  finishGood: number;
+  proses: number;
+  batch: number;
+}
+
+function toTanggalParam(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Ringan untuk KPI "Hari Ini": hanya fetch data tanggal hari ini
+// (backend: GET /barang?tanggal=YYYY-MM-DD, ikut cache list 15 dtk),
+// bukan getBarang() yang mengunduh seluruh histori.
+export async function getBarangTodayStats(date = new Date()): Promise<TodayStats> {
+  const tanggal = toTanggalParam(date);
+  const firstRes = await fetch(`${apiUrl}/barang?tanggal=${tanggal}&page=1&limit=100`);
+  if (!firstRes.ok) {
+    throw new Error(`Failed to fetch today barang: ${firstRes.status}`);
+  }
+  const firstPage = (await firstRes.json()) as BarangPageResponse;
+  const totalPages = firstPage.meta.totalPages;
+  const rest =
+    totalPages > 1
+      ? await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) =>
+            fetch(`${apiUrl}/barang?tanggal=${tanggal}&page=${index + 2}&limit=100`).then(
+              (pageResponse) => {
+                if (!pageResponse.ok)
+                  throw new Error(`Failed to fetch today barang page ${index + 2}`);
+                return pageResponse.json() as Promise<BarangPageResponse>;
+              },
+            ),
+          ),
+        )
+      : [];
+  const today = dedupeBarangById([firstPage, ...rest].flatMap((page) => page.data));
+  const batches = new Set(
+    today.map((item) => item.batch?.id).filter((v): v is number => typeof v === "number"),
+  );
+  return {
+    total: firstPage.meta.total,
+    finishGood: today.filter((item) => item.status === "FINISHGOOD").length,
+    proses: today.filter((item) => item.status === "REGISTER").length,
+    batch: batches.size,
+  };
+}
+
 export interface GenerateInfo {
   variantId: number;
   kodeVariant: string;
