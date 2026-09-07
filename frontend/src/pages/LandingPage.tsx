@@ -4,7 +4,7 @@ import logoUrl from "../assets/logo.png";
 const FEATURES = [
   {
     title: "Cetak Label",
-    desc: "Generate Barcode & QR Code unik otomatis dalam satu klik",
+    desc: "Cetak label kode barang QR code untuk setiap item",
     to: "/cetak_barang",
     icon: (
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -76,7 +76,7 @@ function LandingPage() {
                   to="/cetak_barang"
                   className="inline-flex items-center justify-center rounded-xl bg-zinc-950 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-zinc-950/20 transition hover:bg-zinc-800 active:scale-95"
                 >
-                  Mulai Sekarang
+                  Cetak Label
                 </Link>
                 <Link
                   to="/scan-qr"
@@ -87,20 +87,38 @@ function LandingPage() {
               </div>
             </div>
 
-            {/* Right visual - Simplified */}
+            {/* Right visual - Improved */}
             <div className="relative flex items-center justify-center bg-zinc-50 px-8 py-12 lg:bg-transparent">
               <div className="relative w-full max-w-md aspect-square flex items-center justify-center">
                 <div className="absolute inset-0 bg-gradient-to-tr from-zinc-100 to-transparent rounded-full opacity-50 blur-3xl"></div>
-                <div className="relative font-mono text-xs text-zinc-400 p-8 border border-zinc-200 bg-white rounded-3xl shadow-xl w-64 rotate-3">
+                <div className="relative font-mono text-xs text-zinc-400 p-8 border border-zinc-200 bg-white rounded-3xl shadow-xl w-64 rotate-3 hover:rotate-0 transition-transform duration-300">
                   <div className="flex gap-2 items-center mb-4">
-                     <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                     <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                    <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                    <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                    <div className="ml-auto flex gap-1">
+                      <div className="w-1 h-1 rounded-full bg-zinc-300"></div>
+                      <div className="w-1 h-1 rounded-full bg-zinc-300"></div>
+                      <div className="w-1 h-1 rounded-full bg-zinc-300"></div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <p>Scanning Item...</p>
-                    <p className="text-zinc-950 font-bold">ID: RSV-A01-BLK</p>
-                    <p>Status: <span className="text-emerald-600 font-bold">Verified</span></p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-zinc-500">Scanning Item...</p>
+                      <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    </div>
+                    <div className="border-t border-zinc-100 pt-3">
+                      <p className="text-zinc-950 font-bold text-sm">ID: RSV-A01-BLK</p>
+                      <p className="text-xs text-zinc-400 mt-1">Type: Full Face Helmet</p>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-zinc-100 pt-3">
+                      <span className="text-zinc-500">Status:</span>
+                      <span className="text-emerald-600 font-bold text-sm">✓ Verified</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-zinc-100 pt-3">
+                      <span className="text-zinc-500">Location:</span>
+                      <span className="text-zinc-900 text-sm font-medium">Rack A-12</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -122,14 +140,19 @@ function LandingPage() {
               <Link
                 key={f.title}
                 to={f.to}
-                className="group relative flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+                className="group relative flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all duration-200 hover:border-zinc-300 hover:shadow-md hover:-translate-y-1"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-50 text-zinc-950 shadow-sm border border-zinc-100 transition group-hover:bg-zinc-950 group-hover:text-white">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-50 text-zinc-950 shadow-sm border border-zinc-100 transition-all duration-200 group-hover:bg-zinc-950 group-hover:text-white group-hover:shadow-lg">
                   {f.icon}
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-zinc-950">{f.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-zinc-600">{f.desc}</p>
+                </div>
+                <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <svg className="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
                 </div>
               </Link>
             ))}
@@ -149,7 +172,7 @@ function LandingPage() {
                 { n: "02", t: "Cetak", d: "Kirim ke thermal printer presisi" },
                 { n: "03", t: "Lacak", d: "Pantau status & lokasi realtime" },
               ].map((s) => (
-                <div key={s.n} className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <div key={s.n} className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 hover:bg-zinc-100 transition-colors duration-200">
                   <p className="text-xs font-black tracking-widest text-zinc-400">{s.n}</p>
                   <p className="mt-1 text-sm font-bold text-zinc-900">{s.t}</p>
                   <p className="mt-1 text-xs leading-5 text-zinc-500">{s.d}</p>
@@ -180,7 +203,7 @@ function LandingPage() {
             </div>
             <Link
               to="/live-view"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-zinc-900 transition hover:bg-zinc-100"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-zinc-900 transition-all duration-200 hover:bg-zinc-100 hover:shadow-lg active:scale-95"
             >
               Buka Live View
             </Link>
@@ -190,14 +213,14 @@ function LandingPage() {
 
       <footer className="mt-12 border-t border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 py-6 text-xs text-zinc-500 sm:flex-row sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2.5 text-zinc-900">
-            <img src={logoUrl} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
+          <Link to="/" className="flex items-center gap-2.5 text-zinc-900 hover:opacity-80 transition-opacity">
+            <img src={logoUrl} alt="RSV Helmet Logo" className="h-8 w-8 object-contain" />
             <span className="text-sm font-black tracking-tight">RSV HELMET</span>
           </Link>
           <p className="text-center font-medium">© 2024 RSV Helmet. All Rights Reserved.</p>
           <p className="font-medium">
             Email:{" "}
-            <a href="mailto:info@rsvhelmet.com" className="font-semibold text-zinc-900 hover:underline">
+            <a href="mailto:info@rsvhelmet.com" className="font-semibold text-zinc-900 hover:underline transition-colors">
               info@rsvhelmet.com
             </a>
           </p>

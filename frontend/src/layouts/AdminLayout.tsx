@@ -8,11 +8,13 @@ import {
   faChevronLeft,
   faGaugeHigh,
   faGear,
-  faRightFromBracket,
   faTags,
   faBell,
   faDatabase,
   faHouse,
+  faBars,
+  faXmark,
+  faArrowRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
 import { clearAuth, getToken, isAdmin, logout } from "../api/auth";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
@@ -66,7 +68,6 @@ function batchLabel(batch: unknown): string | null {
   return str(batch.nomorBatch) ?? str(batch.kodeBatch);
 }
 
-// Ringkasan satu baris untuk daftar notifikasi (ganti slice JSON mentah).
 function summarizeNotif(fullData: string): string {
   const data = tryParseJson(fullData);
   if (!isRecord(data)) return "";
@@ -113,7 +114,6 @@ function NotifDetail({ fullData }: { fullData: string }) {
     return <p className="text-sm text-brand-grey">Tidak ada data tambahan.</p>;
   }
 
-  // Barang: created / updated / status_updated
   const kodeBarang = str(data.kodeBarang);
   if (kodeBarang) {
     const v = isRecord(data.variant) ? data.variant : null;
@@ -140,7 +140,6 @@ function NotifDetail({ fullData }: { fullData: string }) {
     );
   }
 
-  // Hasil generate: { totalDibuat, batches: [{ kodeBatch, jumlah, barang }] }
   if (typeof data.totalDibuat === "number" && Array.isArray(data.batches)) {
     const batches = (data.batches as unknown[]).filter(isRecord);
     const contoh = batches
@@ -166,7 +165,6 @@ function NotifDetail({ fullData }: { fullData: string }) {
     );
   }
 
-  // Variant: { kodeVariant } atau id style/color/size
   const kodeVariant = str(data.kodeVariant);
   if (
     kodeVariant ||
@@ -190,7 +188,6 @@ function NotifDetail({ fullData }: { fullData: string }) {
     );
   }
 
-  // Product: { nama, prefix }
   if (str(data.nama) && str(data.prefix)) {
     return (
       <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
@@ -203,7 +200,6 @@ function NotifDetail({ fullData }: { fullData: string }) {
     );
   }
 
-  // Deleted / fallback ID saja
   if (typeof data.id === "number" && Object.keys(data).length === 1) {
     return (
       <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
@@ -212,7 +208,6 @@ function NotifDetail({ fullData }: { fullData: string }) {
     );
   }
 
-  // Bentuk tak dikenal: tampilkan JSON rapi sebagai fallback terakhir.
   return (
     <pre className="whitespace-pre-wrap break-words rounded-xl border border-brand-border bg-brand-black p-4 font-mono text-xs text-brand-grey-light">
       {fullData}
@@ -315,6 +310,7 @@ function AdminLayout() {
   const resizeStartH = useRef<number>(208);
   const [selectedNotif, setSelectedNotif] = useState<NotifItem | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const notifButtonRef = useRef<HTMLButtonElement>(null);
 
   const { subscribe } = useLiveSocketContext();
 
@@ -325,7 +321,6 @@ function AdminLayout() {
     }
   }, [navigate]);
 
-  // Animasi keluar dulu, baru hapus dari DOM
   const dismissToast = (id: number) => {
     setLiveToasts((prev) => {
       if (!prev.some((t) => t.id === id && !t.leaving)) return prev;
@@ -374,7 +369,9 @@ function AdminLayout() {
     function handleClickOutside(e: MouseEvent) {
       if (
         notifRef.current &&
-        !notifRef.current.contains(e.target as Node)
+        !notifRef.current.contains(e.target as Node) &&
+        notifButtonRef.current &&
+        !notifButtonRef.current.contains(e.target as Node)
       ) {
         setShowNotif(false);
       }
@@ -392,7 +389,6 @@ function AdminLayout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedNotif]);
 
-  // drag resize up/down
   useEffect(() => {
     if (!isResizing) return;
     const onMove = (e: MouseEvent) => {
@@ -459,9 +455,10 @@ function AdminLayout() {
 
   return (
     <div className="app-admin flex min-h-screen w-full bg-brand-black font-sans text-brand-grey-light antialiased">
+      {/* Toast Notifications */}
       {liveToasts.length > 0 && (
         <div
-          className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2 sm:bottom-6 sm:right-6"
+          className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[min(92vw,380px)] flex-col gap-2 sm:bottom-6 sm:right-6"
           role="region"
           aria-label="Notifikasi"
         >
@@ -472,7 +469,7 @@ function AdminLayout() {
                 setLiveToasts([]);
                 setShowNotif(true);
               }}
-              className="live-toast-enter pointer-events-auto self-end rounded-full border border-brand-gold/30 bg-brand-surface-card/95 px-3 py-1.5 text-[11px] font-bold text-brand-gold shadow-xl backdrop-blur transition hover:border-brand-gold"
+              className="live-toast-enter pointer-events-auto self-end rounded-full border border-brand-gold/30 bg-brand-surface-card/95 px-3 py-1.5 text-[11px] font-bold text-brand-gold shadow-xl backdrop-blur transition hover:border-brand-gold hover:bg-brand-gold/10"
             >
               +{liveToasts.length - 3} lainnya — lihat semua
             </button>
@@ -483,81 +480,92 @@ function AdminLayout() {
               <div
                 key={t.id}
                 role="status"
-                className={`pointer-events-auto relative w-full overflow-hidden rounded-2xl border bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur ${t.leaving ? "live-toast-exit" : "live-toast-enter"} ${isError ? "border-rose-500/30" : "border-brand-gold/30"}`}
+                className={`pointer-events-auto relative w-full overflow-hidden rounded-2xl border bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur transition-all ${
+                  t.leaving ? "live-toast-exit" : "live-toast-enter"
+                } ${isError ? "border-rose-500/30" : "border-brand-gold/30"}`}
               >
                 <div className="flex w-full items-start gap-3">
-                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${isError ? "bg-rose-500 text-white" : "bg-brand-gold text-brand-black"}`}>
+                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                    isError ? "bg-rose-500 text-white" : "bg-brand-gold text-brand-black"
+                  }`}>
                     {isError ? "!" : "✓"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className={`truncate text-[11px] font-bold uppercase tracking-wide ${isError ? "text-rose-400" : "text-brand-gold"}`}>{t.type}</p>
+                    <p className={`truncate text-[11px] font-bold uppercase tracking-wide ${
+                      isError ? "text-rose-400" : "text-brand-gold"
+                    }`}>
+                      {t.type}
+                    </p>
                     <p className="line-clamp-2 text-sm font-medium text-white">{t.message}</p>
                   </div>
                   <button
                     type="button"
                     aria-label="Tutup notifikasi"
                     onClick={() => dismissToast(t.id)}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 hover:scale-110"
                   >
-                    ×
+                    <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
                   </button>
                 </div>
                 {!t.leaving && (
-                  <span className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${isError ? "bg-rose-500" : "bg-brand-gold"}`} aria-hidden="true" />
+                  <span className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${
+                    isError ? "bg-rose-500" : "bg-brand-gold"
+                  }`} aria-hidden="true" />
                 )}
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm lg:hidden"
           onClick={closeSidebar}
-        ></div>
+        />
       )}
 
+      {/* Sidebar */}
       <aside
-        className={`fixed bottom-0 left-0 top-0 z-50 flex w-64 transform flex-col border-r border-brand-border bg-brand-surface transition-all duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 ${
+        className={`fixed bottom-0 left-0 top-0 z-50 flex w-72 transform flex-col border-r border-brand-border bg-brand-surface transition-all duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${isCollapsed ? "lg:w-20" : ""}`}
       >
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className={`flex h-20 shrink-0 items-center justify-between border-b border-brand-border px-6 ${isCollapsed ? "lg:justify-center lg:px-0" : ""}`}>
+          {/* Sidebar Header */}
+          <div className={`flex h-20 shrink-0 items-center justify-between border-b border-brand-border px-6 ${
+            isCollapsed ? "lg:justify-center lg:px-0" : ""
+          }`}>
             <div className="flex items-center gap-3">
               <img
                 src="/rsv_logo.png"
-                alt="RSV"
+                alt="RSV Logo"
                 className="h-10 w-10 rounded-xl object-contain"
               />
-              <div>
-                <h1 className={`text-lg font-bold tracking-wide text-white ${isCollapsed ? "lg:hidden" : ""}`}>
+              <div className={isCollapsed ? "lg:hidden" : ""}>
+                <h1 className="text-lg font-bold tracking-wide text-white">
                   RSV<span className="text-brand-gold">.ADMIN</span>
                 </h1>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-brand-grey">
+                  Management System
+                </p>
               </div>
             </div>
             <button
               onClick={closeSidebar}
               className="text-brand-grey transition hover:text-white lg:hidden"
+              aria-label="Tutup sidebar"
             >
-              <svg
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <FontAwesomeIcon icon={faXmark} className="h-6 w-6" />
             </button>
           </div>
 
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
-            <p className={`mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-brand-grey ${isCollapsed ? "lg:hidden" : ""}`}>
+          {/* Navigation */}
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-brand-border">
+            <p className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
+              isCollapsed ? "lg:hidden" : ""
+            }`}>
               Menu Utama
             </p>
 
@@ -570,9 +578,9 @@ function AdminLayout() {
                 title={item.label}
                 className={({ isActive }) =>
                   [
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all",
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all duration-200",
                     isActive
-                      ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
+                      ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold shadow-sm"
                       : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
                     isCollapsed ? "lg:justify-center lg:px-0" : "",
                   ].join(" ")
@@ -587,12 +595,13 @@ function AdminLayout() {
               </NavLink>
             ))}
 
+            {/* Barang Produksi Section */}
             <div>
               <button
                 type="button"
                 onClick={() => setBarangProduksiOpen((o) => !o)}
                 title={BARANG_PRODUKSI.label}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all ${
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all duration-200 ${
                   barangProduksiOpen
                     ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                     : "text-brand-grey hover:bg-brand-surface-card hover:text-white"
@@ -631,7 +640,7 @@ function AdminLayout() {
                         title={child.label}
                         className={({ isActive }) =>
                           [
-                            "flex items-center gap-3 rounded-lg py-2 pr-3 text-sm font-medium transition-all",
+                            "flex items-center gap-3 rounded-lg py-2 pr-3 text-sm font-medium transition-all duration-200",
                             isActive
                               ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                               : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
@@ -652,7 +661,9 @@ function AdminLayout() {
               </div>
             </div>
 
-            <p className={`mb-2 px-3 pt-4 text-[11px] font-semibold uppercase tracking-wider text-brand-grey ${isCollapsed ? "lg:hidden" : ""}`}>
+            <p className={`mb-2 px-3 pt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
+              isCollapsed ? "lg:hidden" : ""
+            }`}>
               Manajemen
             </p>
 
@@ -665,7 +676,7 @@ function AdminLayout() {
                 title={item.label}
                 className={({ isActive }) =>
                   [
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all",
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all duration-200",
                     isActive
                       ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                       : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
@@ -684,8 +695,11 @@ function AdminLayout() {
           </nav>
         </div>
 
+        {/* Sidebar Footer - User Profile */}
         <div className="shrink-0 border-t border-brand-border p-4">
-          <div className={`flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2 ${isCollapsed ? "lg:flex-col lg:gap-2 lg:p-2" : ""}`}>
+          <div className={`flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2 transition-all ${
+            isCollapsed ? "lg:flex-col lg:gap-2 lg:p-2" : ""
+          }`}>
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-brand-gold bg-neutral-800 text-sm font-bold text-white">
@@ -707,13 +721,15 @@ function AdminLayout() {
               title="Keluar"
               className="rounded-lg p-1.5 text-brand-grey transition hover:bg-brand-surface hover:text-brand-gold"
             >
-              <FontAwesomeIcon icon={faRightFromBracket} className="h-5 w-5" />
+              <FontAwesomeIcon icon={faArrowRightFromBracket} className="h-5 w-5" />
             </button>
           </div>
         </div>
       </aside>
 
+      {/* Main Content */}
       <div className="flex min-w-0 flex-1 flex-col bg-brand-black">
+        {/* Header */}
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-brand-border bg-brand-surface/80 px-4 backdrop-blur-md sm:px-8">
           <div className="flex flex-1 items-center gap-4 max-w-xl">
             <button
@@ -721,19 +737,7 @@ function AdminLayout() {
               aria-label="Buka sidebar"
               className="rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:hidden"
             >
-              <svg
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
+              <FontAwesomeIcon icon={faBars} className="h-6 w-6" />
             </button>
             <button
               onClick={() => setIsCollapsed((v) => !v)}
@@ -741,7 +745,9 @@ function AdminLayout() {
               aria-label={isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
               className="hidden rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:block"
             >
-              <FontAwesomeIcon icon={faChevronLeft} className={`h-5 w-5 transition-transform duration-300 ${isCollapsed ? "rotate-180" : ""}`} />
+              <FontAwesomeIcon icon={faChevronLeft} className={`h-5 w-5 transition-transform duration-300 ${
+                isCollapsed ? "rotate-180" : ""
+              }`} />
             </button>
             <div className="hidden sm:block">
               <p className="text-[10px] font-bold uppercase tracking-widest text-brand-grey">
@@ -760,67 +766,79 @@ function AdminLayout() {
                 admin@rsvhelmet.com
               </span>
             </div>
-            <div className="relative" ref={notifRef}>
+            
+            {/* Notification Bell */}
+            <div className="relative">
               <button
+                ref={notifButtonRef}
                 type="button"
                 onClick={() => setShowNotif((v) => !v)}
                 className="relative rounded-full p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white"
+                aria-label="Notifikasi"
               >
                 <FontAwesomeIcon icon={faBell} className="h-6 w-6" />
                 {notifCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">
+                  <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-brand-black">
                     {notifCount > 9 ? "9+" : notifCount}
                   </span>
                 )}
               </button>
+              
+              {/* Notification Dropdown */}
               {showNotif && (
-                <div className="absolute right-0 top-full mt-2 flex w-80 flex-col overflow-hidden rounded-xl border border-brand-border bg-brand-surface-card shadow-xl">
-                  <div className="flex items-center justify-between border-b border-brand-border px-4 py-2">
-                    <span className="text-xs font-bold text-white">
+                <div 
+                  ref={notifRef}
+                  className="absolute right-0 top-full mt-2 flex w-80 flex-col overflow-hidden rounded-xl border border-brand-border bg-brand-surface-card shadow-2xl"
+                >
+                  <div className="flex items-center justify-between border-b border-brand-border px-4 py-3">
+                    <span className="text-sm font-bold text-white">
                       Notifikasi
                     </span>
                     {notifCount > 0 && (
                       <button
                         type="button"
                         onClick={clearNotif}
-                        className="text-[10px] text-brand-gold hover:text-brand-gold-light"
+                        className="text-[10px] font-semibold text-brand-gold transition hover:text-brand-gold-light"
                       >
-                        Bersihkan
+                        Bersihkan Semua
                       </button>
                     )}
                   </div>
                   <div className="overflow-y-auto" style={{ height: notifHeight }}>
                     {notifList.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-xs text-brand-grey">
-                        Tidak ada notifikasi
-                      </p>
+                      <div className="flex flex-col items-center justify-center px-4 py-8">
+                        <FontAwesomeIcon icon={faBell} className="h-8 w-8 text-brand-grey/30" />
+                        <p className="mt-2 text-xs text-brand-grey">
+                          Tidak ada notifikasi
+                        </p>
+                      </div>
                     ) : (
                       notifList.map((item, i) => {
                         const preview = summarizeNotif(item.fullData) || item.data;
                         return (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => setSelectedNotif(item)}
-                          className="flex w-full flex-col gap-1 border-b border-brand-border/50 px-4 py-2 text-left text-xs hover:bg-brand-surface/50 active:bg-brand-gold/10"
-                        >
-                          <div className="flex w-full items-center justify-between">
-                            <span className="truncate font-semibold text-brand-gold">
-                              {item.type}
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setSelectedNotif(item)}
+                            className="flex w-full flex-col gap-1 border-b border-brand-border/50 px-4 py-3 text-left text-xs transition hover:bg-brand-surface/50 active:bg-brand-gold/10"
+                          >
+                            <div className="flex w-full items-center justify-between">
+                              <span className="truncate font-semibold text-brand-gold">
+                                {item.type}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-brand-grey">
+                                {item.time}
+                              </span>
+                            </div>
+                            <span className="line-clamp-2 text-sm text-brand-grey-light">
+                              {item.message}
                             </span>
-                            <span className="shrink-0 text-brand-grey">
-                              {item.time}
-                            </span>
-                          </div>
-                          <span className="line-clamp-2 text-brand-grey-light">
-                            {item.message}
-                          </span>
-                          {preview && (
-                            <span className="truncate font-mono text-[10px] text-brand-grey">
-                              {preview}
-                            </span>
-                          )}
-                        </button>
+                            {preview && (
+                              <span className="truncate font-mono text-[10px] text-brand-grey">
+                                {preview}
+                              </span>
+                            )}
+                          </button>
                         );
                       })
                     )}
@@ -828,7 +846,9 @@ function AdminLayout() {
                   <div
                     onMouseDown={startResize}
                     onTouchStart={startResize}
-                    className={`flex h-6 cursor-ns-resize select-none items-center justify-center border-t border-brand-border bg-brand-surface hover:bg-brand-surface-card ${isResizing ? "bg-brand-gold/10" : ""}`}
+                    className={`flex h-6 cursor-ns-resize select-none items-center justify-center border-t border-brand-border bg-brand-surface transition ${
+                      isResizing ? "bg-brand-gold/10" : "hover:bg-brand-surface-card"
+                    }`}
                     title="Drag untuk ubah tinggi"
                   >
                     <span className="h-1 w-10 rounded-full bg-brand-border" />
@@ -836,19 +856,22 @@ function AdminLayout() {
                 </div>
               )}
             </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-gold bg-brand-gold/10 text-sm font-bold text-brand-gold">
+            
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-brand-gold bg-brand-gold/10 text-sm font-bold text-brand-gold">
               AD
             </div>
           </div>
         </header>
 
+        {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-8 sm:pt-8 lg:pb-8">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
         </main>
       </div>
-      {/* Bottom navigation khusus mobile admin */}
+
+      {/* Mobile Bottom Navigation */}
       <nav aria-label="Navigasi admin mobile" className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
         <div className="mx-3 mb-3 rounded-2xl border border-brand-border bg-brand-surface-card/95 shadow-2xl backdrop-blur-xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           <div className="flex items-center p-1">
@@ -872,10 +895,16 @@ function AdminLayout() {
                   >
                     {({ isActive }) => (
                       <>
-                        <span className="-mt-7 grid h-14 w-14 place-items-center rounded-full bg-brand-gold text-brand-black shadow-lg ring-4 ring-brand-surface-card transition active:scale-95">
+                        <span className={`-mt-7 grid h-14 w-14 place-items-center rounded-full ${
+                          isActive ? "bg-brand-gold text-brand-black ring-4 ring-brand-gold/30" : "bg-brand-gold/20 text-brand-gold ring-4 ring-brand-surface-card"
+                        } shadow-lg transition active:scale-95`}>
                           <FontAwesomeIcon icon={centerItem.icon} className="h-6 w-6" fixedWidth />
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-tight ${isActive ? "text-brand-gold" : "text-brand-grey"}`}>{centerItem.label}</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-tight ${
+                          isActive ? "text-brand-gold" : "text-brand-grey"
+                        }`}>
+                          {centerItem.label}
+                        </span>
                       </>
                     )}
                   </NavLink>
@@ -890,20 +919,50 @@ function AdminLayout() {
           </div>
         </div>
       </nav>
+
+      {/* Notification Detail Modal */}
       {selectedNotif && (
-        <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="presentation" onClick={() => setSelectedNotif(null)}>
-          <div className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <button type="button" onClick={() => setSelectedNotif(null)} className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-brand-border bg-brand-surface text-brand-grey hover:text-white">×</button>
-            <div className="border-b border-brand-border px-6 py-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-brand-gold">{selectedNotif.type}</p>
-              <p className="mt-1 text-sm font-semibold text-white">{selectedNotif.message}</p>
-              <p className="mt-1 text-xs text-brand-grey">{selectedNotif.time}</p>
+        <div 
+          className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" 
+          role="presentation" 
+          onClick={() => setSelectedNotif(null)}
+        >
+          <div 
+            className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl animate-in zoom-in-95 duration-200" 
+            role="dialog" 
+            aria-modal="true" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              type="button" 
+              onClick={() => setSelectedNotif(null)} 
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-brand-border bg-brand-surface text-brand-grey transition hover:bg-brand-gold/10 hover:text-white"
+              aria-label="Tutup"
+            >
+              <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+            </button>
+            <div className="border-b border-brand-border px-6 py-4 pr-12">
+              <p className="text-xs font-bold uppercase tracking-widest text-brand-gold">
+                {selectedNotif.type}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-white">
+                {selectedNotif.message}
+              </p>
+              <p className="mt-1 text-xs text-brand-grey">
+                {selectedNotif.time}
+              </p>
             </div>
             <div className="overflow-auto p-6">
               <NotifDetail fullData={selectedNotif.fullData} />
             </div>
             <div className="flex justify-end border-t border-brand-border bg-brand-surface/50 px-6 py-3">
-              <button type="button" onClick={() => setSelectedNotif(null)} className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black hover:bg-brand-gold-light">Tutup</button>
+              <button 
+                type="button" 
+                onClick={() => setSelectedNotif(null)} 
+                className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light hover:scale-105 active:scale-95"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>
