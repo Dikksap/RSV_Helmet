@@ -45,7 +45,7 @@ function MobileNav() {
 
   const NAV_ITEMS = [
     { to: "/", label: "Home", end: true, icon: icHome },
-    { to: "/cetak_barang", label: "Generate", end: false, icon: icGenerate },
+    { to: "/cetak-label", label: "Cetak Label", end: false, icon: icGenerate },
     { to: "/scan-qr", label: "Scan QR", end: false, icon: icQr },
     { to: "/print_manager", label: "Printer", end: false, icon: icPrinter },
   ];

@@ -10,7 +10,7 @@ import "./index.css";
 import App from "./App";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
 import AdminLayout from "./layouts/AdminLayout.tsx";
-import CetakBarang from "./pages/CetakBarang.tsx";
+import CetakLabel from "./pages/CetakLabel.tsx";
 import DaftarBarang from "./pages/DaftarBarang.tsx";
 import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
 import LandingPage from "./pages/LandingPage.tsx";
@@ -26,7 +26,7 @@ const routes = (
   <Routes>
     <Route element={<App />}>
       <Route path="/" element={<LandingPage />} />
-      <Route path="/cetak_barang" element={<CetakBarang />} />
+      <Route path="/cetak-label" element={<CetakLabel />} />
       <Route path="/live-view" element={<LiveView />} />
       <Route path="/print_manager" element={<PrintManager />} />
       <Route path="/scan-qr" element={<ScanQr />} />
