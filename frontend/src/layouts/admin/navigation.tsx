@@ -94,10 +94,10 @@ export function AdminMobileNavLink({ item }: { item: AdminMobileNavItem }) {
       end={item.end}
       className={({ isActive }) =>
         [
-          "flex min-w-[52px] flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 transition-all duration-200",
+          "flex min-w-[52px] flex-col items-center gap-1 rounded-lg px-1.5 py-2.5 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8]",
           isActive
-            ? "scale-105 bg-brand-gold/10 text-brand-gold"
-            : "text-brand-grey hover:bg-brand-surface hover:text-white",
+            ? "bg-[#1E3A5F]/5 text-[#1E3A5F]"
+            : "text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]",
         ].join(" ")
       }
     >

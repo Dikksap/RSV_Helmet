@@ -22,6 +22,14 @@ import { NotifDetail, summarizeNotif } from "./admin/notification";
 import type { NotifItem } from "./admin/notification";
 import logoUrl from "../assets/logo.png";
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  [
+    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8]",
+    isActive
+      ? "bg-[#1E3A5F]/5 text-[#1E3A5F]"
+      : "text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]",
+  ].join(" ");
+
 function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -222,7 +230,7 @@ function AdminLayout() {
   };
 
   return (
-    <div className="app-admin flex min-h-screen w-full bg-brand-black font-sans text-brand-grey-light antialiased">
+    <div className="app-admin flex min-h-screen w-full bg-[#F5F7FA] font-sans text-[#1F2937] antialiased">
       {/* Toast Notifications */}
       {liveToasts.length > 0 && (
         <div
@@ -237,7 +245,7 @@ function AdminLayout() {
                 setLiveToasts([]);
                 setShowNotif(true);
               }}
-              className="live-toast-enter pointer-events-auto self-end rounded-full border border-brand-gold/30 bg-brand-surface-card/95 px-3 py-1.5 text-[11px] font-bold text-brand-gold shadow-xl backdrop-blur transition hover:border-brand-gold hover:bg-brand-gold/10"
+              className="live-toast-enter pointer-events-auto self-end rounded-full border border-[#D1D5DB] bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-[#1E3A5F] shadow-xl backdrop-blur transition-colors duration-200 hover:border-[#00A8E8]"
             >
               +{liveToasts.length - 3} lainnya — lihat semua
             </button>
@@ -253,29 +261,28 @@ function AdminLayout() {
                 <div
                   key={t.id}
                   role="status"
-                  className={`pointer-events-auto relative w-full overflow-hidden rounded-2xl border bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur transition-all ${
+                  className={`pointer-events-auto relative w-full overflow-hidden rounded-xl border bg-white/95 px-4 py-3 text-sm shadow-2xl backdrop-blur transition-all duration-200 ${
                     t.leaving ? "live-toast-exit" : "live-toast-enter"
-                  } ${isError ? "border-rose-500/30" : "border-brand-gold/30"}`}
+                  } ${isError ? "border-[#EF4444]/30" : "border-slate-200"}`}
                 >
                   <div className="flex w-full items-start gap-3">
                     <span
-                      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                        isError
-                          ? "bg-rose-500 text-white"
-                          : "bg-brand-gold text-brand-black"
+                      aria-hidden="true"
+                      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold text-white ${
+                        isError ? "bg-[#EF4444]" : "bg-[#10B981]"
                       }`}
                     >
                       {isError ? "!" : "✓"}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p
-                        className={`truncate text-[11px] font-bold uppercase tracking-wide ${
-                          isError ? "text-rose-400" : "text-brand-gold"
+                        className={`truncate text-[11px] font-semibold uppercase tracking-wide ${
+                          isError ? "text-[#EF4444]" : "text-[#6B7280]"
                         }`}
                       >
                         {t.type}
                       </p>
-                      <p className="line-clamp-2 text-sm font-medium text-white">
+                      <p className="line-clamp-2 text-sm font-medium text-[#1F2937]">
                         {t.message}
                       </p>
                     </div>
@@ -283,7 +290,7 @@ function AdminLayout() {
                       type="button"
                       aria-label="Tutup notifikasi"
                       onClick={() => dismissToast(t.id)}
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 hover:scale-110"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#F5F7FA] text-[#6B7280] transition-colors duration-200 hover:bg-slate-200 hover:text-[#1F2937]"
                     >
                       <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
                     </button>
@@ -291,7 +298,7 @@ function AdminLayout() {
                   {!t.leaving && (
                     <span
                       className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${
-                        isError ? "bg-rose-500" : "bg-brand-gold"
+                        isError ? "bg-[#EF4444]" : "bg-[#10B981]"
                       }`}
                       aria-hidden="true"
                     />
@@ -299,27 +306,27 @@ function AdminLayout() {
                 </div>
               );
             })}
-      </div>
-    )}
+        </div>
+      )}
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
           onClick={closeSidebar}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed bottom-0 left-0 top-0 z-50 flex w-72 transform flex-col border-r border-brand-border bg-brand-surface transition-all duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 ${
+        className={`fixed bottom-0 left-0 top-0 z-50 flex w-72 transform flex-col border-r border-slate-200 bg-white transition-all duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${isCollapsed ? "lg:w-20" : ""}`}
       >
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Sidebar Header */}
           <div
-            className={`flex h-20 shrink-0 items-center justify-between border-b border-brand-border px-6 ${
+            className={`flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-6 md:h-[72px] ${
               isCollapsed ? "lg:justify-center lg:px-0" : ""
             }`}
           >
@@ -330,17 +337,17 @@ function AdminLayout() {
                 className="h-10 w-10 rounded-xl object-contain"
               />
               <div className={isCollapsed ? "lg:hidden" : ""}>
-                <h1 className="text-lg font-bold tracking-wide text-white">
-                  RSV<span className="text-brand-gold">.ADMIN</span>
+                <h1 className="text-lg font-bold tracking-wide text-[#1E3A5F]">
+                  RSV<span className="text-[#00A8E8]">.ADMIN</span>
                 </h1>
-                <p className="text-[10px] font-medium uppercase tracking-wider text-brand-grey">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
                   Management System
                 </p>
               </div>
             </div>
             <button
               onClick={closeSidebar}
-              className="text-brand-grey transition hover:text-white lg:hidden"
+              className="rounded-lg p-1 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1F2937] lg:hidden"
               aria-label="Tutup sidebar"
             >
               <FontAwesomeIcon icon={faXmark} className="h-6 w-6" />
@@ -348,9 +355,9 @@ function AdminLayout() {
           </div>
 
           {/* Navigation */}
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-brand-border">
+          <nav aria-label="Navigasi admin" className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
             <p
-              className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
+              className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-[#6B7280] ${
                 isCollapsed ? "lg:hidden" : ""
               }`}
             >
@@ -365,13 +372,7 @@ function AdminLayout() {
                 onClick={closeSidebar}
                 title={item.label}
                 className={({ isActive }) =>
-                  [
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all duration-200",
-                    isActive
-                      ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold shadow-sm"
-                      : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
-                    isCollapsed ? "lg:justify-center lg:px-0" : "",
-                  ].join(" ")
+                  [navLinkClass({ isActive }), isCollapsed ? "lg:justify-center lg:px-0" : ""].join(" ")
                 }
               >
                 <FontAwesomeIcon
@@ -391,10 +392,11 @@ function AdminLayout() {
                 type="button"
                 onClick={() => setBarangProduksiOpen((o) => !o)}
                 title={BARANG_PRODUKSI.label}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all duration-200 ${
+                aria-expanded={barangProduksiOpen}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8] ${
                   barangProduksiOpen
-                    ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
-                    : "text-brand-grey hover:bg-brand-surface-card hover:text-white"
+                    ? "bg-[#1E3A5F]/5 text-[#1E3A5F]"
+                    : "text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
                 } ${isCollapsed ? "lg:justify-center lg:px-0" : ""}`}
               >
                 <FontAwesomeIcon
@@ -409,13 +411,13 @@ function AdminLayout() {
                 </span>
                 <FontAwesomeIcon
                   icon={faChevronDown}
-                  className={`h-4 w-4 transition-transform duration-300 ${
+                  className={`h-4 w-4 transition-transform duration-200 ${
                     barangProduksiOpen ? "rotate-180" : ""
                   } ${isCollapsed ? "lg:hidden" : ""}`}
                 />
               </button>
               <div
-                className={`grid transition-all duration-300 ease-in-out ${
+                className={`grid transition-all duration-200 ease-in-out ${
                   barangProduksiOpen
                     ? "grid-rows-[1fr] opacity-100"
                     : "grid-rows-[0fr] opacity-0"
@@ -432,10 +434,8 @@ function AdminLayout() {
                         title={child.label}
                         className={({ isActive }) =>
                           [
-                            "flex items-center gap-3 rounded-lg py-2 pr-3 text-sm font-medium transition-all duration-200",
-                            isActive
-                              ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
-                              : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
+                            navLinkClass({ isActive }),
+                            "py-2 text-sm",
                             isCollapsed
                               ? "lg:justify-center lg:px-0 lg:pl-0"
                               : "pl-11",
@@ -458,7 +458,7 @@ function AdminLayout() {
             </div>
 
             <p
-              className={`mb-2 px-3 pt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
+              className={`mb-2 px-3 pt-4 text-[10px] font-semibold uppercase tracking-wider text-[#6B7280] ${
                 isCollapsed ? "lg:hidden" : ""
               }`}
             >
@@ -473,13 +473,7 @@ function AdminLayout() {
                 onClick={closeSidebar}
                 title={item.label}
                 className={({ isActive }) =>
-                  [
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition-all duration-200",
-                    isActive
-                      ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
-                      : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
-                    isCollapsed ? "lg:justify-center lg:px-0" : "",
-                  ].join(" ")
+                  [navLinkClass({ isActive }), isCollapsed ? "lg:justify-center lg:px-0" : ""].join(" ")
                 }
               >
                 <FontAwesomeIcon
@@ -496,26 +490,26 @@ function AdminLayout() {
         </div>
 
         {/* Sidebar Footer - User Profile */}
-        <div className="shrink-0 border-t border-brand-border p-4">
+        <div className="shrink-0 border-t border-slate-200 p-4">
           <div
-            className={`flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2 transition-all ${
+            className={`flex items-center justify-between rounded-xl border border-slate-200 bg-[#F5F7FA] p-2 transition-all duration-200 ${
               isCollapsed ? "lg:flex-col lg:gap-2 lg:p-2" : ""
             }`}
           >
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-brand-gold bg-neutral-800 text-sm font-bold text-white">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1E3A5F] text-sm font-bold text-white">
                   AD
                 </div>
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-brand-black bg-emerald-500"></span>
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#10B981]"></span>
               </div>
               <div
                 className={`overflow-hidden ${isCollapsed ? "lg:hidden" : ""}`}
               >
-                <h4 className="truncate text-sm font-semibold text-white">
+                <h4 className="truncate text-sm font-semibold text-[#1F2937]">
                   Admin RSV
                 </h4>
-                <p className="truncate text-xs text-brand-grey">
+                <p className="truncate text-xs text-[#6B7280]">
                   Super Administrator
                 </p>
               </div>
@@ -523,7 +517,8 @@ function AdminLayout() {
             <button
               onClick={handleLogout}
               title="Keluar"
-              className="rounded-lg p-1.5 text-brand-grey transition hover:bg-brand-surface hover:text-brand-gold"
+              aria-label="Keluar"
+              className="rounded-lg p-1.5 text-[#6B7280] transition-colors duration-200 hover:bg-white hover:text-[#EF4444] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
             >
               <FontAwesomeIcon
                 icon={faArrowRightFromBracket}
@@ -535,14 +530,14 @@ function AdminLayout() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex min-w-0 flex-1 flex-col bg-brand-black">
+      <div className="flex min-w-0 flex-1 flex-col bg-[#F5F7FA]">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-brand-border bg-brand-surface/80 px-4 backdrop-blur-md sm:px-8">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur md:h-[72px] md:px-12">
           <div className="flex flex-1 items-center gap-4 max-w-xl">
             <button
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Buka sidebar"
-              className="rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:hidden"
+              className="rounded-lg p-2 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1E3A5F] lg:hidden"
             >
               <FontAwesomeIcon icon={faBars} className="h-6 w-6" />
             </button>
@@ -552,20 +547,20 @@ function AdminLayout() {
               aria-label={
                 isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"
               }
-              className="hidden rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:block"
+              className="hidden rounded-lg p-2 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1E3A5F] lg:block"
             >
               <FontAwesomeIcon
                 icon={faChevronLeft}
-                className={`h-5 w-5 transition-transform duration-300 ${
+                className={`h-5 w-5 transition-transform duration-200 ${
                   isCollapsed ? "rotate-180" : ""
                 }`}
               />
             </button>
             <div className="hidden sm:block">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-grey">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#6B7280]">
                 Panel Administrasi
               </p>
-              <h2 className="text-xl font-bold leading-none tracking-tight text-white">
+              <h2 className="text-xl font-semibold leading-none tracking-tight text-[#1E3A5F]">
                 Management Area
               </h2>
             </div>
@@ -573,8 +568,8 @@ function AdminLayout() {
 
           <div className="flex items-center gap-3">
             <div className="hidden flex-col text-right sm:flex">
-              <span className="text-sm font-bold text-white">Admin RSV</span>
-              <span className="text-xs text-brand-grey">
+              <span className="text-sm font-semibold text-[#1F2937]">Admin RSV</span>
+              <span className="text-xs text-[#6B7280]">
                 admin@rsvhelmet.com
               </span>
             </div>
@@ -585,12 +580,13 @@ function AdminLayout() {
                 ref={notifButtonRef}
                 type="button"
                 onClick={() => setShowNotif((v) => !v)}
-                className="relative rounded-full p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white"
+                className="relative rounded-lg p-2 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1E3A5F] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
                 aria-label="Notifikasi"
+                aria-expanded={showNotif}
               >
                 <FontAwesomeIcon icon={faBell} className="h-6 w-6" />
                 {notifCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-brand-black">
+                  <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#EF4444] text-[10px] font-bold text-white ring-2 ring-white">
                     {notifCount > 9 ? "9+" : notifCount}
                   </span>
                 )}
@@ -600,17 +596,17 @@ function AdminLayout() {
               {showNotif && (
                 <div
                   ref={notifRef}
-                  className="absolute right-0 top-full mt-2 flex w-80 flex-col overflow-hidden rounded-xl border border-brand-border bg-brand-surface-card shadow-2xl"
+                  className="absolute right-0 top-full mt-2 flex w-80 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.10)]"
                 >
-                  <div className="flex items-center justify-between border-b border-brand-border px-4 py-3">
-                    <span className="text-sm font-bold text-white">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                    <span className="text-sm font-semibold text-[#1F2937]">
                       Notifikasi
                     </span>
                     {notifCount > 0 && (
                       <button
                         type="button"
                         onClick={clearNotif}
-                        className="text-[10px] font-semibold text-brand-gold transition hover:text-brand-gold-light"
+                        className="rounded text-[13px] font-medium text-[#0088C0] transition-colors duration-200 hover:text-[#00A8E8] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
                       >
                         Bersihkan Semua
                       </button>
@@ -624,9 +620,9 @@ function AdminLayout() {
                       <div className="flex flex-col items-center justify-center px-4 py-8">
                         <FontAwesomeIcon
                           icon={faBell}
-                          className="h-8 w-8 text-brand-grey/30"
+                          className="h-8 w-8 text-[#D1D5DB]"
                         />
-                        <p className="mt-2 text-xs text-brand-grey">
+                        <p className="mt-2 text-xs text-[#6B7280]">
                           Tidak ada notifikasi
                         </p>
                       </div>
@@ -639,21 +635,21 @@ function AdminLayout() {
                             key={i}
                             type="button"
                             onClick={() => setSelectedNotif(item)}
-                            className="flex w-full flex-col gap-1 border-b border-brand-border/50 px-4 py-3 text-left text-xs transition hover:bg-brand-surface/50 active:bg-brand-gold/10"
+                            className="flex w-full flex-col gap-1 border-b border-slate-100 px-4 py-3 text-left text-xs transition-colors duration-200 hover:bg-[#F5F7FA]"
                           >
                             <div className="flex w-full items-center justify-between">
-                              <span className="truncate font-semibold text-brand-gold">
+                              <span className="truncate font-semibold text-[#1E3A5F]">
                                 {item.type}
                               </span>
-                              <span className="shrink-0 text-[10px] text-brand-grey">
+                              <span className="shrink-0 text-[10px] text-[#6B7280]">
                                 {item.time}
                               </span>
                             </div>
-                            <span className="line-clamp-2 text-sm text-brand-grey-light">
+                            <span className="line-clamp-2 text-sm text-[#1F2937]">
                               {item.message}
                             </span>
                             {preview && (
-                              <span className="truncate font-mono text-[10px] text-brand-grey">
+                              <span className="truncate font-mono text-[10px] text-[#6B7280]">
                                 {preview}
                               </span>
                             )}
@@ -665,27 +661,27 @@ function AdminLayout() {
                   <div
                     onMouseDown={startResize}
                     onTouchStart={startResize}
-                    className={`flex h-6 cursor-ns-resize select-none items-center justify-center border-t border-brand-border bg-brand-surface transition ${
+                    className={`flex h-6 cursor-ns-resize select-none items-center justify-center border-t border-slate-200 bg-white transition-colors duration-200 ${
                       isResizing
-                        ? "bg-brand-gold/10"
-                        : "hover:bg-brand-surface-card"
+                        ? "bg-[#00A8E8]/10"
+                        : "hover:bg-[#F5F7FA]"
                     }`}
                     title="Drag untuk ubah tinggi"
                   >
-                    <span className="h-1 w-10 rounded-full bg-brand-border" />
+                    <span className="h-1 w-10 rounded-full bg-slate-300" />
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-brand-gold bg-brand-gold/10 text-sm font-bold text-brand-gold">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1E3A5F] text-sm font-bold text-white">
               AD
             </div>
           </div>
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-8 sm:pt-8 lg:pb-8">
+        <main className="flex-1 overflow-y-auto px-6 pb-24 pt-6 md:px-12 md:pt-8 lg:pb-8">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
@@ -698,7 +694,7 @@ function AdminLayout() {
         className="fixed bottom-0 left-0 right-0 z-50 lg:hidden"
       >
         <div
-          className="mx-3 mb-3 rounded-2xl border border-brand-border bg-brand-surface-card/95 shadow-2xl backdrop-blur-xl"
+          className="mx-3 mb-3 rounded-xl border border-slate-200 bg-white/95 shadow-[0_8px_30px_rgba(0,0,0,0.10)] backdrop-blur-xl"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div className="flex items-center p-1">
@@ -725,9 +721,9 @@ function AdminLayout() {
                         <span
                           className={`-mt-7 grid h-14 w-14 place-items-center rounded-full ${
                             isActive
-                              ? "bg-brand-gold text-brand-black ring-4 ring-brand-gold/30"
-                              : "bg-brand-gold/20 text-brand-gold ring-4 ring-brand-surface-card"
-                          } shadow-lg transition active:scale-95`}
+                              ? "bg-[#00A8E8] text-white ring-4 ring-[#00A8E8]/30"
+                              : "bg-[#00A8E8]/15 text-[#0088C0] ring-4 ring-white"
+                          } shadow-lg transition-transform duration-200 active:scale-95`}
                         >
                           <FontAwesomeIcon
                             icon={centerItem.icon}
@@ -736,8 +732,8 @@ function AdminLayout() {
                           />
                         </span>
                         <span
-                          className={`text-[10px] font-bold uppercase tracking-tight ${
-                            isActive ? "text-brand-gold" : "text-brand-grey"
+                          className={`text-[10px] font-semibold uppercase tracking-tight ${
+                            isActive ? "text-[#1E3A5F]" : "text-[#6B7280]"
                           }`}
                         >
                           {centerItem.label}
@@ -760,12 +756,12 @@ function AdminLayout() {
       {/* Notification Detail Modal */}
       {selectedNotif && (
         <div
-          className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[70] grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
           role="presentation"
           onClick={() => setSelectedNotif(null)}
         >
           <div
-            className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl animate-in zoom-in-95 duration-200"
+            className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
@@ -773,30 +769,30 @@ function AdminLayout() {
             <button
               type="button"
               onClick={() => setSelectedNotif(null)}
-              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-brand-border bg-brand-surface text-brand-grey transition hover:bg-brand-gold/10 hover:text-white"
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1F2937]"
               aria-label="Tutup"
             >
               <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
             </button>
-            <div className="border-b border-brand-border px-6 py-4 pr-12">
-              <p className="text-xs font-bold uppercase tracking-widest text-brand-gold">
+            <div className="border-b border-slate-200 px-6 py-4 pr-12">
+              <p className="text-xs font-semibold uppercase tracking-widest text-[#1E3A5F]">
                 {selectedNotif.type}
               </p>
-              <p className="mt-1 text-sm font-semibold text-white">
+              <p className="mt-1 text-sm font-semibold text-[#1F2937]">
                 {selectedNotif.message}
               </p>
-              <p className="mt-1 text-xs text-brand-grey">
+              <p className="mt-1 text-xs text-[#6B7280]">
                 {selectedNotif.time}
               </p>
             </div>
             <div className="overflow-auto p-6">
               <NotifDetail fullData={selectedNotif.fullData} />
             </div>
-            <div className="flex justify-end border-t border-brand-border bg-brand-surface/50 px-6 py-3">
+            <div className="flex justify-end border-t border-slate-200 bg-[#F5F7FA] px-6 py-3">
               <button
                 type="button"
                 onClick={() => setSelectedNotif(null)}
-                className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light hover:scale-105 active:scale-95"
+                className="rounded-lg bg-[#00A8E8] px-4 py-2 text-[15px] font-medium text-white transition-colors duration-200 hover:bg-[#0088C0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
               >
                 Tutup
               </button>

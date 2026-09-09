@@ -80,10 +80,10 @@ function DetailRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-brand-border/50 py-2 last:border-0">
-      <span className="shrink-0 text-xs text-brand-grey">{label}</span>
+    <div className="flex items-start justify-between gap-4 border-b border-slate-200 py-2 last:border-0">
+      <span className="shrink-0 text-xs text-[#6B7280]">{label}</span>
       <span
-        className={`text-right text-xs font-semibold text-white ${mono ? "break-all font-mono" : ""}`}
+        className={`text-right text-xs font-semibold text-[#1F2937] ${mono ? "break-all font-mono" : ""}`}
       >
         {value}
       </span>
@@ -94,7 +94,7 @@ function DetailRow({
 export function NotifDetail({ fullData }: { fullData: string }) {
   const data = tryParseJson(fullData);
   if (!isRecord(data)) {
-    return <p className="text-sm text-brand-grey">Tidak ada data tambahan.</p>;
+    return <p className="text-sm text-[#6B7280]">Tidak ada data tambahan.</p>;
   }
 
   const kodeBarang = str(data.kodeBarang);
@@ -109,7 +109,7 @@ export function NotifDetail({ fullData }: { fullData: string }) {
     const varian =
       parts.length > 0 ? parts.join(" / ") : (str(data.kodeVariant) ?? "-");
     return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+      <div className="rounded-xl border border-slate-200 bg-[#F5F7FA] px-4 py-2">
         <DetailRow label="Kode Barang" value={kodeBarang} mono />
         <DetailRow label="Status" value={str(data.status) ?? "-"} />
         <DetailRow label="Varian" value={varian} />
@@ -136,7 +136,7 @@ export function NotifDetail({ fullData }: { fullData: string }) {
       .filter((value): value is string => value !== null)
       .slice(0, 3);
     return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+      <div className="rounded-xl border border-slate-200 bg-[#F5F7FA] px-4 py-2">
         <DetailRow label="Total Dibuat" value={String(data.totalDibuat)} />
         {batches.map((batch, index) => (
           <DetailRow
@@ -165,7 +165,7 @@ export function NotifDetail({ fullData }: { fullData: string }) {
       .filter((value): value is string => value !== null)
       .join(" / ");
     return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+      <div className="rounded-xl border border-slate-200 bg-[#F5F7FA] px-4 py-2">
         <DetailRow
           label="Kode Variant"
           value={
@@ -184,7 +184,7 @@ export function NotifDetail({ fullData }: { fullData: string }) {
 
   if (str(data.nama) && str(data.prefix)) {
     return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+      <div className="rounded-xl border border-slate-200 bg-[#F5F7FA] px-4 py-2">
         <DetailRow label="Nama" value={str(data.nama) ?? "-"} />
         <DetailRow label="Prefix" value={str(data.prefix) ?? "-"} mono />
         {typeof data.id === "number" && (
@@ -196,14 +196,14 @@ export function NotifDetail({ fullData }: { fullData: string }) {
 
   if (typeof data.id === "number" && Object.keys(data).length === 1) {
     return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
+      <div className="rounded-xl border border-slate-200 bg-[#F5F7FA] px-4 py-2">
         <DetailRow label="ID" value={String(data.id)} />
       </div>
     );
   }
 
   return (
-    <pre className="whitespace-pre-wrap break-words rounded-xl border border-brand-border bg-brand-black p-4 font-mono text-xs text-brand-grey-light">
+    <pre className="whitespace-pre-wrap break-words rounded-xl border border-slate-200 bg-[#F5F7FA] p-4 font-mono text-xs text-[#1F2937]">
       {fullData}
     </pre>
   );
@@ -212,8 +212,8 @@ export function NotifDetail({ fullData }: { fullData: string }) {
 export function EmptyNotifications() {
   return (
     <div className="flex flex-col items-center justify-center px-4 py-8">
-      <FontAwesomeIcon icon={faBell} className="h-8 w-8 text-brand-grey/30" />
-      <p className="mt-2 text-xs text-brand-grey">Tidak ada notifikasi</p>
+      <FontAwesomeIcon icon={faBell} className="h-8 w-8 text-[#D1D5DB]" />
+      <p className="mt-2 text-xs text-[#6B7280]">Tidak ada notifikasi</p>
     </div>
   );
 }
