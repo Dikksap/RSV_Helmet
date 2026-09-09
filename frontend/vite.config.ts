@@ -17,6 +17,18 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: "dist/app",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('xlsx')) {
+            return 'xlsx';
+          }
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        }
+      }
+    }
   },
   optimizeDeps: {
     include: ["xlsx"],
