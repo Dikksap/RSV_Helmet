@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
@@ -54,9 +54,9 @@ const isElectronPackaged = window.location.protocol === "file:";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {isElectronPackaged ? (
-      <HashRouter>{routes}</HashRouter>
+      <BrowserRouter>{routes}</BrowserRouter>
     ) : (
-      <HashRouter>{routes}</HashRouter>
+      <BrowserRouter>{routes}</BrowserRouter>
     )}
   </StrictMode>,
 );

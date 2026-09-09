@@ -2,293 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faBoxesStacked,
-  faChartPie,
-  faChevronDown,
   faChevronLeft,
-  faGaugeHigh,
-  faGear,
-  faTags,
+  faChevronDown,
   faBell,
-  faDatabase,
-  faHouse,
   faBars,
   faXmark,
   faArrowRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
 import { clearAuth, getToken, isAdmin, logout } from "../api/auth";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
-
-type NotifItem = {
-  type: string;
-  message: string;
-  data: string;
-  fullData: string;
-  time: string;
-};
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-
-function str(v: unknown): string | null {
-  return typeof v === "string" && v.length > 0 ? v : null;
-}
-
-function nestedName(v: unknown): string | null {
-  return isRecord(v) ? str(v.nama) : null;
-}
-
-function tryParseJson(raw: string): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function formatTanggal(iso: unknown): string | null {
-  if (typeof iso !== "string" || !iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function batchLabel(batch: unknown): string | null {
-  if (!isRecord(batch)) return null;
-  if (typeof batch.nomorBatch === "number")
-    return `BC${String(batch.nomorBatch).padStart(3, "0")}`;
-  return str(batch.nomorBatch) ?? str(batch.kodeBatch);
-}
-
-function summarizeNotif(fullData: string): string {
-  const data = tryParseJson(fullData);
-  if (!isRecord(data)) return "";
-  const kode = str(data.kodeBarang);
-  if (kode) {
-    const status = str(data.status);
-    return status ? `${kode} • ${status}` : kode;
-  }
-  if (typeof data.totalDibuat === "number" && Array.isArray(data.batches)) {
-    return `${data.totalDibuat} barang • ${data.batches.length} batch`;
-  }
-  const kv = str(data.kodeVariant);
-  if (kv) return kv;
-  const nama = str(data.nama);
-  if (nama) return nama;
-  if (typeof data.id === "number") return `ID ${data.id}`;
-  return "";
-}
-
-function DetailRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-brand-border/50 py-2 last:border-0">
-      <span className="shrink-0 text-xs text-brand-grey">{label}</span>
-      <span
-        className={`text-right text-xs font-semibold text-white ${mono ? "break-all font-mono" : ""}`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function NotifDetail({ fullData }: { fullData: string }) {
-  const data = tryParseJson(fullData);
-  if (!isRecord(data)) {
-    return <p className="text-sm text-brand-grey">Tidak ada data tambahan.</p>;
-  }
-
-  const kodeBarang = str(data.kodeBarang);
-  if (kodeBarang) {
-    const v = isRecord(data.variant) ? data.variant : null;
-    const parts = [
-      v && isRecord(v.product) ? str(v.product.nama) : null,
-      v ? nestedName(v.style) : null,
-      v ? nestedName(v.color) : null,
-      v ? nestedName(v.size) : null,
-    ].filter((x): x is string => x !== null);
-    const varian =
-      parts.length > 0 ? parts.join(" / ") : (str(data.kodeVariant) ?? "-");
-    return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
-        <DetailRow label="Kode Barang" value={kodeBarang} mono />
-        <DetailRow label="Status" value={str(data.status) ?? "-"} />
-        <DetailRow label="Varian" value={varian} />
-        <DetailRow label="Batch" value={batchLabel(data.batch) ?? "No Batch"} mono />
-        <DetailRow label="Tanggal" value={formatTanggal(data.tanggal) ?? "-"} />
-        <DetailRow
-          label="Diperbarui"
-          value={formatTanggal(data.updatedAt) ?? "-"}
-        />
-      </div>
-    );
-  }
-
-  if (typeof data.totalDibuat === "number" && Array.isArray(data.batches)) {
-    const batches = (data.batches as unknown[]).filter(isRecord);
-    const contoh = batches
-      .flatMap((b) => (Array.isArray(b.barang) ? b.barang : []))
-      .filter(isRecord)
-      .map((b) => str(b.kodeBarang))
-      .filter((x): x is string => x !== null)
-      .slice(0, 3);
-    return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
-        <DetailRow label="Total Dibuat" value={String(data.totalDibuat)} />
-        {batches.map((b, i) => (
-          <DetailRow
-            key={i}
-            label={`Batch ${str(b.kodeBatch) ?? `#${i + 1}`}`}
-            value={`${typeof b.jumlah === "number" ? b.jumlah : "?"} barang`}
-          />
-        ))}
-        {contoh.length > 0 && (
-          <DetailRow label="Contoh Kode" value={contoh.join(", ")} mono />
-        )}
-      </div>
-    );
-  }
-
-  const kodeVariant = str(data.kodeVariant);
-  if (
-    kodeVariant ||
-    (typeof data.styleId === "number" && typeof data.colorId === "number")
-  ) {
-    const varian = [nestedName(data.style), nestedName(data.color), nestedName(data.size)]
-      .filter((x): x is string => x !== null)
-      .join(" / ");
-    return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
-        <DetailRow
-          label="Kode Variant"
-          value={kodeVariant ?? `Variant #${typeof data.id === "number" ? data.id : "-"}`}
-          mono
-        />
-        {varian && <DetailRow label="Varian" value={varian} />}
-        {typeof data.id === "number" && (
-          <DetailRow label="ID" value={String(data.id)} />
-        )}
-      </div>
-    );
-  }
-
-  if (str(data.nama) && str(data.prefix)) {
-    return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
-        <DetailRow label="Nama" value={str(data.nama) ?? "-"} />
-        <DetailRow label="Prefix" value={str(data.prefix) ?? "-"} mono />
-        {typeof data.id === "number" && (
-          <DetailRow label="ID" value={String(data.id)} />
-        )}
-      </div>
-    );
-  }
-
-  if (typeof data.id === "number" && Object.keys(data).length === 1) {
-    return (
-      <div className="rounded-xl border border-brand-border bg-brand-black px-4 py-2">
-        <DetailRow label="ID" value={String(data.id)} />
-      </div>
-    );
-  }
-
-  return (
-    <pre className="whitespace-pre-wrap break-words rounded-xl border border-brand-border bg-brand-black p-4 font-mono text-xs text-brand-grey-light">
-      {fullData}
-    </pre>
-  );
-}
-
-const NAV_MAIN = [
-  {
-    to: "/admin/dashboard",
-    label: "Dasbor Utama",
-    icon: faGaugeHigh,
-    end: true,
-  }
-];
-
-const BARANG_PRODUKSI = {
-  label: "Barang Produksi",
-  icon: faBoxesStacked,
-  children: [
-    {
-      to: "/admin/barang",
-      label: "Daftar Barang",
-      icon: faBoxesStacked,
-      end: true,
-    },
-    {
-      to: "/admin/barang/statistik",
-      label: "Statistik Barang",
-      icon: faChartPie,
-      end: false,
-    },
-    {
-     to: "/admin/variant-produk",
-     label: "Variant Produk",
-     icon: faTags,
-     end: false,
-   },
-    {
-      to: "/admin/master-data",
-      label: "Master Data",
-      icon: faDatabase,
-      end: false,
-    }
-  ],
-};
-
-const NAV_MANAGEMENT = [
-  { to: "/", label: "Halaman Utama", icon: faGear, end: false },
-];
-
-const ADMIN_MOBILE_NAV = [
-  { to: "/", label: "Home", icon: faHouse, end: true, center: false },
-  { to: "/admin/barang", label: "Barang", icon: faBoxesStacked, end: true, center: false },
-  { to: "/admin/dashboard", label: "Dasbor", icon: faGaugeHigh, end: true, center: true },
-  { to: "/admin/barang/statistik", label: "Statistik", icon: faChartPie, end: false, center: false },
-  { to: "/admin/variant-produk", label: "Varian", icon: faTags, end: false, center: false },
-];
-
-type AdminMobileNavItem = (typeof ADMIN_MOBILE_NAV)[number];
-
-function AdminMobileNavLink({ item }: { item: AdminMobileNavItem }) {
-  return (
-    <NavLink
-      key={item.to}
-      to={item.to}
-      end={item.end}
-      className={({ isActive }) =>
-        [
-          "flex min-w-[52px] flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 transition-all duration-200",
-          isActive
-            ? "scale-105 bg-brand-gold/10 text-brand-gold"
-            : "text-brand-grey hover:bg-brand-surface hover:text-white",
-        ].join(" ")
-      }
-    >
-      <FontAwesomeIcon icon={item.icon} className="h-5 w-5" fixedWidth />
-      <span className="text-[10px] font-bold uppercase tracking-tight">{item.label}</span>
-    </NavLink>
-  );
-}
+import {
+  NAV_MAIN,
+  BARANG_PRODUKSI,
+  NAV_MANAGEMENT,
+  ADMIN_MOBILE_NAV,
+  AdminMobileNavLink,
+} from "./admin/navigation";
+import { NotifDetail, summarizeNotif } from "./admin/notification";
+import type { NotifItem } from "./admin/notification";
+import logoUrl from "../assets/logo.png";
 
 function AdminLayout() {
   const navigate = useNavigate();
@@ -303,7 +35,9 @@ function AdminLayout() {
   const [notifCount, setNotifCount] = useState(0);
   const [notifList, setNotifList] = useState<NotifItem[]>([]);
   const [showNotif, setShowNotif] = useState(false);
-  const [liveToasts, setLiveToasts] = useState<{ id: number; type: string; message: string; leaving?: boolean }[]>([]);
+  const [liveToasts, setLiveToasts] = useState<
+    { id: number; type: string; message: string; leaving?: boolean }[]
+  >([]);
   const [notifHeight, setNotifHeight] = useState(208);
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef<number>(0);
@@ -326,7 +60,10 @@ function AdminLayout() {
       if (!prev.some((t) => t.id === id && !t.leaving)) return prev;
       return prev.map((t) => (t.id === id ? { ...t, leaving: true } : t));
     });
-    window.setTimeout(() => setLiveToasts((prev) => prev.filter((t) => t.id !== id)), 240);
+    window.setTimeout(
+      () => setLiveToasts((prev) => prev.filter((t) => t.id !== id)),
+      240,
+    );
   };
 
   useEffect(() => {
@@ -337,13 +74,20 @@ function AdminLayout() {
       window.setTimeout(() => dismissToast(id), 4000);
     };
     const unsub = subscribe((payload) => {
-      const full = payload.data !== null && payload.data !== undefined ? JSON.stringify(payload.data, null, 2) : "";
+      const full =
+        payload.data !== null && payload.data !== undefined
+          ? JSON.stringify(payload.data, null, 2)
+          : "";
       const notif = {
         type: payload.type,
         message: payload.message,
         data: summarizeNotif(full),
         fullData: full,
-        time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        time: new Date().toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
       };
       setNotifCount((prev) => prev + 1);
       setNotifList((prev) => [notif, ...prev.slice(0, 19)]);
@@ -356,12 +100,31 @@ function AdminLayout() {
       if (!message) return;
       pushToast(type, message);
       setNotifCount((prev) => prev + 1);
-      setNotifList((prev) => [{ type, message, data: "", fullData: "", time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }, ...prev.slice(0, 19)]);
+      setNotifList((prev) => [
+        {
+          type,
+          message,
+          data: "",
+          fullData: "",
+          time: new Date().toLocaleTimeString("id-ID", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+        },
+        ...prev.slice(0, 19),
+      ]);
     };
-    window.addEventListener("app:toast" as unknown as string, onAppToast as EventListener);
+    window.addEventListener(
+      "app:toast" as unknown as string,
+      onAppToast as EventListener,
+    );
     return () => {
       unsub();
-      window.removeEventListener("app:toast" as unknown as string, onAppToast as EventListener);
+      window.removeEventListener(
+        "app:toast" as unknown as string,
+        onAppToast as EventListener,
+      );
     };
   }, [subscribe]);
 
@@ -416,7 +179,8 @@ function AdminLayout() {
   }, [isResizing]);
 
   const startResize = (e: React.MouseEvent | React.TouchEvent) => {
-    const y = "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const y =
+      "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
     resizeStartY.current = y;
     resizeStartH.current = notifHeight;
     setIsResizing(true);
@@ -451,7 +215,11 @@ function AdminLayout() {
     navigate("/login", { replace: true });
   };
 
-  const closeSidebar = () => setIsSidebarOpen(false);
+  const closeSidebar = () => {
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  };
 
   return (
     <div className="app-admin flex min-h-screen w-full bg-brand-black font-sans text-brand-grey-light antialiased">
@@ -474,49 +242,65 @@ function AdminLayout() {
               +{liveToasts.length - 3} lainnya — lihat semua
             </button>
           )}
-          {[...liveToasts].slice(-3).reverse().map((t) => {
-            const isError = /error|gagal|hapus|deleted|bad|retur/i.test(`${t.type} ${t.message}`);
-            return (
-              <div
-                key={t.id}
-                role="status"
-                className={`pointer-events-auto relative w-full overflow-hidden rounded-2xl border bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur transition-all ${
-                  t.leaving ? "live-toast-exit" : "live-toast-enter"
-                } ${isError ? "border-rose-500/30" : "border-brand-gold/30"}`}
-              >
-                <div className="flex w-full items-start gap-3">
-                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                    isError ? "bg-rose-500 text-white" : "bg-brand-gold text-brand-black"
-                  }`}>
-                    {isError ? "!" : "✓"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate text-[11px] font-bold uppercase tracking-wide ${
-                      isError ? "text-rose-400" : "text-brand-gold"
-                    }`}>
-                      {t.type}
-                    </p>
-                    <p className="line-clamp-2 text-sm font-medium text-white">{t.message}</p>
+          {[...liveToasts]
+            .slice(-3)
+            .reverse()
+            .map((t) => {
+              const isError = /error|gagal|hapus|deleted|bad|retur/i.test(
+                `${t.type} ${t.message}`,
+              );
+              return (
+                <div
+                  key={t.id}
+                  role="status"
+                  className={`pointer-events-auto relative w-full overflow-hidden rounded-2xl border bg-brand-surface-card/95 px-4 py-3 text-sm shadow-2xl backdrop-blur transition-all ${
+                    t.leaving ? "live-toast-exit" : "live-toast-enter"
+                  } ${isError ? "border-rose-500/30" : "border-brand-gold/30"}`}
+                >
+                  <div className="flex w-full items-start gap-3">
+                    <span
+                      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                        isError
+                          ? "bg-rose-500 text-white"
+                          : "bg-brand-gold text-brand-black"
+                      }`}
+                    >
+                      {isError ? "!" : "✓"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`truncate text-[11px] font-bold uppercase tracking-wide ${
+                          isError ? "text-rose-400" : "text-brand-gold"
+                        }`}
+                      >
+                        {t.type}
+                      </p>
+                      <p className="line-clamp-2 text-sm font-medium text-white">
+                        {t.message}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Tutup notifikasi"
+                      onClick={() => dismissToast(t.id)}
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 hover:scale-110"
+                    >
+                      <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    aria-label="Tutup notifikasi"
-                    onClick={() => dismissToast(t.id)}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 hover:scale-110"
-                  >
-                    <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
-                  </button>
+                  {!t.leaving && (
+                    <span
+                      className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${
+                        isError ? "bg-rose-500" : "bg-brand-gold"
+                      }`}
+                      aria-hidden="true"
+                    />
+                  )}
                 </div>
-                {!t.leaving && (
-                  <span className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${
-                    isError ? "bg-rose-500" : "bg-brand-gold"
-                  }`} aria-hidden="true" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+      </div>
+    )}
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
@@ -534,12 +318,14 @@ function AdminLayout() {
       >
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Sidebar Header */}
-          <div className={`flex h-20 shrink-0 items-center justify-between border-b border-brand-border px-6 ${
-            isCollapsed ? "lg:justify-center lg:px-0" : ""
-          }`}>
+          <div
+            className={`flex h-20 shrink-0 items-center justify-between border-b border-brand-border px-6 ${
+              isCollapsed ? "lg:justify-center lg:px-0" : ""
+            }`}
+          >
             <div className="flex items-center gap-3">
               <img
-                src="/rsv_logo.png"
+                src={logoUrl}
                 alt="RSV Logo"
                 className="h-10 w-10 rounded-xl object-contain"
               />
@@ -563,9 +349,11 @@ function AdminLayout() {
 
           {/* Navigation */}
           <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-brand-border">
-            <p className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
-              isCollapsed ? "lg:hidden" : ""
-            }`}>
+            <p
+              className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
+                isCollapsed ? "lg:hidden" : ""
+              }`}
+            >
               Menu Utama
             </p>
 
@@ -591,7 +379,9 @@ function AdminLayout() {
                   className="h-5 w-5 shrink-0"
                   fixedWidth
                 />
-                <span className={isCollapsed ? "lg:hidden" : ""}>{item.label}</span>
+                <span className={isCollapsed ? "lg:hidden" : ""}>
+                  {item.label}
+                </span>
               </NavLink>
             ))}
 
@@ -612,7 +402,9 @@ function AdminLayout() {
                   className="h-5 w-5 shrink-0"
                   fixedWidth
                 />
-                <span className={`flex-1 text-left ${isCollapsed ? "lg:hidden" : ""}`}>
+                <span
+                  className={`flex-1 text-left ${isCollapsed ? "lg:hidden" : ""}`}
+                >
                   {BARANG_PRODUKSI.label}
                 </span>
                 <FontAwesomeIcon
@@ -644,7 +436,9 @@ function AdminLayout() {
                             isActive
                               ? "border border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
                               : "text-brand-grey hover:bg-brand-surface-card hover:text-white",
-                            isCollapsed ? "lg:justify-center lg:px-0 lg:pl-0" : "pl-11",
+                            isCollapsed
+                              ? "lg:justify-center lg:px-0 lg:pl-0"
+                              : "pl-11",
                           ].join(" ")
                         }
                       >
@@ -653,7 +447,9 @@ function AdminLayout() {
                           className="h-4 w-4 shrink-0"
                           fixedWidth
                         />
-                        <span className={isCollapsed ? "lg:hidden" : ""}>{child.label}</span>
+                        <span className={isCollapsed ? "lg:hidden" : ""}>
+                          {child.label}
+                        </span>
                       </NavLink>
                     ))}
                   </div>
@@ -661,9 +457,11 @@ function AdminLayout() {
               </div>
             </div>
 
-            <p className={`mb-2 px-3 pt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
-              isCollapsed ? "lg:hidden" : ""
-            }`}>
+            <p
+              className={`mb-2 px-3 pt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-grey ${
+                isCollapsed ? "lg:hidden" : ""
+              }`}
+            >
               Manajemen
             </p>
 
@@ -689,7 +487,9 @@ function AdminLayout() {
                   className="h-5 w-5 shrink-0"
                   fixedWidth
                 />
-                <span className={isCollapsed ? "lg:hidden" : ""}>{item.label}</span>
+                <span className={isCollapsed ? "lg:hidden" : ""}>
+                  {item.label}
+                </span>
               </NavLink>
             ))}
           </nav>
@@ -697,9 +497,11 @@ function AdminLayout() {
 
         {/* Sidebar Footer - User Profile */}
         <div className="shrink-0 border-t border-brand-border p-4">
-          <div className={`flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2 transition-all ${
-            isCollapsed ? "lg:flex-col lg:gap-2 lg:p-2" : ""
-          }`}>
+          <div
+            className={`flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface-card p-2 transition-all ${
+              isCollapsed ? "lg:flex-col lg:gap-2 lg:p-2" : ""
+            }`}
+          >
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-brand-gold bg-neutral-800 text-sm font-bold text-white">
@@ -707,7 +509,9 @@ function AdminLayout() {
                 </div>
                 <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-brand-black bg-emerald-500"></span>
               </div>
-              <div className={`overflow-hidden ${isCollapsed ? "lg:hidden" : ""}`}>
+              <div
+                className={`overflow-hidden ${isCollapsed ? "lg:hidden" : ""}`}
+              >
                 <h4 className="truncate text-sm font-semibold text-white">
                   Admin RSV
                 </h4>
@@ -721,7 +525,10 @@ function AdminLayout() {
               title="Keluar"
               className="rounded-lg p-1.5 text-brand-grey transition hover:bg-brand-surface hover:text-brand-gold"
             >
-              <FontAwesomeIcon icon={faArrowRightFromBracket} className="h-5 w-5" />
+              <FontAwesomeIcon
+                icon={faArrowRightFromBracket}
+                className="h-5 w-5"
+              />
             </button>
           </div>
         </div>
@@ -742,12 +549,17 @@ function AdminLayout() {
             <button
               onClick={() => setIsCollapsed((v) => !v)}
               title={isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
-              aria-label={isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
+              aria-label={
+                isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"
+              }
               className="hidden rounded-lg p-2 text-brand-grey transition hover:bg-brand-surface-card hover:text-white lg:block"
             >
-              <FontAwesomeIcon icon={faChevronLeft} className={`h-5 w-5 transition-transform duration-300 ${
-                isCollapsed ? "rotate-180" : ""
-              }`} />
+              <FontAwesomeIcon
+                icon={faChevronLeft}
+                className={`h-5 w-5 transition-transform duration-300 ${
+                  isCollapsed ? "rotate-180" : ""
+                }`}
+              />
             </button>
             <div className="hidden sm:block">
               <p className="text-[10px] font-bold uppercase tracking-widest text-brand-grey">
@@ -766,7 +578,7 @@ function AdminLayout() {
                 admin@rsvhelmet.com
               </span>
             </div>
-            
+
             {/* Notification Bell */}
             <div className="relative">
               <button
@@ -783,10 +595,10 @@ function AdminLayout() {
                   </span>
                 )}
               </button>
-              
+
               {/* Notification Dropdown */}
               {showNotif && (
-                <div 
+                <div
                   ref={notifRef}
                   className="absolute right-0 top-full mt-2 flex w-80 flex-col overflow-hidden rounded-xl border border-brand-border bg-brand-surface-card shadow-2xl"
                 >
@@ -804,17 +616,24 @@ function AdminLayout() {
                       </button>
                     )}
                   </div>
-                  <div className="overflow-y-auto" style={{ height: notifHeight }}>
+                  <div
+                    className="overflow-y-auto"
+                    style={{ height: notifHeight }}
+                  >
                     {notifList.length === 0 ? (
                       <div className="flex flex-col items-center justify-center px-4 py-8">
-                        <FontAwesomeIcon icon={faBell} className="h-8 w-8 text-brand-grey/30" />
+                        <FontAwesomeIcon
+                          icon={faBell}
+                          className="h-8 w-8 text-brand-grey/30"
+                        />
                         <p className="mt-2 text-xs text-brand-grey">
                           Tidak ada notifikasi
                         </p>
                       </div>
                     ) : (
                       notifList.map((item, i) => {
-                        const preview = summarizeNotif(item.fullData) || item.data;
+                        const preview =
+                          summarizeNotif(item.fullData) || item.data;
                         return (
                           <button
                             key={i}
@@ -847,7 +666,9 @@ function AdminLayout() {
                     onMouseDown={startResize}
                     onTouchStart={startResize}
                     className={`flex h-6 cursor-ns-resize select-none items-center justify-center border-t border-brand-border bg-brand-surface transition ${
-                      isResizing ? "bg-brand-gold/10" : "hover:bg-brand-surface-card"
+                      isResizing
+                        ? "bg-brand-gold/10"
+                        : "hover:bg-brand-surface-card"
                     }`}
                     title="Drag untuk ubah tinggi"
                   >
@@ -856,7 +677,7 @@ function AdminLayout() {
                 </div>
               )}
             </div>
-            
+
             <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-brand-gold bg-brand-gold/10 text-sm font-bold text-brand-gold">
               AD
             </div>
@@ -872,8 +693,14 @@ function AdminLayout() {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav aria-label="Navigasi admin mobile" className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
-        <div className="mx-3 mb-3 rounded-2xl border border-brand-border bg-brand-surface-card/95 shadow-2xl backdrop-blur-xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav
+        aria-label="Navigasi admin mobile"
+        className="fixed bottom-0 left-0 right-0 z-50 lg:hidden"
+      >
+        <div
+          className="mx-3 mb-3 rounded-2xl border border-brand-border bg-brand-surface-card/95 shadow-2xl backdrop-blur-xl"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           <div className="flex items-center p-1">
             {(() => {
               const centerIndex = ADMIN_MOBILE_NAV.findIndex((i) => i.center);
@@ -895,14 +722,24 @@ function AdminLayout() {
                   >
                     {({ isActive }) => (
                       <>
-                        <span className={`-mt-7 grid h-14 w-14 place-items-center rounded-full ${
-                          isActive ? "bg-brand-gold text-brand-black ring-4 ring-brand-gold/30" : "bg-brand-gold/20 text-brand-gold ring-4 ring-brand-surface-card"
-                        } shadow-lg transition active:scale-95`}>
-                          <FontAwesomeIcon icon={centerItem.icon} className="h-6 w-6" fixedWidth />
+                        <span
+                          className={`-mt-7 grid h-14 w-14 place-items-center rounded-full ${
+                            isActive
+                              ? "bg-brand-gold text-brand-black ring-4 ring-brand-gold/30"
+                              : "bg-brand-gold/20 text-brand-gold ring-4 ring-brand-surface-card"
+                          } shadow-lg transition active:scale-95`}
+                        >
+                          <FontAwesomeIcon
+                            icon={centerItem.icon}
+                            className="h-6 w-6"
+                            fixedWidth
+                          />
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-tight ${
-                          isActive ? "text-brand-gold" : "text-brand-grey"
-                        }`}>
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-tight ${
+                            isActive ? "text-brand-gold" : "text-brand-grey"
+                          }`}
+                        >
                           {centerItem.label}
                         </span>
                       </>
@@ -922,20 +759,20 @@ function AdminLayout() {
 
       {/* Notification Detail Modal */}
       {selectedNotif && (
-        <div 
-          className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" 
-          role="presentation" 
+        <div
+          className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+          role="presentation"
           onClick={() => setSelectedNotif(null)}
         >
-          <div 
-            className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl animate-in zoom-in-95 duration-200" 
-            role="dialog" 
-            aria-modal="true" 
+          <div
+            className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
-            <button 
-              type="button" 
-              onClick={() => setSelectedNotif(null)} 
+            <button
+              type="button"
+              onClick={() => setSelectedNotif(null)}
               className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-brand-border bg-brand-surface text-brand-grey transition hover:bg-brand-gold/10 hover:text-white"
               aria-label="Tutup"
             >
@@ -956,9 +793,9 @@ function AdminLayout() {
               <NotifDetail fullData={selectedNotif.fullData} />
             </div>
             <div className="flex justify-end border-t border-brand-border bg-brand-surface/50 px-6 py-3">
-              <button 
-                type="button" 
-                onClick={() => setSelectedNotif(null)} 
+              <button
+                type="button"
+                onClick={() => setSelectedNotif(null)}
                 className="rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light hover:scale-105 active:scale-95"
               >
                 Tutup

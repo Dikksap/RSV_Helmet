@@ -16,6 +16,7 @@ declare global {
       send: (channel: string, ...args: unknown[]) => void;
       getPrinters: () => Promise<PrinterInfo[]>;
       printSilent: (payload: SilentPrintPayload) => Promise<SilentPrintResult>;
+      toggleFullscreen: () => Promise<boolean>;
     };
   }
 }

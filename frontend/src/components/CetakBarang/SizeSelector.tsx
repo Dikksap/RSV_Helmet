@@ -16,7 +16,7 @@ export function SizeSelector({
   onSizeSelect,
 }: SizeSelectorProps) {
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="w-full rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-3">
         <span className={`grid h-7 w-7 place-items-center rounded-full text-xs font-bold ${colorId ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-500"}`}>4</span>
         <h2 className="text-sm font-bold text-zinc-900">Ukuran</h2>
@@ -35,7 +35,7 @@ export function SizeSelector({
           Tidak ada ukuran.
         </p>
       ) : (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Pilih ukuran">
+        <div className="flex gap-2" role="group" aria-label="Pilih ukuran">
           {sizes.map((size) => {
             const active = sizeId === String(size.id);
             return (
@@ -44,9 +44,9 @@ export function SizeSelector({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onSizeSelect(String(size.id))}
-                className={`min-w-14 rounded-xl border px-4 py-2.5 text-sm font-bold transition ${active ? "border-zinc-900 bg-zinc-900 text-white shadow-sm" : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50"}`}
+                className={`flex min-w-0 flex-1 items-center justify-center rounded-xl border px-4 py-3 text-center text-sm font-bold transition ${active ? "border-zinc-900 bg-zinc-900 text-white shadow-sm" : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50"}`}
               >
-                {size.nama}
+                <span className="truncate">{size.nama}</span>
               </button>
             );
           })}

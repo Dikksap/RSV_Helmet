@@ -21,7 +21,8 @@ import { PageHeader } from "../components/CetakBarang/PageHeader";
 import { ErrorAlert } from "../components/CetakBarang/ErrorAlert";
 import { LoadingState } from "../components/CetakBarang/LoadingState";
 import { ProductSelector } from "../components/CetakBarang/ProductSelector";
-import { StyleColorSelector } from "../components/CetakBarang/StyleColorSelector";
+import { StyleSelector } from "../components/CetakBarang/StyleSelector";
+import { ColorSelector } from "../components/CetakBarang/ColorSelector";
 import { SizeSelector } from "../components/CetakBarang/SizeSelector";
 import { VariantSummary } from "../components/CetakBarang/VariantSummary";
 import { LivePreview } from "../components/CetakBarang/LivePreview";
@@ -32,7 +33,6 @@ type PrintSize = LabelSize;
 function CetakBarang() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
-  const [productSearch, setProductSearch] = useState("");
   const [styleId, setStyleId] = useState("");
   const [colorId, setColorId] = useState("");
   const [sizeId, setSizeId] = useState("");
@@ -258,21 +258,24 @@ function CetakBarang() {
           <LoadingState />
         ) : (
           <div className="mt-8 grid gap-6 lg:grid-cols-12">
-            <div className="space-y-5 lg:col-span-7 xl:col-span-8">
+            <div className="w-full space-y-5 lg:col-span-7 xl:col-span-8">
               <ProductSelector
                 products={products}
                 productId={productId}
-                productSearch={productSearch}
-                onProductSearchChange={setProductSearch}
                 onProductSelect={handleProductSelect}
               />
 
-              <StyleColorSelector
+              <StyleSelector
                 productId={productId}
+                styleId={styleId}
+                productVariants={productVariants}
+                onStyleSelect={handleStyleSelect}
+              />
+
+              <ColorSelector
                 styleId={styleId}
                 colorId={colorId}
                 productVariants={productVariants}
-                onStyleSelect={handleStyleSelect}
                 onColorSelect={handleColorSelect}
               />
 
