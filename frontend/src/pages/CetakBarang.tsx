@@ -248,8 +248,8 @@ function CetakBarang() {
   ].reduce((a, b) => a + b, 0);
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F5F7FA] text-[#1F2937]">
+      <div className="mx-auto max-w-[1280px] px-6 pb-16 pt-8 md:px-12 md:pb-24 md:pt-12">
         <PageHeader completionSteps={completionSteps} />
 
         <ErrorAlert error={error} onDismiss={() => setError(null)} />
@@ -323,7 +323,7 @@ function CetakBarang() {
                   onSaveDefaultPrinter={saveDefaultPrinter}
                 />
 
-                <p className="px-1 text-center text-xs leading-5 text-zinc-500">
+                <p className="px-1 text-center text-xs leading-5 text-[#6B7280]">
                   Hangtag akan tercetak sesuai ukuran yang dipilih. Pastikan printer thermal siap sebelum klik Generate.
                 </p>
               </div>

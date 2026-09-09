@@ -27,6 +27,9 @@ type LivePreviewProps = {
   onSaveDefaultPrinter: (printer: string) => void;
 };
 
+const inputClass =
+  "h-12 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[15px] text-[#1F2937] transition-colors duration-200 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/25";
+
 export function LivePreview({
   selectedProduct,
   selectedVariant,
@@ -49,25 +52,31 @@ export function LivePreview({
 }: LivePreviewProps) {
   // Preview dikunci di ukuran desain (100x75mm) — pilihan ukuran label
   // hanya dipakai saat print, tidak mengubah tampilan preview.
+  const statusClass = !selectedVariant
+    ? "bg-[#F5F7FA] text-[#6B7280]"
+    : generatedCode
+      ? "bg-[#10B981]/15 text-[#0d9468]"
+      : "bg-[#00A8E8]/10 text-[#0088C0]";
+
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-zinc-900">Live Preview</h3>
-        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+        <h3 className="text-[15px] font-semibold text-[#1F2937]">Live Preview</h3>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass}`}>
           {selectedVariant ? (generatedCode ? "Final" : "Preview") : "Pilih varian"}
         </span>
       </div>
 
       {!selectedVariant ? (
-        <div className="grid place-items-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-12 text-center">
-          <p className="text-sm font-medium text-zinc-500">
+        <div className="grid place-items-center rounded-xl border border-dashed border-slate-200 bg-[#F5F7FA] px-4 py-12 text-center">
+          <p className="text-sm font-medium text-[#6B7280]">
             Pilih produk, style, warna & ukuran untuk melihat hangtag.
           </p>
-          <p className="mt-1 text-xs text-zinc-400">QR dan kode akan muncul otomatis</p>
+          <p className="mt-1 text-xs text-[#6B7280]">QR dan kode akan muncul otomatis</p>
         </div>
       ) : (
         <>
-          <div className="relative flex h-[180px] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4 sm:h-[240px]">
+          <div className="relative flex h-[180px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-[#F5F7FA] p-4 sm:h-[240px]">
             {/* Box luar = ukuran visual hasil scale (159x119 mobile, 227x170 sm+).
                 Layout Hangtag tetap 378px — tanpa box ini kolom grid ikut melebar. */}
             <div className="h-[119px] w-[159px] shrink-0 sm:h-[170px] sm:w-[227px]">
@@ -92,23 +101,23 @@ export function LivePreview({
               </div>
             </div>
           </div>
-          <p className="mt-3 text-center text-xs text-zinc-500">
+          <p className="mt-3 text-center text-xs text-[#6B7280]">
             {generatedCode ? "Kode barang final" : "Preview kode, belum disimpan"}
           </p>
-          <div className="mt-4 grid gap-2 rounded-xl bg-zinc-900 px-4 py-3 text-xs text-zinc-300">
+          <div className="mt-4 grid gap-2 rounded-xl bg-[#1E3A5F] px-4 py-3 text-xs text-slate-300">
             <div className="flex justify-between">
-              <span className="text-zinc-400">Kode Varian</span>
+              <span>Kode Varian</span>
               <span className="font-mono font-semibold text-white">{selectedVariant.kodeVariant}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-400">QR Value</span>
+              <span>QR Value</span>
               <span className="max-w-[170px] truncate font-mono font-semibold text-white" title={generatedCode ?? previewCode ?? "-"}>
                 {generatedCode ?? previewCode ?? "-"}
               </span>
             </div>
             {generateInfo && (
               <div className="flex justify-between">
-                <span className="text-zinc-400">Tanggal Batch</span>
+                <span>Tanggal Batch</span>
                 <span className="font-semibold text-white">{formatDate(generateInfo.tanggal)}</span>
               </div>
             )}
@@ -117,12 +126,12 @@ export function LivePreview({
       )}
 
       <div className="mt-5 grid gap-3">
-        <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
+        <label className="grid gap-1.5 text-sm font-medium text-[#1F2937]">
           <span>Ukuran label</span>
           <select
             value={printSize}
             onChange={(e) => onPrintSizeChange(e.target.value as LabelSize)}
-            className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+            className={inputClass}
           >
             <option value="33x15mm">33 × 15 mm (Thermal Kecil)</option>
             <option value="50x50mm">50 × 50 mm (5 × 5 cm)</option>
@@ -137,7 +146,7 @@ export function LivePreview({
         </label>
         {printSize === "custom" && (
           <div className="grid grid-cols-2 gap-2">
-            <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
+            <label className="grid gap-1.5 text-sm font-medium text-[#1F2937]">
               <span>Lebar (mm)</span>
               <input
                 type="number"
@@ -147,10 +156,10 @@ export function LivePreview({
                 onChange={(e) =>
                   onCustomMmChange({ ...customMm, width: Number(e.target.value) })
                 }
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                className={inputClass}
               />
             </label>
-            <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
+            <label className="grid gap-1.5 text-sm font-medium text-[#1F2937]">
               <span>Tinggi (mm)</span>
               <input
                 type="number"
@@ -160,13 +169,13 @@ export function LivePreview({
                 onChange={(e) =>
                   onCustomMmChange({ ...customMm, height: Number(e.target.value) })
                 }
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                className={inputClass}
               />
             </label>
           </div>
         )}
         {isInElectron() && (
-          <label className="grid gap-1.5 text-xs font-semibold text-zinc-700">
+          <label className="grid gap-1.5 text-sm font-medium text-[#1F2937]">
             <span>Printer</span>
             <select
               value={selectedPrinter}
@@ -174,7 +183,7 @@ export function LivePreview({
                 onPrinterChange(e.target.value);
                 onSaveDefaultPrinter(e.target.value);
               }}
-              className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+              className={inputClass}
             >
               <option value="">Default sistem</option>
               {printers.map((printer) => (
@@ -190,7 +199,7 @@ export function LivePreview({
           type="button"
           disabled={!selectedVariant || isGenerating || !generateInfo}
           onClick={onGenerate}
-          className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-bold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-12 items-center justify-center rounded-lg bg-[#00A8E8] px-6 text-[15px] font-medium text-white shadow-sm transition-colors duration-200 hover:bg-[#0088C0] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
         >
           {isGenerating ? "Membuat Barang..." : "Generate & Print"}
         </button>
