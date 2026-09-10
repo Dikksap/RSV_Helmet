@@ -8,9 +8,9 @@ export const FILTER_RESET = {
 };
 
 export const inputCls =
-  "h-11 rounded-lg border border-brand-border bg-brand-surface px-3 text-sm text-white outline-none transition placeholder:text-brand-grey focus:border-brand-gold focus:ring-1 focus:ring-brand-gold";
+  "h-12 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20 disabled:opacity-50";
 
-export const labelCls = "grid gap-1 text-xs font-bold text-brand-grey";
+export const labelCls = "grid gap-1 text-sm font-medium text-[#1F2937]";
 
 export const EMPTY_PRODUCT_MODAL: ProductModalState = {
   open: false,

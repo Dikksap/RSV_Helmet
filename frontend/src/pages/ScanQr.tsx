@@ -14,6 +14,7 @@ type ScannedItem = {
   kode: string;
   variant: string;
   waktu: string;
+  loading: boolean;
 };
 
 const inputClass =
@@ -58,9 +59,14 @@ function ScanQr() {
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
 
   const bulkInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // ponytail: antrean validasi FIFO — 1 validasi jalan dalam satu waktu, Enter tidak pernah await.
+  const validatingRef = useRef(false);
+  const listRef = useRef<ScannedItem[]>([]);
+  listRef.current = scannedItems;
 
   // Auto focus ke input saat render
   useEffect(() => {
@@ -84,66 +90,81 @@ function ScanQr() {
     return () => window.clearTimeout(id);
   }, [successMsg, error]);
 
-  const handleSubmit = async (e?: FormEvent) => {
+  // Enter = langsung tambah baris loading, tanpa validasi. Validasi jalan FIFO di effect bawah.
+  const handleSubmit = (e?: FormEvent) => {
     if (e) e.preventDefault();
-    const kode = inputValue.trim();
+    const kode = (inputRef.current?.value ?? inputValue).trim() || inputValue.trim();
 
     if (!kode) {
       setError("KODE BARANG KOSONG! Silakan scan ulang.");
       setInputValue("");
+      if (inputRef.current) inputRef.current.value = "";
       inputRef.current?.focus();
       beep(false);
       return;
     }
 
-    try {
-      const barang = await getScanBarang(kode);
-      const alreadyExists = scannedItems.some(
-        (item) => item.kode.toLowerCase() === barang.kodeBarang.toLowerCase(),
-      );
+    const newItem: ScannedItem = {
+      id: Date.now() + Math.random(),
+      kode,
+      variant: "MEMERIKSA...",
+      waktu: new Date().toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }),
+      loading: true,
+    };
 
-      if (alreadyExists) {
-        setError(`DUPLIKAT! Kode ${kode} sudah ada di daftar bawah.`);
-        setInputValue("");
-        beep(false);
-        return;
-      }
-
-      const variantName =
-        barang.variant?.product &&
-        barang.variant?.style &&
-        barang.variant?.color &&
-        barang.variant?.size
-          ? `${barang.variant.product.nama} ${barang.variant.style.nama} ${barang.variant.color.nama} ${barang.variant.size.nama}`
-          : "-";
-
-      const newItem: ScannedItem = {
-        id: barang.id ?? Date.now(),
-        kode: barang.kodeBarang,
-        variant: variantName,
-        waktu: new Date().toLocaleTimeString("id-ID", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-      };
-
-      setScannedItems((prev) => [newItem, ...prev]);
-      setError("");
-      setSuccessMsg(`SUKSES: ${kode} ditambahkan!`);
-      beep(true);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : `GAGAL! Kode ${kode} tidak ditemukan di sistem.`,
-      );
-      beep(false);
-    } finally {
-      setInputValue("");
-      inputRef.current?.focus();
-    }
+    setScannedItems((prev) => [newItem, ...prev]);
+    setError("");
+    setInputValue("");
+    if (inputRef.current) inputRef.current.value = "";
+    inputRef.current?.focus();
   };
+
+  // Queue validasi FIFO: ambil loading tertua, validasi 1-per-1.
+  // Valid = loading jadi ceklis, tidak valid/duplikat = baris dihapus.
+  useEffect(() => {
+    if (validatingRef.current) return;
+    const next = [...listRef.current].reverse().find((it) => it.loading);
+    if (!next) return;
+    validatingRef.current = true;
+    (async () => {
+      try {
+        const barang = await getScanBarang(next.kode);
+        const current = listRef.current;
+        // duplikat = kode sudah ada di baris valid lain
+        const dup = current.some(
+          (it) => it.id !== next.id && !it.loading && it.kode.toLowerCase() === barang.kodeBarang.toLowerCase(),
+        );
+        if (dup) {
+          setScannedItems((prev) => prev.filter((it) => it.id !== next.id));
+          setError(`DUPLIKAT! Kode ${next.kode} sudah ada — dihapus.`);
+          beep(false);
+          return;
+        }
+        const variantName =
+          barang.variant?.product && barang.variant?.style && barang.variant?.color && barang.variant?.size
+            ? `${barang.variant.product.nama} ${barang.variant.style.nama} ${barang.variant.color.nama} ${barang.variant.size.nama}`
+            : "-";
+        setScannedItems((prev) =>
+          prev.map((it) =>
+            it.id === next.id
+              ? { ...it, id: barang.id ?? it.id, kode: barang.kodeBarang, variant: variantName, loading: false }
+              : it,
+          ),
+        );
+        beep(true);
+      } catch {
+        setScannedItems((prev) => prev.filter((it) => it.id !== next.id));
+        setError(`GAGAL! Kode ${next.kode} tidak ditemukan — dihapus.`);
+        beep(false);
+      } finally {
+        validatingRef.current = false;
+      }
+    })();
+  }, [scannedItems]);
 
   const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -169,33 +190,18 @@ function ScanQr() {
         return;
       }
 
+      // Langsung tambah baris loading — validasi ikut antrean FIFO yang sama.
+      const now = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const seen = new Set(listRef.current.map((it) => it.kode.toLowerCase()));
       const newItems: ScannedItem[] = [];
       for (const kode of codes) {
-        if (scannedItems.some((it) => it.kode.toLowerCase() === kode.toLowerCase())) continue;
-        if (newItems.some((it) => it.kode.toLowerCase() === kode.toLowerCase())) continue;
-        try {
-          const barang = await getScanBarang(kode);
-          const variantName =
-            barang.variant?.product && barang.variant?.style && barang.variant?.color && barang.variant?.size
-              ? `${barang.variant.product.nama} ${barang.variant.style.nama} ${barang.variant.color.nama} ${barang.variant.size.nama}`
-              : "-";
-          newItems.push({
-            id: barang.id ?? Date.now() + Math.random(),
-            kode: barang.kodeBarang,
-            variant: variantName,
-            waktu: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-          });
-        } catch {
-          newItems.push({
-            id: Date.now() + Math.random(),
-            kode,
-            variant: "TIDAK DITEMUKAN",
-            waktu: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-          });
-        }
+        const key = kode.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        newItems.push({ id: Date.now() + Math.random(), kode, variant: "MEMERIKSA...", waktu: now, loading: true });
       }
       setScannedItems((prev) => [...newItems, ...prev]);
-      setSuccessMsg(`BULK LOAD SUKSES: ${newItems.length} kode dimuat.`);
+      setSuccessMsg(`BULK LOAD: ${newItems.length} kode antre validasi.`);
     } catch {
       setError("Gagal membaca file bulk.");
     } finally {
@@ -204,7 +210,8 @@ function ScanQr() {
   };
 
   const handleBulkSubmit = async () => {
-    const kodeBarang = scannedItems.map((it) => it.kode);
+    const validItems = scannedItems.filter((it) => !it.loading);
+    const kodeBarang = validItems.map((it) => it.kode);
     if (kodeBarang.length === 0) {
       setError("BELUM ADA DATA. Scan barang terlebih dahulu!");
       return;
@@ -221,7 +228,8 @@ function ScanQr() {
       setToast({ type: result.failed.length === 0 ? "success" : "success", msg });
       window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.bulk", message: msg } }));
 
-      setScannedItems([]);
+      // ponytail: hanya baris valid yang dikirim, antrean loading tetap jalan.
+      setScannedItems((prev) => prev.filter((it) => it.loading));
 
       if (result.failed.length > 0 && result.success.length === 0) {
         const first = result.failed[0] as unknown as { error?: string; reason?: string; kodeBarang: string };
@@ -241,38 +249,43 @@ function ScanQr() {
   };
 
   // Intercept Scanner Keyboard Input global
+  // ponytail: baca/tulis via inputRef (sinkron DOM), bukan state — burst scanner cepat bikin closure state basi saat Enter.
   useEffect(() => {
     const handleGlobalKeydown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
-      const activeTag = target?.tagName;
-
-      if (activeTag && ["INPUT", "TEXTAREA", "SELECT"].includes(activeTag)) {
-        if (target === inputRef.current) return;
-        return;
-      }
+      if (target === inputRef.current) return; // native form submit handle Enter
 
       if (event.key === "Enter") {
         event.preventDefault();
-        void handleSubmit();
+        inputRef.current?.focus();
+        inputRef.current?.form?.requestSubmit();
         return;
       }
 
-      if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (event.key.length === 1) {
+        if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
         event.preventDefault();
-        setInputValue((prev) => prev + event.key);
+        inputRef.current?.focus();
+        // tulis sinkron ke DOM agar Enter langsung lihat nilai penuh
+        if (inputRef.current) {
+          inputRef.current.value += event.key;
+          setInputValue(inputRef.current.value);
+        }
       }
     };
 
     window.addEventListener("keydown", handleGlobalKeydown);
     return () => window.removeEventListener("keydown", handleGlobalKeydown);
-  }, [handleSubmit, inputValue]);
+  }, []);
 
   const scannedItemsCount = scannedItems.length;
 
-  const itemsPerVariant = scannedItems.reduce((acc, item) => {
+  const itemsPerVariant = scannedItems.filter((it) => !it.loading).reduce((acc, item) => {
     acc[item.variant] = (acc[item.variant] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+  const loadingCount = scannedItemsCount - Object.values(itemsPerVariant).reduce((a, b) => a + b, 0);
 
   return (
     <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-slate-100 font-[Inter,sans-serif] text-slate-800 md:min-h-[calc(100dvh-72px)] lg:h-[calc(100dvh-72px)] lg:overflow-hidden">
@@ -399,7 +412,7 @@ function ScanQr() {
               disabled={isBulkSubmitting || scannedItemsCount === 0}
               className="flex w-full transform items-center justify-center gap-2 rounded-md bg-sky-500 px-6 py-4 text-lg font-bold text-white shadow-lg transition active:scale-[0.98] hover:bg-sky-600 focus:outline-none focus:ring-4 focus:ring-sky-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
             >
-              {isBulkSubmitting ? "MEMPROSES DATA..." : `SIMPAN SEMUA DATA (${scannedItemsCount})`}
+              {isBulkSubmitting ? "MEMPROSES DATA..." : `SIMPAN SEMUA DATA (${scannedItemsCount - loadingCount})`}
             </button>
             <div className="mt-3 flex gap-3">
               <input ref={bulkInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleBulkUpload} />
@@ -428,17 +441,26 @@ function ScanQr() {
           <div className="flex flex-col p-5 sm:p-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Daftar Scan Terbaru</h2>
-              <span className="rounded bg-white px-2 py-1 text-xs font-bold text-slate-600 shadow-sm">{scannedItemsCount} Baris Data</span>
+              <span className="rounded bg-white px-2 py-1 text-xs font-bold text-slate-600 shadow-sm">{scannedItemsCount} Baris{loadingCount > 0 ? ` (${loadingCount} antre)` : ""}</span>
             </div>
 
             {scannedItemsCount > 0 && (
-              <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {Object.entries(itemsPerVariant).map(([variant, count]) => (
-                  <div key={variant} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                    <p className="truncate text-xs font-bold text-slate-500" title={variant}>{variant}</p>
-                    <p className="text-xl font-black text-slate-800">{count} <span className="text-xs font-semibold">PCS</span></p>
-                  </div>
-                ))}
+              <div className="mb-4">
+                <button type="button" onClick={() => setShowSummary((v) => !v)} className="text-xs font-bold text-sky-700 hover:underline">
+                  {showSummary ? "Sembunyikan ringkasan" : "Tampilkan ringkasan"}
+                </button>
+                {showSummary && (
+                  <table className="mt-1 w-full text-left text-sm">
+                    <tbody>
+                      {Object.entries(itemsPerVariant).map(([variant, count]) => (
+                        <tr key={variant} className="border-b border-slate-200">
+                          <td className="py-1 pr-2 font-semibold text-slate-600">{variant}</td>
+                          <td className="py-1 text-right font-bold text-slate-800">{count} PCS</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 
@@ -458,6 +480,7 @@ function ScanQr() {
                         <th className="px-4 py-3 text-left font-bold">Kode Barang</th>
                         <th className="px-4 py-3 text-left font-bold">Varian</th>
                         <th className="w-24 px-4 py-3 text-right font-bold">Waktu</th>
+                        <th className="w-16 px-4 py-3 text-center font-bold">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y-2 divide-slate-200">
@@ -467,6 +490,13 @@ function ScanQr() {
                           <td className="px-4 py-3 font-mono text-lg font-black tracking-wide text-slate-900">{item.kode}</td>
                           <td className="px-4 py-3 text-base font-bold leading-snug text-slate-700">{item.variant}</td>
                           <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-700">{item.waktu}</td>
+                          <td className="px-4 py-3 text-center text-lg font-black">
+                            {item.loading ? (
+                              <span className="inline-block animate-spin text-sky-600" title="Memvalidasi...">⏳</span>
+                            ) : (
+                              <span className="text-emerald-600" title="Valid">✓</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

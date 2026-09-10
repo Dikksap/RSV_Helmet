@@ -50,7 +50,7 @@ STATUS_VALID = [
     "FINISHGOOD"
 ]
 
-DEFAULT_URL = "http://localhost:8000/api"
+DEFAULT_URL = "http://192.168.1.168:8000/api"
 
 KETERANGAN_RANDOM = [
     "Barang dibuat untuk testing",

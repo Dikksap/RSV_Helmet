@@ -63,8 +63,8 @@ export function FilterSection({
   onResetFilters,
 }: FilterSectionProps) {
   const [open, setOpen] = useState(false);
-  const inputCls = "min-h-[44px] w-full rounded-xl border border-brand-border bg-brand-surface px-3 text-sm text-white outline-none transition placeholder:text-brand-grey/70 focus:border-brand-gold focus:ring-1 focus:ring-brand-gold";
-  const labelCls = "flex flex-col gap-1.5 text-xs font-semibold text-brand-grey";
+  const inputCls = "h-12 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
+  const labelCls = "flex flex-col gap-1.5 text-sm font-medium text-[#1F2937]";
 
   const activeCount = [search, statusFilter, variantFilter, tanggalAwal, tanggalAkhir].filter(Boolean).length;
 
@@ -84,11 +84,11 @@ export function FilterSection({
   };
 
   return (
-    <section aria-label="Filter barang" className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card">
+    <section aria-label="Filter barang" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
       {/* Search — always visible */}
-      <div className="p-3 sm:p-4">
+      <div className="p-4 sm:p-6">
         <div className="relative">
-          <svg className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-grey" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+          <svg className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
           <input
             type="search"
             className={`${inputCls} pl-10 pr-10`}
@@ -102,7 +102,7 @@ export function FilterSection({
               type="button"
               onClick={() => onSearchChange("")}
               aria-label="Hapus pencarian"
-              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-brand-grey transition hover:bg-white/5 hover:text-white"
+              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-[#6B7280] transition duration-200 ease hover:bg-[#F5F7FA] hover:text-[#1F2937]"
             >
               ✕
             </button>
@@ -115,12 +115,12 @@ export function FilterSection({
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-3 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold/50 hover:text-white md:hidden"
+            className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-lg border border-[#D1D5DB] bg-white px-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 md:hidden"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
             Filter
             {activeCount > 0 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-gold px-1.5 text-[10px] font-bold text-brand-black">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00A8E8] px-1.5 text-[10px] font-bold text-white">
                 {activeCount}
               </span>
             )}
@@ -129,39 +129,39 @@ export function FilterSection({
           {hasActiveFilters && (
             <button
               type="button"
-              className="inline-flex min-h-[40px] items-center rounded-xl px-3 text-xs font-bold text-rose-400 transition hover:bg-rose-500/10 hover:text-rose-300 active:scale-[0.98]"
+              className="inline-flex min-h-[48px] items-center rounded-lg px-3 text-sm font-medium text-[#EF4444] transition duration-200 ease hover:bg-red-50 active:scale-[0.98]"
               onClick={onResetFilters}
             >
               Reset
             </button>
           )}
-          <span className="hidden shrink-0 text-xs font-medium tabular-nums text-brand-grey sm:block md:hidden">
+          <span className="hidden shrink-0 text-xs font-medium tabular-nums text-[#6B7280] sm:block md:hidden">
             {currentPage}/{totalPages}
           </span>
         </div>
       </div>
 
       {/* Desktop header */}
-      <div className="hidden items-center justify-between border-t border-brand-border/60 px-4 pb-1 pt-3 md:flex">
-        <p className="text-xs font-bold uppercase tracking-wider text-brand-grey">Filter lanjutan</p>
+      <div className="hidden items-center justify-between border-t border-slate-100 px-6 pb-1 pt-3 md:flex">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#1E3A5F]">Filter lanjutan</p>
         <div className="flex items-center gap-3">
           {hasActiveFilters && (
             <button
               type="button"
-              className="text-xs font-semibold text-rose-400 hover:text-rose-300 hover:underline"
+              className="text-xs font-medium text-[#EF4444] hover:underline"
               onClick={onResetFilters}
             >
               Reset Filter
             </button>
           )}
-          <span className="text-xs font-medium tabular-nums text-brand-grey">
+          <span className="text-xs font-medium tabular-nums text-[#6B7280]">
             Hal. {currentPage} / {totalPages}
           </span>
         </div>
       </div>
 
       {/* Filter grid — collapsible on mobile, always open on desktop */}
-      <div className={`${open ? "grid" : "hidden"} gap-3 border-t border-brand-border/60 p-3 sm:p-4 md:grid md:grid-cols-3 md:border-t-0 md:pt-2 xl:grid-cols-6`}>
+      <div className={`${open ? "grid" : "hidden"} gap-3 border-t border-slate-100 p-4 sm:p-6 md:grid md:grid-cols-3 md:border-t-0 md:pt-2 xl:grid-cols-6`}>
         <label className={labelCls}>
           <span>Status</span>
           <select
@@ -214,7 +214,7 @@ export function FilterSection({
           <span>Tgl Awal</span>
           <input
             type="date"
-            className={`${inputCls} [color-scheme:dark]`}
+            className={inputCls}
             value={tanggalAwal}
             onChange={(e) => onTanggalAwalChange(e.target.value)}
           />
@@ -224,7 +224,7 @@ export function FilterSection({
           <span>Tgl Akhir</span>
           <input
             type="date"
-            className={`${inputCls} [color-scheme:dark]`}
+            className={inputCls}
             value={tanggalAkhir}
             onChange={(e) => onTanggalAkhirChange(e.target.value)}
           />
@@ -235,7 +235,7 @@ export function FilterSection({
             type="button"
             onClick={onResetFilters}
             disabled={!hasActiveFilters}
-            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-3 text-xs font-bold text-brand-grey-light transition hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-40"
+            className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#F5F7FA] px-3 text-sm font-medium text-[#6B7280] transition duration-200 ease hover:bg-slate-200 hover:text-[#1F2937] disabled:opacity-40"
           >
             Reset
           </button>

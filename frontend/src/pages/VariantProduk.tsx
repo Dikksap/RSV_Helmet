@@ -280,9 +280,9 @@ function VariantProduk() {
       <VariantHeader onCreateProduct={openCreateProduct} onCreateVariant={openCreateVariant} onImport={() => setImportOpen(true)} />
       <VariantTabs tab={tab} onChange={setTab} totalVarian={allRows.length} totalProduk={products.length} />
 
-      {isLoading && <p className="text-sm text-brand-grey">Memuat variant produk...</p>}
-      {error && <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{error}</p>}
-      {notice && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{notice}</p>}
+      {isLoading && <p className="text-[15px] text-[#6B7280]">Memuat variant produk...</p>}
+      {error && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[15px] text-[#EF4444]">{error}</p>}
+      {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[15px] text-emerald-700">{notice}</p>}
 
       {!isLoading && !error && tab === "variant" && (
         <section aria-label="Daftar variant produk" className="space-y-5">

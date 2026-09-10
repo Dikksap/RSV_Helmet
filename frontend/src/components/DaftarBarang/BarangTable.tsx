@@ -27,36 +27,36 @@ export function BarangTable({
   return (
     <div>
       {/* ── Mobile: cards ─────────────────────────────── */}
-      <ul className="grid gap-2.5 md:hidden" aria-label="Daftar barang">
+      <ul className="grid gap-3 md:hidden" aria-label="Daftar barang">
         {barang.map((item, index) => (
           <li key={item.id}>
             <article
               onClick={() => onRowClick(item)}
-              className="cursor-pointer rounded-2xl border border-brand-border bg-brand-surface-card p-3.5 transition active:scale-[0.99] active:border-brand-gold/50"
+              className="cursor-pointer rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition duration-200 ease hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(0,0,0,0.10)] active:scale-[0.99]"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-medium tabular-nums text-brand-grey">
+                  <p className="text-xs font-medium tabular-nums text-[#6B7280]">
                     #{(currentPage - 1) * 20 + index + 1} • {formatRelativeTime(item.createdAt, now)}
                   </p>
-                  <p className="mt-0.5 truncate font-mono text-sm font-bold text-brand-gold">
+                  <p className="mt-0.5 truncate font-mono text-[15px] font-bold text-[#1E3A5F]">
                     {item.kodeBarang}
                   </p>
                 </div>
                 <StatusBadge status={item.status} />
               </div>
 
-              <p className="mt-2 truncate text-sm font-semibold text-white">
+              <p className="mt-2 truncate text-base font-semibold text-[#1F2937]">
                 {item.variant.product.nama}
               </p>
-              <p className="mt-0.5 truncate text-xs text-brand-grey-light">
+              <p className="mt-0.5 truncate text-sm text-[#6B7280]">
                 {item.variant.style.nama} • {item.variant.color.nama} • {item.variant.size.nama}
               </p>
 
-              <div className="mt-2.5 flex items-center justify-between border-t border-brand-border/60 pt-2.5">
-                <span className="font-mono text-[11px] font-semibold text-brand-grey-light">
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+                <span className="font-mono text-xs font-semibold text-[#1F2937]">
                   {item.batch ? `BC${String(item.batch.nomorBatch).padStart(3, "0")}` : "No Batch"}
-                  <span className="ml-2 font-sans font-normal text-brand-grey">• {formatDate(item.createdAt)}</span>
+                  <span className="ml-2 font-sans font-normal text-[#6B7280]">• {formatDate(item.createdAt)}</span>
                 </span>
                 {(onEdit || onDelete) && (
                   <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -65,7 +65,7 @@ export function BarangTable({
                         type="button"
                         onClick={() => onEdit(item)}
                         aria-label={`Edit ${item.kodeBarang}`}
-                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-brand-border bg-brand-surface px-2.5 text-[11px] font-bold text-brand-grey-light transition hover:border-amber-500/40 hover:text-amber-400 active:scale-95"
+                        className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-2.5 text-xs font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8] active:scale-95"
                       >
                         Edit
                       </button>
@@ -75,7 +75,7 @@ export function BarangTable({
                         type="button"
                         onClick={() => onDelete(item)}
                         aria-label={`Hapus ${item.kodeBarang}`}
-                        className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-500/20 active:scale-95"
+                        className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-lg border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-[#EF4444] transition duration-200 ease hover:bg-red-100 active:scale-95"
                       >
                         Hapus
                       </button>
@@ -89,11 +89,11 @@ export function BarangTable({
       </ul>
 
       {/* ── Desktop: table ────────────────────────────── */}
-      <div className="hidden overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-sm md:block">
+      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)] md:block">
         <div className="max-h-[58vh] overflow-auto">
           <table className="w-full min-w-[860px] border-collapse text-left">
-            <thead className="sticky top-0 z-10 bg-brand-surface-card/95 text-xs font-semibold uppercase tracking-wider text-brand-grey backdrop-blur supports-[backdrop-filter]:bg-brand-surface-card/80">
-              <tr className="border-b border-brand-border">
+            <thead className="sticky top-0 z-10 bg-[#F5F7FA] text-xs font-semibold uppercase tracking-wider text-[#1E3A5F]">
+              <tr className="border-b border-slate-200">
                 <th className="w-14 px-4 py-3">No</th>
                 <th className="px-4 py-3">Kode Barang</th>
                 <th className="px-4 py-3">Produk</th>
@@ -105,28 +105,28 @@ export function BarangTable({
                 {(onEdit || onDelete) && <th className="px-4 py-3 text-right">Aksi</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-brand-border/60 text-sm">
+            <tbody className="divide-y divide-slate-100 text-[15px]">
               {barang.map((item, index) => (
                 <tr
                   key={item.id}
                   onClick={() => onRowClick(item)}
-                  className="group cursor-pointer transition-colors hover:bg-brand-surface/60"
+                  className="group cursor-pointer transition-colors duration-200 ease hover:bg-[#F5F7FA]"
                 >
-                  <td className="px-4 py-2.5 text-xs tabular-nums text-brand-grey">
+                  <td className="px-4 py-2.5 text-xs tabular-nums text-[#6B7280]">
                     {(currentPage - 1) * 20 + index + 1}
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className="font-mono text-xs font-bold text-brand-gold transition group-hover:underline">
+                    <span className="font-mono text-sm font-bold text-[#1E3A5F] transition group-hover:text-[#00A8E8] group-hover:underline">
                       {item.kodeBarang}
                     </span>
                   </td>
-                  <td className="max-w-[180px] truncate px-4 py-2.5 text-sm font-semibold text-white">
+                  <td className="max-w-[180px] truncate px-4 py-2.5 text-[15px] font-semibold text-[#1F2937]">
                     {item.variant.product.nama}
                   </td>
-                  <td className="max-w-[200px] truncate px-4 py-2.5 text-xs text-brand-grey-light">
+                  <td className="max-w-[200px] truncate px-4 py-2.5 text-sm text-[#6B7280]">
                     {item.variant.style.nama} {item.variant.color.nama} {item.variant.size.nama}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-brand-grey-light">
+                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-[#1F2937]">
                     {item.batch
                       ? `BC${String(item.batch.nomorBatch).padStart(3, "0")}`
                       : "-"}
@@ -134,10 +134,10 @@ export function BarangTable({
                   <td className="px-4 py-2.5">
                     <StatusBadge status={item.status} />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-xs text-brand-grey">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[#6B7280]">
                     {formatDate(item.createdAt)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-xs text-brand-grey-light">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[#6B7280]">
                     <span title={formatDate(item.createdAt)}>
                       {formatRelativeTime(item.createdAt, now)}
                     </span>
@@ -152,7 +152,7 @@ export function BarangTable({
                               e.stopPropagation();
                               onEdit(item);
                             }}
-                            className="rounded-lg border border-brand-border bg-brand-surface px-2.5 py-1.5 text-[11px] font-bold text-brand-grey-light transition hover:border-amber-500/40 hover:text-amber-400"
+                            className="rounded-lg border border-[#D1D5DB] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8]"
                           >
                             Edit
                           </button>
@@ -164,7 +164,7 @@ export function BarangTable({
                               e.stopPropagation();
                               onDelete(item);
                             }}
-                            className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-500/20"
+                            className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-[#EF4444] transition duration-200 ease hover:bg-red-100"
                           >
                             Hapus
                           </button>
@@ -177,7 +177,7 @@ export function BarangTable({
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between border-t border-brand-border bg-brand-surface/40 px-4 py-2.5 text-xs tabular-nums text-brand-grey">
+        <div className="flex items-center justify-between border-t border-slate-200 bg-[#F5F7FA] px-4 py-2.5 text-xs tabular-nums text-[#6B7280]">
           <span>
             Menampilkan {barang.length} dari {totalBarang.toLocaleString("id-ID")} barang
           </span>
@@ -188,7 +188,7 @@ export function BarangTable({
       </div>
 
       {/* Mobile count line */}
-      <p className="mt-2 text-center text-[11px] tabular-nums text-brand-grey md:hidden">
+      <p className="mt-2 text-center text-xs tabular-nums text-[#6B7280] md:hidden">
         {barang.length} dari {totalBarang.toLocaleString("id-ID")} • Hal. {currentPage}
       </p>
     </div>

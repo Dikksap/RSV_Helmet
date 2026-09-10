@@ -13,6 +13,7 @@ import {
 } from "../controller/barang/status.controller.js";
 import {
   listBarangHandler,
+  getBarangHariIniHandler,
   getBarangDetail,
   getRiwayatHandler,
   getStatusSummaryHandler,
@@ -63,6 +64,9 @@ router.get("/search", searchBarangHandler);
 
 // GET /api/barang/export?format=csv|json
 router.get("/export", exportBarangHandler);
+
+// GET /api/barang/hari-ini - Barang dengan tanggal hari ini
+router.get("/hari-ini", getBarangHariIniHandler);
 
 // GET /api/barang/scan/:kodeBarang
 router.get("/scan/:kodeBarang", scanBarangHandler);

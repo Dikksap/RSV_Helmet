@@ -23,13 +23,13 @@ export function VariantModal({ state, products, styles, colors, sizes, onClose, 
     <Modal title={isEdit ? "Edit Variant" : "Tambah Variant"} onClose={onClose}>
       <div className="space-y-4">
         {isEdit && state.editing && (
-          <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
             Edit variant: hanya <code className="font-mono">tanggal</code> dapat diubah (PATCH). Kode:{" "}
-            <strong className="font-mono text-amber-200">{state.editing.kodeVariant ?? "-"}</strong>
+            <strong className="font-mono text-amber-800">{state.editing.kodeVariant ?? "-"}</strong>
           </p>
         )}
         <label className={labelCls}>
-          <span>Produk {isEdit && <em className="font-normal text-amber-300">(terkunci)</em>}</span>
+          <span>Produk {isEdit && <em className="font-normal text-amber-600">(terkunci)</em>}</span>
           <select className={inputCls} value={state.productId} disabled={isEdit} onChange={(e) => onChange({ productId: e.target.value })}>
             <option value="">Pilih produk</option>
             {products.slice().sort((a, b) => a.nama.localeCompare(b.nama)).map((p) => (
@@ -47,14 +47,14 @@ export function VariantModal({ state, products, styles, colors, sizes, onClose, 
           <input type="date" className={inputCls} value={state.tanggal} onChange={(e) => onChange({ tanggal: e.target.value })} />
         </label>
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="rounded-lg border border-brand-border bg-brand-surface px-4 py-2.5 text-sm font-bold text-brand-grey-light transition hover:text-white">
+          <button type="button" onClick={onClose} className="inline-flex min-h-[48px] items-center rounded-lg border border-[#D1D5DB] bg-white px-6 py-3 text-base font-medium text-[#1F2937] transition duration-200 ease hover:bg-[#F5F7FA]">
             Batal
           </button>
           <button
             type="button"
             disabled={state.loading || (!state.editing && (!state.productId || !state.styleId || !state.colorId || !state.sizeId))}
             onClick={onSubmit}
-            className="rounded-lg border border-brand-gold/30 bg-brand-gold/10 px-4 py-2.5 text-sm font-bold text-brand-gold transition hover:bg-brand-gold hover:text-brand-black disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-[48px] items-center rounded-lg bg-[#00A8E8] px-6 py-3 text-base font-medium text-white transition duration-200 ease hover:bg-[#0088C0] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {state.loading ? "Menyimpan..." : state.editing ? "Simpan Tanggal" : "Tambah Variant"}
           </button>

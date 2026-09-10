@@ -32,28 +32,28 @@ const STATUS_META: Record<
 > = {
   FINISHGOOD: {
     label: "Finish Good",
-    badge: "border-emerald-500/20 bg-emerald-500/10",
-    text: "text-emerald-400",
+    badge: "border-emerald-200 bg-emerald-50",
+    text: "text-emerald-700",
   },
   REGISTER: {
     label: "Register",
-    badge: "border-sky-500/20 bg-sky-500/10",
-    text: "text-sky-400",
+    badge: "border-sky-200 bg-sky-50",
+    text: "text-sky-700",
   },
   RETUR: {
     label: "Retur",
-    badge: "border-amber-500/20 bg-amber-500/10",
-    text: "text-amber-400",
+    badge: "border-amber-200 bg-amber-50",
+    text: "text-amber-700",
   },
   OUT: {
     label: "Keluar",
-    badge: "border-violet-500/20 bg-violet-500/10",
-    text: "text-violet-400",
+    badge: "border-[#1E3A5F]/15 bg-[#1E3A5F]/5",
+    text: "text-[#1E3A5F]",
   },
   BAD: {
     label: "Rusak",
-    badge: "border-rose-500/20 bg-rose-500/10",
-    text: "text-rose-400",
+    badge: "border-red-200 bg-red-50",
+    text: "text-[#EF4444]",
   },
 };
 
@@ -149,8 +149,8 @@ function StatistikBarang() {
   const batchOptions = stats?.perBatch ?? [];
 
   const inputCls =
-    "h-12 w-full cursor-pointer rounded-xl border border-brand-border bg-brand-surface px-3.5 text-base font-medium text-white outline-none transition hover:border-brand-border/80 focus:border-brand-gold focus:ring-2 focus:ring-brand-gold/20 sm:h-11 sm:text-sm";
-  const labelCls = "grid gap-2 text-xs font-bold tracking-wide text-brand-grey";
+    "h-12 w-full cursor-pointer rounded-lg border border-[#D1D5DB] bg-white px-3.5 text-[15px] font-normal text-[#1F2937] outline-none transition duration-200 ease hover:border-[#6B7280] focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
+  const labelCls = "grid gap-2 text-sm font-medium text-[#1F2937]";
 
   return (
     <div className="space-y-5 sm:space-y-8">
@@ -159,14 +159,14 @@ function StatistikBarang() {
         <div>
           <Link
             to="/admin/barang"
-            className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.18em] text-brand-grey transition hover:text-brand-gold"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[#6B7280] transition duration-200 ease hover:text-[#00A8E8]"
           >
             ← Kembali ke daftar barang
           </Link>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:mt-4 sm:text-3xl">
+          <h1 className="mt-3 text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:mt-4 sm:text-4xl">
             Statistik Barang
           </h1>
-          <p className="mt-2 text-sm text-brand-grey">
+          <p className="mt-2 text-base text-[#6B7280]">
             Analisis distribusi jumlah barang berdasarkan variant dan batch produksi.
           </p>
         </div>
@@ -174,7 +174,7 @@ function StatistikBarang() {
           <button
             type="button"
             onClick={handleResetFilter}
-            className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-brand-border bg-brand-surface-card px-4 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold/30 hover:text-brand-gold sm:h-9 sm:w-auto"
+            className="inline-flex min-h-[48px] w-full items-center justify-center rounded-lg bg-[#F5F7FA] px-6 py-3 text-sm font-medium text-[#6B7280] transition duration-200 ease hover:bg-slate-200 hover:text-[#1F2937] sm:w-auto"
           >
             Reset filter
           </button>
@@ -182,8 +182,8 @@ function StatistikBarang() {
       </div>
 
       {/* Filter Card */}
-      <div className="rounded-2xl border border-brand-border bg-brand-surface-card p-4 shadow-sm sm:p-6">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-brand-grey sm:mb-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#1E3A5F] sm:mb-4">
           Filter Analisis
         </p>
         <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
@@ -226,55 +226,55 @@ function StatistikBarang() {
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className={`animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card ${i === 0 ? "col-span-2 h-[120px] sm:col-span-1 sm:h-[104px]" : "h-[104px]"}`}
+                className={`animate-pulse rounded-xl border border-slate-200 bg-white ${i === 0 ? "col-span-2 h-[120px] sm:col-span-1 sm:h-[104px]" : "h-[104px]"}`}
               />
             ))}
           </div>
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-            <div className="h-64 animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card" />
-            <div className="h-64 animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card" />
+            <div className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white" />
+            <div className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white" />
           </div>
         </div>
       )}
       {error && (
-        <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-300">
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[15px] font-medium text-[#EF4444]">
           {error}
         </p>
       )}
       {!isLoading && !error && stats && (
         <div className="space-y-5 sm:space-y-8">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <div className="group relative col-span-2 overflow-hidden rounded-2xl border border-brand-gold/30 bg-gradient-to-br from-brand-surface-card to-brand-black p-4 shadow-sm transition hover:border-brand-gold/50 sm:col-span-1 sm:p-5">
-              <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-brand-gold/10 blur-xl transition group-hover:bg-brand-gold/15" />
-              <p className="text-[11px] font-bold uppercase tracking-wider text-brand-grey sm:text-xs">
+            <div className="group relative col-span-2 overflow-hidden rounded-xl border border-[#00A8E8]/30 bg-gradient-to-br from-white to-[#F5F7FA] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition duration-200 ease hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(0,0,0,0.10)] sm:col-span-1">
+              <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#00A8E8]/10 blur-xl transition group-hover:bg-[#00A8E8]/15" />
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#1E3A5F]">
                 Total barang
               </p>
-              <strong className="mt-2 block text-3xl font-black tabular-nums text-brand-gold sm:mt-3 sm:text-4xl">
+              <strong className="mt-2 block text-4xl font-bold tabular-nums text-[#1E3A5F] sm:mt-3">
                 {stats.total}
               </strong>
-              <p className="mt-1 truncate text-[11px] text-brand-grey sm:text-xs">
+              <p className="mt-1 truncate text-xs text-[#6B7280]">
                 {isFiltered ? "Hasil filter" : "Semua data"} • {stats.perVariant.length} varian • {stats.perBatch.length} batch
               </p>
             </div>
             {STATUS_ORDER.map((status) => (
               <div
                 key={status}
-                className="group rounded-2xl border border-brand-border bg-brand-surface-card p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-gold/20 hover:bg-brand-surface hover:shadow-md sm:p-5"
+                className="group rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition duration-200 ease hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(0,0,0,0.10)]"
               >
-                <p className="truncate text-[11px] font-bold uppercase tracking-wider text-brand-grey sm:text-xs">
+                <p className="truncate text-xs font-semibold uppercase tracking-wider text-[#1E3A5F]">
                   {STATUS_META[status].label}
                 </p>
                 <div className="mt-2 flex items-end justify-between gap-2 sm:mt-3">
                   <div className="min-w-0">
-                    <strong className="block text-2xl font-black tabular-nums text-white sm:text-3xl">
+                    <strong className="block text-3xl font-bold tabular-nums text-[#1F2937]">
                       {stats.perStatus[status] ?? 0}
                     </strong>
-                    <p className="mt-0.5 text-[11px] tabular-nums text-brand-grey sm:text-xs">
+                    <p className="mt-0.5 text-xs tabular-nums text-[#6B7280]">
                       {pctOf(stats.perStatus[status] ?? 0, stats.total)} dari total
                     </p>
                   </div>
                   <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm transition group-hover:scale-105 sm:h-9 sm:w-9 ${STATUS_META[status].badge} ${STATUS_META[status].text}`}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-sm transition duration-200 ease group-hover:scale-105 sm:h-9 sm:w-9 ${STATUS_META[status].badge} ${STATUS_META[status].text}`}
                   >
                     <FontAwesomeIcon icon={STATUS_ICON[status]} className="h-4 w-4" />
                   </span>
@@ -302,11 +302,11 @@ function StatistikBarang() {
 
           {batchLoading ? (
             <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-              <div className="h-64 animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card" />
-              <div className="h-64 animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card" />
+              <div className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white" />
+              <div className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white" />
             </div>
           ) : batchError ? (
-            <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-300">
+            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[15px] font-medium text-[#EF4444]">
               {batchError}
             </p>
           ) : (
@@ -329,26 +329,26 @@ function StatsTable({
   rows: Array<{ label: string; total: number }>;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-brand-border bg-brand-surface/40 px-4 py-3.5 sm:px-6 sm:py-4">
-        <h2 className="truncate text-sm font-bold tracking-wide text-white">{title}</h2>
-        <span className="shrink-0 rounded-full bg-brand-surface px-2.5 py-1 text-xs font-bold tabular-nums text-brand-grey">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-[#F5F7FA] px-4 py-3.5 sm:px-6 sm:py-4">
+        <h2 className="truncate text-sm font-semibold tracking-wide text-[#1E3A5F]">{title}</h2>
+        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tabular-nums text-[#6B7280]">
           {rows.length}
         </span>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-brand-grey sm:px-6">Tidak ada data.</p>
+        <p className="px-4 py-10 text-center text-[15px] text-[#6B7280] sm:px-6">Tidak ada data.</p>
       ) : (
-        <div className="max-h-[300px] divide-y divide-brand-border overflow-y-auto sm:max-h-[340px]">
+        <div className="max-h-[300px] divide-y divide-slate-100 overflow-y-auto sm:max-h-[340px]">
           {rows.map((row) => (
             <div
               key={row.label}
-              className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-brand-surface/60 sm:gap-4 sm:px-6 sm:py-3.5"
+              className="flex items-center justify-between gap-3 px-4 py-3 transition duration-200 ease hover:bg-[#F5F7FA] sm:gap-4 sm:px-6 sm:py-3.5"
             >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-brand-grey-light">
+              <span className="min-w-0 flex-1 truncate text-[15px] font-normal text-[#1F2937]">
                 {row.label}
               </span>
-              <strong className="shrink-0 rounded-full border border-brand-gold/20 bg-brand-gold/10 px-2.5 py-1 text-xs font-bold tabular-nums text-brand-gold sm:px-3 sm:text-sm">
+              <strong className="shrink-0 rounded-full border border-[#00A8E8]/20 bg-[#00A8E8]/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-[#00A8E8] sm:px-3 sm:text-sm">
                 {row.total}
               </strong>
             </div>
@@ -376,43 +376,43 @@ function BatchRentangTable({
     });
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-brand-border bg-brand-surface/40 px-4 py-3.5 sm:px-6 sm:py-4">
-        <h2 className="truncate text-sm font-bold tracking-wide text-white">{title}</h2>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-[#F5F7FA] px-4 py-3.5 sm:px-6 sm:py-4">
+        <h2 className="truncate text-sm font-semibold tracking-wide text-[#1E3A5F]">{title}</h2>
         <span
-          className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${
+          className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${
             title === "Batch Aktif"
-              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-              : "border-brand-grey/20 bg-brand-grey/10 text-brand-grey-light"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-slate-200 bg-[#F5F7FA] text-[#6B7280]"
           }`}
         >
           {rows.length}
         </span>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-brand-grey sm:px-6">Tidak ada data.</p>
+        <p className="px-4 py-10 text-center text-[15px] text-[#6B7280] sm:px-6">Tidak ada data.</p>
       ) : (
         <>
           {/* Kartu susun untuk layar kecil */}
-          <div className="divide-y divide-brand-border sm:hidden">
+          <div className="divide-y divide-slate-100 sm:hidden">
             {rows.map((row) => (
               <div key={row.batchId} className="px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-sm font-bold text-brand-gold">
+                  <span className="font-mono text-sm font-bold text-[#1E3A5F]">
                     Batch {String(row.nomorBatch).padStart(3, "0")}
                   </span>
-                  <span className="rounded-full border border-brand-gold/20 bg-brand-gold/10 px-2.5 py-0.5 text-xs font-bold tabular-nums text-brand-gold">
+                  <span className="rounded-full border border-[#00A8E8]/20 bg-[#00A8E8]/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#00A8E8]">
                     {row.totalProduksi} pcs
                   </span>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-brand-surface/60 px-2.5 py-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-brand-grey">Mulai</p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-brand-grey-light">{formatDateTime(row.tanggalMulai)}</p>
+                  <div className="rounded-lg bg-[#F5F7FA] px-2.5 py-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">Mulai</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-[#1F2937]">{formatDateTime(row.tanggalMulai)}</p>
                   </div>
-                  <div className="rounded-lg bg-brand-surface/60 px-2.5 py-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-brand-grey">Selesai</p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-brand-grey-light">{formatDateTime(row.tanggalSelesai)}</p>
+                  <div className="rounded-lg bg-[#F5F7FA] px-2.5 py-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">Selesai</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-[#1F2937]">{formatDateTime(row.tanggalSelesai)}</p>
                   </div>
                 </div>
               </div>
@@ -420,8 +420,8 @@ function BatchRentangTable({
           </div>
           {/* Tabel untuk layar besar */}
           <div className="hidden overflow-x-auto sm:block">
-            <table className="w-full min-w-[520px] text-left text-sm">
-              <thead className="bg-brand-surface/60 text-[10px] uppercase tracking-wider text-brand-grey">
+            <table className="w-full min-w-[520px] text-left text-[15px]">
+              <thead className="bg-[#F5F7FA] text-[11px] uppercase tracking-wider text-[#1E3A5F]">
                 <tr>
                   <th className="px-6 py-3.5 font-semibold">Batch</th>
                   <th className="px-6 py-3.5 font-semibold">Total Produksi</th>
@@ -429,13 +429,13 @@ function BatchRentangTable({
                   <th className="px-6 py-3.5 font-semibold">Selesai</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-brand-border text-brand-grey-light">
+              <tbody className="divide-y divide-slate-100 text-[#1F2937]">
                 {rows.map((row) => (
-                  <tr key={row.batchId} className="transition hover:bg-brand-surface/60">
-                    <td className="px-6 py-4 font-mono text-sm font-bold text-brand-gold">
+                  <tr key={row.batchId} className="transition duration-200 ease hover:bg-[#F5F7FA]">
+                    <td className="px-6 py-4 font-mono text-sm font-bold text-[#1E3A5F]">
                       {String(row.nomorBatch).padStart(3, "0")}
                     </td>
-                    <td className="px-6 py-4 font-medium tabular-nums text-white">
+                    <td className="px-6 py-4 font-medium tabular-nums text-[#1F2937]">
                       {row.totalProduksi}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm">

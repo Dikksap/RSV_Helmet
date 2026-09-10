@@ -394,10 +394,10 @@ function DaftarBarang() {
   };
 
   const inputCls =
-    "min-h-[44px] w-full rounded-xl border border-brand-border bg-brand-surface px-3 text-sm text-white outline-none transition placeholder:text-brand-grey/70 focus:border-brand-gold focus:ring-1 focus:ring-brand-gold [color-scheme:dark]";
-  const labelCls = "flex flex-col gap-1.5 text-xs font-semibold text-brand-grey";
+    "h-12 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
+  const labelCls = "flex flex-col gap-1.5 text-sm font-medium text-[#1F2937]";
   const textareaCls =
-    "min-h-[88px] w-full rounded-xl border border-brand-border bg-brand-surface px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-brand-grey/70 focus:border-brand-gold focus:ring-1 focus:ring-brand-gold";
+    "min-h-[88px] w-full rounded-lg border border-[#D1D5DB] bg-white px-3 py-2.5 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 sm:space-y-6">
@@ -430,40 +430,40 @@ function DaftarBarang() {
       />
 
       {successMsg && (
-        <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-sm text-emerald-300">
+        <div role="status" className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-[15px] text-emerald-700">
           <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
           <span>{successMsg}</span>
         </div>
       )}
 
       {isLoading && (
-        <div className="space-y-2.5" aria-label="Memuat data barang">
+        <div className="space-y-3" aria-label="Memuat data barang">
           {/* Mobile skeleton cards */}
-          <div className="grid gap-2.5 md:hidden">
+          <div className="grid gap-3 md:hidden">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="animate-pulse rounded-2xl border border-brand-border bg-brand-surface-card p-3.5">
-                <div className="h-3 w-2/5 rounded bg-white/10" />
-                <div className="mt-2 h-4 w-3/5 rounded bg-white/10" />
-                <div className="mt-2 h-3 w-4/5 rounded bg-white/5" />
+              <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-6">
+                <div className="h-3 w-2/5 rounded bg-slate-200" />
+                <div className="mt-2 h-4 w-3/5 rounded bg-slate-200" />
+                <div className="mt-2 h-3 w-4/5 rounded bg-slate-100" />
               </div>
             ))}
           </div>
           {/* Desktop skeleton */}
-          <div className="hidden overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card p-4 md:block">
+          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] md:block">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex animate-pulse gap-4 border-b border-brand-border/40 py-3 last:border-0">
-                <div className="h-4 w-8 rounded bg-white/10" />
-                <div className="h-4 flex-1 rounded bg-white/10" />
-                <div className="h-4 w-24 rounded bg-white/5" />
+              <div key={i} className="flex animate-pulse gap-4 border-b border-slate-100 py-3 last:border-0">
+                <div className="h-4 w-8 rounded bg-slate-200" />
+                <div className="h-4 flex-1 rounded bg-slate-200" />
+                <div className="h-4 w-24 rounded bg-slate-100" />
               </div>
             ))}
-            <p className="pt-2 text-center text-xs text-brand-grey">Memuat data barang...</p>
+            <p className="pt-2 text-center text-sm text-[#6B7280]">Memuat data barang...</p>
           </div>
         </div>
       )}
 
       {error && !isLoading && (
-        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-sm text-rose-300">
+        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-4 text-[15px] text-[#EF4444]">
           <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           <span>{error}</span>
         </div>
@@ -472,14 +472,14 @@ function DaftarBarang() {
       {!isLoading && !error && (
         <section className="space-y-3 sm:space-y-4">
           {barang.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-brand-border bg-brand-surface-card p-8 text-center sm:p-12">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-surface text-brand-grey">
+            <div className="rounded-xl border border-dashed border-[#D1D5DB] bg-white p-8 text-center shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-12">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5F7FA] text-[#1E3A5F]">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
               </div>
-              <p className="mt-3 text-sm font-semibold text-white">
+              <p className="mt-3 text-base font-semibold text-[#1F2937]">
                 {hasActiveFilters ? "Tidak ada hasil" : "Belum ada data barang"}
               </p>
-              <p className="mx-auto mt-1 max-w-xs text-xs text-brand-grey">
+              <p className="mx-auto mt-1 max-w-xs text-sm text-[#6B7280]">
                 {hasActiveFilters
                   ? "Coba ubah kata kunci atau reset filter untuk melihat data lain."
                   : "Tambahkan barang pertama untuk mulai mengelola inventory."}
@@ -488,7 +488,7 @@ function DaftarBarang() {
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="mt-4 inline-flex min-h-[44px] items-center rounded-xl border border-brand-border bg-brand-surface px-5 text-xs font-bold text-white transition hover:border-brand-gold active:scale-[0.98]"
+                  className="mt-4 inline-flex min-h-[48px] items-center rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:bg-[#1E3A5F]/5 active:scale-[0.98]"
                 >
                   Reset Filter
                 </button>
@@ -496,7 +496,7 @@ function DaftarBarang() {
                 <button
                   type="button"
                   onClick={openCreate}
-                  className="mt-4 inline-flex min-h-[44px] items-center rounded-xl bg-brand-gold px-5 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light active:scale-[0.98]"
+                  className="mt-4 inline-flex min-h-[48px] items-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white transition duration-200 ease hover:bg-[#0088C0] active:scale-[0.98]"
                 >
                   + Tambah Barang
                 </button>
@@ -538,31 +538,31 @@ function DaftarBarang() {
       {/* CREATE MODAL — bottom sheet on mobile */}
       {showCreate && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onClick={() => setShowCreate(false)}
         >
           <div
-            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-2xl sm:p-6"
+            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-lg sm:rounded-xl"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
             <button
               type="button"
               onClick={() => setShowCreate(false)}
               aria-label="Tutup"
-              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-grey-light hover:border-brand-gold hover:text-white"
+              className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
             >
               ✕
             </button>
-            <p className="text-xs font-bold uppercase tracking-widest text-brand-gold">Tambah Barang</p>
-            <h2 className="mt-1 text-lg font-bold text-white">Buat Barang Baru</h2>
-            <p className="mt-1 text-xs text-brand-grey">Kode otomatis jika kosong. Batch kosong = pakai batch AKTIF.</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Tambah Barang</p>
+            <h2 className="mt-1 text-xl font-bold text-[#1E3A5F]">Buat Barang Baru</h2>
+            <p className="mt-1 text-sm text-[#6B7280]">Kode otomatis jika kosong. Batch kosong = pakai batch AKTIF.</p>
 
             {crudError && (
-              <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{crudError}</div>
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
             )}
 
             <div className="mt-4 grid gap-3">
@@ -607,11 +607,11 @@ function DaftarBarang() {
               </label>
             </div>
 
-            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-brand-border/60 bg-brand-surface-card/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-slate-200 bg-white/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-bold text-brand-grey-light hover:text-white sm:flex-none"
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none"
               >
                 Batal
               </button>
@@ -619,7 +619,7 @@ function DaftarBarang() {
                 type="button"
                 onClick={handleCreate}
                 disabled={crudLoading}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-brand-gold px-5 py-2.5 text-xs font-bold text-brand-black hover:bg-brand-gold-light disabled:opacity-50 sm:flex-none"
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menyimpan..." : "Simpan"}
               </button>
@@ -631,30 +631,30 @@ function DaftarBarang() {
       {/* EDIT MODAL — bottom sheet on mobile */}
       {editingBarang && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onClick={() => setEditingBarang(null)}
         >
           <div
-            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-2xl sm:p-6"
+            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-lg sm:rounded-xl"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
             <button
               type="button"
               onClick={() => setEditingBarang(null)}
               aria-label="Tutup"
-              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-grey-light hover:border-brand-gold hover:text-white"
+              className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
             >
               ✕
             </button>
-            <p className="text-xs font-bold uppercase tracking-widest text-brand-gold">Edit Barang</p>
-            <h2 className="mt-1 font-mono text-sm font-bold text-white">{editingBarang.kodeBarang}</h2>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Edit Barang</p>
+            <h2 className="mt-1 font-mono text-sm font-bold text-[#1E3A5F]">{editingBarang.kodeBarang}</h2>
 
             {crudError && (
-              <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{crudError}</div>
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
             )}
 
             <div className="mt-4 grid gap-3">
@@ -679,7 +679,7 @@ function DaftarBarang() {
                     onChange={(e) => setEBatchId(e.target.value)}
                     disabled={eBatchDetach}
                   />
-                  <label className="mt-1 flex items-center gap-1.5 text-[11px] font-normal text-brand-grey-light">
+                  <label className="mt-1 flex items-center gap-1.5 text-xs font-normal text-[#6B7280]">
                     <input type="checkbox" checked={eBatchDetach} onChange={(e) => setEBatchDetach(e.target.checked)} />
                     Lepas dari batch (null)
                   </label>
@@ -710,11 +710,11 @@ function DaftarBarang() {
               </label>
             </div>
 
-            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-brand-border/60 bg-brand-surface-card/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-slate-200 bg-white/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
               <button
                 type="button"
                 onClick={() => setEditingBarang(null)}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-bold text-brand-grey-light hover:text-white sm:flex-none"
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none"
               >
                 Batal
               </button>
@@ -722,7 +722,7 @@ function DaftarBarang() {
                 type="button"
                 onClick={handleUpdate}
                 disabled={crudLoading}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-brand-gold px-5 py-2.5 text-xs font-bold text-brand-black hover:bg-brand-gold-light disabled:opacity-50 sm:flex-none"
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menyimpan..." : "Update"}
               </button>
@@ -734,29 +734,29 @@ function DaftarBarang() {
       {/* DELETE CONFIRM — bottom sheet on mobile */}
       {deletingBarang && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onClick={() => setDeletingBarang(null)}
         >
           <div
-            className="relative w-full rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-md sm:rounded-2xl sm:p-6"
+            className="relative w-full rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-md sm:rounded-xl"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
-            <h2 className="pr-8 text-base font-bold text-white sm:text-lg">Hapus Barang?</h2>
-            <p className="mt-2 text-sm text-brand-grey">
-              Yakin hapus <span className="font-mono font-bold text-brand-gold">{deletingBarang.kodeBarang}</span>? Tindakan ini tidak dapat dibatalkan.
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
+            <h2 className="pr-8 text-lg font-bold text-[#1E3A5F]">Hapus Barang?</h2>
+            <p className="mt-2 text-[15px] text-[#6B7280]">
+              Yakin hapus <span className="font-mono font-bold text-[#1E3A5F]">{deletingBarang.kodeBarang}</span>? Tindakan ini tidak dapat dibatalkan.
             </p>
             {crudError && (
-              <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{crudError}</div>
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
             )}
             <div className="mt-6 flex gap-2">
               <button
                 type="button"
                 onClick={() => setDeletingBarang(null)}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-bold text-brand-grey-light hover:text-white sm:flex-none sm:px-5"
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none sm:px-6"
               >
                 Batal
               </button>
@@ -764,7 +764,7 @@ function DaftarBarang() {
                 type="button"
                 onClick={handleDelete}
                 disabled={crudLoading}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-50 sm:flex-none"
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#EF4444] px-6 py-3 text-sm font-medium text-white hover:brightness-95 disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menghapus..." : "Ya, Hapus"}
               </button>

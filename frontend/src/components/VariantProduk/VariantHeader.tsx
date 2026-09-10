@@ -11,11 +11,11 @@ export function VariantHeader({ onCreateProduct, onCreateVariant, onImport }: Pr
   return (
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
-        <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-brand-gold">
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-[#00A8E8]">
           Product Inventory / Variant
         </p>
-        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Variant Produk</h1>
-        <p className="mt-1 max-w-2xl text-sm text-brand-grey">
+        <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Variant Produk</h1>
+        <p className="mt-1 max-w-2xl text-base text-[#6B7280]">
           Daftar seluruh produk beserta varian (style, warna, dan ukuran).
         </p>
       </div>
@@ -23,7 +23,7 @@ export function VariantHeader({ onCreateProduct, onCreateVariant, onImport }: Pr
         <button
           type="button"
           onClick={onImport}
-          className="inline-flex items-center gap-2 rounded-lg border border-brand-border bg-brand-surface px-4 py-2.5 text-sm font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-brand-gold"
+          className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-base font-medium text-[#1E3A5F] transition duration-200 ease hover:bg-[#1E3A5F]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
         >
           <FontAwesomeIcon icon={faFileArrowUp} className="h-4 w-4" />
           Import
@@ -31,7 +31,7 @@ export function VariantHeader({ onCreateProduct, onCreateVariant, onImport }: Pr
         <button
           type="button"
           onClick={onCreateProduct}
-          className="inline-flex items-center gap-2 rounded-lg border border-brand-border bg-brand-surface px-4 py-2.5 text-sm font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-brand-gold"
+          className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-base font-medium text-[#1E3A5F] transition duration-200 ease hover:bg-[#1E3A5F]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
         >
           <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" />
           Produk
@@ -39,7 +39,7 @@ export function VariantHeader({ onCreateProduct, onCreateVariant, onImport }: Pr
         <button
           type="button"
           onClick={onCreateVariant}
-          className="inline-flex items-center gap-2 rounded-lg border border-brand-gold/30 bg-brand-gold/10 px-4 py-2.5 text-sm font-bold text-brand-gold transition hover:bg-brand-gold hover:text-brand-black"
+          className="inline-flex min-h-[48px] items-center gap-2 rounded-lg bg-[#00A8E8] px-6 py-3 text-base font-medium text-white transition duration-200 ease hover:bg-[#0088C0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
         >
           <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" />
           Variant

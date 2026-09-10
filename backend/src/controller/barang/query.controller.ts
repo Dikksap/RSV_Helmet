@@ -121,6 +121,52 @@ export async function listBarangHandler(req: Request, res: Response) {
   }
 }
 
+export async function getBarangHariIniHandler(req: Request, res: Response) {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const { variantId, batchId, status } = req.query;
+
+    if (status && !["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"].includes(String(status))) {
+      return res.status(400).json({
+        message:
+          "Parameter 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+      });
+    }
+
+    let vid: number | undefined;
+    if (variantId !== undefined) {
+      vid = Number(variantId);
+      if (Number.isNaN(vid)) {
+        return res.status(400).json({ message: "Parameter 'variantId' harus angka" });
+      }
+    }
+
+    let bid: number | undefined;
+    if (batchId !== undefined) {
+      bid = Number(batchId);
+      if (Number.isNaN(bid)) {
+        return res.status(400).json({ message: "Parameter 'batchId' harus angka" });
+      }
+    }
+
+    const now = new Date();
+    const result = await listBarang({
+      page,
+      limit,
+      variantId: vid,
+      batchId: bid,
+      status: status as StatusBarang | undefined,
+      tanggalAwal: toStartOfDay(now),
+      tanggalAkhir: toEndOfDay(now),
+    });
+
+    res.status(200).json({ tanggal: now.toISOString().slice(0, 10), ...result });
+  } catch (error) {
+    res.status(500).json({ message: "Gagal mengambil data barang hari ini", error });
+  }
+}
+
 export async function getBarangDetail(req: Request, res: Response) {
   try {
     const id = Number(req.params.id);

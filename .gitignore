@@ -1,0 +1,4 @@
+/telegram_bot/node_modules
+.env
+/telegram_bot/dist
+/telegram_bot/.env

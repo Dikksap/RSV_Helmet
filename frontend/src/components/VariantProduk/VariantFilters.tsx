@@ -44,7 +44,7 @@ export function VariantFilters({
   onReset,
 }: Props) {
   return (
-    <div className="rounded-2xl border border-brand-border bg-brand-surface-card p-5">
+    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <input
           type="search"
@@ -125,17 +125,17 @@ export function VariantFilters({
           </select>
         </label>
         <label className={labelCls}>
-          <span className="text-transparent">Aksi</span>
+          <span className="text-transparent" aria-hidden="true">Aksi</span>
           <button
             type="button"
-            className="h-11 rounded-lg border border-brand-border bg-brand-surface px-4 text-sm font-bold text-brand-grey-light transition hover:border-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-brand-border disabled:hover:bg-brand-surface disabled:hover:text-brand-grey-light"
+            className="h-12 rounded-lg bg-[#F5F7FA] px-4 text-sm font-medium text-[#6B7280] transition duration-200 ease hover:bg-slate-200 hover:text-[#1F2937] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={onReset}
             disabled={!hasActiveFilters}
           >
             Reset filter
           </button>
         </label>
-        <span className="flex items-end pb-2 text-xs font-medium text-brand-grey" aria-live="polite">
+        <span className="flex items-end pb-2 text-sm font-medium text-[#6B7280]" aria-live="polite">
           Menampilkan {rowsLength} dari {totalVarian} varian
         </span>
       </div>

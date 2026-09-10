@@ -120,20 +120,20 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-brand-border bg-brand-surface-card p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-2xl sm:rounded-2xl sm:p-6"
+        className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-2xl sm:rounded-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="hangtag-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
         <button
-          className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-grey-light transition hover:border-brand-gold hover:text-white"
+          className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] transition duration-200 ease hover:bg-[#F5F7FA] hover:text-[#1F2937] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
           type="button"
           aria-label="Tutup modal"
           onClick={onClose}
@@ -141,12 +141,12 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
           ✕
         </button>
 
-        <p className="text-xs font-bold uppercase tracking-widest text-brand-gold">
+        <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">
           Hangtag Barang
         </p>
         <h2
           id="hangtag-title"
-          className="mt-1 font-mono text-xl font-bold tracking-tight text-white"
+          className="mt-1 font-mono text-xl font-bold tracking-tight text-[#1E3A5F]"
         >
           {barang.kodeBarang}
         </h2>
@@ -154,7 +154,7 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
           <button
             type="button"
             onClick={handleCopy}
-            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-white active:scale-[0.98]"
+            className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8] active:scale-[0.98]"
             aria-label="Copy kode barang"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v3" /></svg>
@@ -164,7 +164,7 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
             type="button"
             onClick={handleDownload}
             disabled={isDownloading}
-            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-white active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8] active:scale-[0.98] disabled:opacity-50"
             aria-label="Download hangtag"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -174,7 +174,7 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
             type="button"
             onClick={handlePrint}
             disabled={isPrinting}
-            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-brand-gold px-4 py-2 text-xs font-bold text-brand-black transition hover:bg-brand-gold-light active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white transition duration-200 ease hover:bg-[#0088C0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 active:scale-[0.98] disabled:opacity-50"
             aria-label="Print hangtag"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
@@ -182,12 +182,12 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
           </button>
         </div>
         {actionMsg && (
-          <p className="mt-2 text-xs text-rose-300">{actionMsg}</p>
+          <p className="mt-2 text-sm text-[#EF4444]">{actionMsg}</p>
         )}
 
         <div
           ref={hangtagRef}
-          className="mt-6 flex justify-center overflow-x-auto rounded-2xl bg-brand-surface p-4"
+          className="mt-6 flex justify-center overflow-x-auto rounded-xl bg-[#F5F7FA] p-6"
         >
           <div className="origin-top scale-[0.82] sm:scale-95 lg:scale-100">
             <Hangtag
@@ -209,14 +209,14 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
         </div>
 
         <div className="mt-4 space-y-1 text-center">
-          <p className="font-semibold text-white">
+          <p className="font-semibold text-[#1F2937]">
             {barang.variant.product.nama}
           </p>
-          <p className="text-xs text-brand-grey">
+          <p className="text-sm text-[#6B7280]">
             {barang.variant.style.nama} / {barang.variant.color.nama} /{" "}
             {barang.variant.size.nama}
           </p>
-          <p className="text-xs font-mono font-medium text-brand-gold">
+          <p className="font-mono text-xs font-medium text-[#00A8E8]">
             {barang.batch
               ? `Batch: BC${String(barang.batch.nomorBatch).padStart(3, "0")}`
               : "No Batch"}

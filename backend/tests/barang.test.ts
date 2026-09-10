@@ -227,6 +227,55 @@ describe("GET /api/barang", () => {
 });
 
 // =============================================
+// GET /hari-ini
+// =============================================
+
+describe("GET /api/barang/hari-ini", () => {
+  it("200 dengan range tanggal hari ini + field tanggal", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+    } as any);
+
+    const res = await request(app).get("/api/barang/hari-ini");
+
+    expect(res.status).toBe(200);
+    expect(res.body.tanggal).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: 1,
+        limit: 20,
+        tanggalAwal: expect.any(Date),
+        tanggalAkhir: expect.any(Date),
+      })
+    );
+  });
+
+  it("400 jika status tidak valid", async () => {
+    const res = await request(app).get("/api/barang/hari-ini?status=SALAH");
+
+    expect(res.status).toBe(400);
+    expect(mocked.listBarang).not.toHaveBeenCalled();
+  });
+
+  it("teruskan filter variantId/batchId + pagination", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 5, total: 0, totalPages: 1 },
+    } as any);
+
+    const res = await request(app).get(
+      "/api/barang/hari-ini?variantId=1&batchId=2&status=REGISTER&limit=5"
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({ variantId: 1, batchId: 2, status: "REGISTER", limit: 5 })
+    );
+  });
+});
+
+// =============================================
 // GET /scan/:kodeBarang
 // =============================================
 

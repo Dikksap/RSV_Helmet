@@ -5,34 +5,34 @@ const STATUS_STYLES: Record<
   { bg: string; text: string; dot: string; border: string }
 > = {
   REGISTER: {
-    bg: "bg-amber-500/10",
-    text: "text-amber-400",
-    dot: "bg-amber-400",
-    border: "border-amber-500/20",
+    bg: "bg-amber-50",
+    text: "text-amber-700",
+    dot: "bg-amber-500",
+    border: "border-amber-200",
   },
   FINISHGOOD: {
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
-    dot: "bg-emerald-400",
-    border: "border-emerald-500/20",
+    bg: "bg-emerald-50",
+    text: "text-emerald-700",
+    dot: "bg-[#10B981]",
+    border: "border-emerald-200",
   },
   RETUR: {
-    bg: "bg-blue-500/10",
-    text: "text-blue-400",
-    dot: "bg-blue-400",
-    border: "border-blue-500/20",
+    bg: "bg-sky-50",
+    text: "text-sky-700",
+    dot: "bg-[#00A8E8]",
+    border: "border-sky-200",
   },
   OUT: {
-    bg: "bg-brand-gold/10",
-    text: "text-brand-gold",
-    dot: "bg-brand-gold",
-    border: "border-brand-gold/20",
+    bg: "bg-[#1E3A5F]/5",
+    text: "text-[#1E3A5F]",
+    dot: "bg-[#1E3A5F]",
+    border: "border-[#1E3A5F]/15",
   },
   BAD: {
-    bg: "bg-rose-500/10",
-    text: "text-rose-400",
-    dot: "bg-rose-400",
-    border: "border-rose-500/20",
+    bg: "bg-red-50",
+    text: "text-[#EF4444]",
+    dot: "bg-[#EF4444]",
+    border: "border-red-200",
   },
 };
 
@@ -44,7 +44,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const style = STATUS_STYLES[status] ?? STATUS_STYLES.REGISTER;
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text} ${style.border}`}
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${style.bg} ${style.text} ${style.border}`}
     >
       <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${style.dot}`} />
       {status}

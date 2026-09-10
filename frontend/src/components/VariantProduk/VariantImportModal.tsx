@@ -297,15 +297,15 @@ export function VariantImportModal({ open, onClose, products, styles, colors, si
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card shadow-2xl">
+      <div className="fixed inset-0 bg-[#0F1C2E]/60 backdrop-blur-sm" onClick={handleClose} />
+      <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)]">
         {/* header */}
-        <div className="flex items-center justify-between border-b border-brand-border px-6 py-4">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Import Variant</h2>
-            <p className="text-xs text-brand-grey">CSV/XLSX — POST /api/products/:id/variants per baris. KodeVariant auto W001.</p>
+            <h2 className="text-xl font-semibold text-[#1E3A5F]">Import Variant</h2>
+            <p className="text-sm text-[#6B7280]">CSV/XLSX — POST /api/products/:id/variants per baris. KodeVariant auto W001.</p>
           </div>
-          <button type="button" onClick={handleClose} disabled={importing} className="rounded-lg p-1 text-brand-grey hover:text-white disabled:opacity-40">
+          <button type="button" onClick={handleClose} disabled={importing} className="rounded-lg p-1 text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937] disabled:opacity-40">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -314,50 +314,50 @@ export function VariantImportModal({ open, onClose, products, styles, colors, si
           <div className="space-y-4">
             {/* toolbar */}
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm font-bold text-brand-grey-light hover:border-brand-gold hover:text-brand-gold">
+              <button type="button" onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-[#F5F7FA] px-3 py-2 text-sm font-bold text-[#1F2937] hover:border-[#00A8E8] hover:text-[#00A8E8]">
                 <FontAwesomeIcon icon={faDownload} className="h-4 w-4" /> Template CSV
               </button>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-brand-gold/30 bg-brand-gold/10 px-4 py-2 text-sm font-bold text-brand-gold hover:bg-brand-gold hover:text-brand-black">
+              <label className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-lg bg-[#00A8E8] px-6 py-3 text-base font-medium text-white transition duration-200 ease hover:bg-[#0088C0]">
                 <FontAwesomeIcon icon={faUpload} className="h-4 w-4" /> Pilih File
                 <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.xls" onChange={onFileChange} className="hidden" />
               </label>
-              {fileName && <span className="flex items-center gap-1 text-xs text-brand-grey-light"><FontAwesomeIcon icon={faFileCsv} /> {fileName} — {parsed.length} baris</span>}
+              {fileName && <span className="flex items-center gap-1 text-xs text-[#1F2937]"><FontAwesomeIcon icon={faFileCsv} /> {fileName} — {parsed.length} baris</span>}
             </div>
 
-            <div className="rounded-lg border border-brand-border bg-brand-surface p-3 text-xs leading-relaxed text-brand-grey">
-              <p className="font-bold text-brand-grey-light">Format header (case-insensitive): <code className="font-mono text-brand-gold">produk,style,warna,ukuran,tanggal</code></p>
+            <div className="rounded-lg border border-slate-200 bg-[#F5F7FA] p-3 text-xs leading-relaxed text-[#6B7280]">
+              <p className="font-bold text-[#1F2937]">Format header (case-insensitive): <code className="font-mono text-[#00A8E8]">produk,style,warna,ukuran,tanggal</code></p>
               <p>Alias diterima: produk→product/prefix/ID, warna→color, ukuran→size, tanggal opsional YYYY-MM-DD (atau DD/MM/YYYY). Nama harus persis dengan Master Data & Produk.</p>
               <p>POST per baris — 409 jika kombinasi produk/style/warna/ukuran sudah ada. Tanggal kosong = now.</p>
             </div>
 
-            <details className="rounded-lg border border-brand-gold/20 bg-brand-gold/5 px-4 py-3">
-              <summary className="cursor-pointer list-none text-xs font-bold text-brand-gold"><FontAwesomeIcon icon={faCircleInfo} className="mr-1 h-3 w-3" /> Cara import (6 langkah) — klik untuk buka</summary>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-brand-grey-light">
+            <details className="rounded-lg border border-[#00A8E8]/20 bg-[#00A8E8]/5 px-4 py-3">
+              <summary className="cursor-pointer list-none text-xs font-bold text-[#00A8E8]"><FontAwesomeIcon icon={faCircleInfo} className="mr-1 h-3 w-3" /> Cara import (6 langkah) — klik untuk buka</summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[#1F2937]">
                 <li>Buat <strong>Produk</strong> di tab Produk & <strong>Style/Warna/Ukuran</strong> di <code className="font-mono">/admin/master-data</code> dulu.</li>
                 <li>Klik <strong>Template CSV</strong> → buka di Excel/Sheets, isi baris. Contoh: <code className="font-mono">Windbreaker,Motif,BOB,LG,2026-08-01</code></li>
                 <li>Simpan sebagai <strong>CSV UTF-8</strong> (koma). XLSX bisa tapi butuh <code className="font-mono">npm i xlsx</code> atau save as CSV.</li>
-                <li>Klik <strong>Pilih File</strong> → preview cek <span className="text-emerald-300">OK</span> vs <span className="text-rose-300">invalid + alasan</span>.</li>
+                <li>Klik <strong>Pilih File</strong> → preview cek <span className="text-emerald-600">OK</span> vs <span className="text-[#EF4444]">invalid + alasan</span>.</li>
                 <li>Klik <strong>Import X variant</strong> → progress bar, jangan tutup modal.</li>
                 <li>Selesai → tabel otomatis reload. Gagal 409 = kombinasi sudah ada, perbaiki CSV dan import lagi.</li>
               </ol>
-              <p className="mt-2 text-[11px] text-brand-grey">Panduan lengkap: <code className="font-mono">frontend/IMPORT_VARIANT_GUIDE.md</code> (header alias, error table, curl alternatif).</p>
+              <p className="mt-2 text-[11px] text-[#6B7280]">Panduan lengkap: <code className="font-mono">frontend/IMPORT_VARIANT_GUIDE.md</code> (header alias, error table, curl alternatif).</p>
             </details>
 
             {/* stats */}
             {parsed.length > 0 && (
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-bold text-emerald-300">{validRows.length} valid</span>
-                <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 font-bold text-rose-300">{invalidRows.length} invalid</span>
-                <span className="rounded-full border border-brand-border bg-brand-surface px-3 py-1 text-brand-grey">{parsed.length} total</span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-bold text-emerald-700">{validRows.length} valid</span>
+                <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1 font-bold text-[#EF4444]">{invalidRows.length} invalid</span>
+                <span className="rounded-full border border-slate-200 bg-[#F5F7FA] px-3 py-1 text-[#6B7280]">{parsed.length} total</span>
               </div>
             )}
 
             {/* preview */}
             {parsed.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-brand-border">
+              <div className="overflow-hidden rounded-xl border border-slate-200">
                 <div className="max-h-64 overflow-auto">
                   <table className="w-full min-w-[720px] border-collapse text-left text-xs">
-                    <thead className="sticky top-0 bg-brand-surface text-brand-grey">
+                    <thead className="sticky top-0 bg-[#F5F7FA] text-[#6B7280]">
                       <tr>
                         <th className="px-3 py-2">#</th>
                         <th className="px-3 py-2">Produk</th>
@@ -368,38 +368,38 @@ export function VariantImportModal({ open, onClose, products, styles, colors, si
                         <th className="px-3 py-2">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-brand-border">
+                    <tbody className="divide-y divide-slate-100">
                       {parsed.slice(0, 100).map(r => (
-                        <tr key={r.idx} className={r.errors.length ? "bg-rose-500/5" : "bg-emerald-500/5"}>
-                          <td className="px-3 py-1.5 font-mono text-brand-grey-light">{r.idx}</td>
-                          <td className="px-3 py-1.5 text-white">{r.produk}{r.productId ? <span className="ml-1 text-[10px] text-brand-grey">→{r.productId}</span> : null}</td>
-                          <td className="px-3 py-1.5 text-brand-grey-light">{r.style}</td>
-                          <td className="px-3 py-1.5 text-brand-grey-light">{r.warna}</td>
-                          <td className="px-3 py-1.5 text-brand-grey-light">{r.ukuran}</td>
-                          <td className="px-3 py-1.5 text-brand-grey">{r.tanggal || "-"}</td>
+                        <tr key={r.idx} className={r.errors.length ? "bg-red-50" : "bg-emerald-50"}>
+                          <td className="px-3 py-1.5 font-mono text-[#1F2937]">{r.idx}</td>
+                          <td className="px-3 py-1.5 font-medium text-[#1F2937]">{r.produk}{r.productId ? <span className="ml-1 text-[10px] text-[#6B7280]">→{r.productId}</span> : null}</td>
+                          <td className="px-3 py-1.5 text-[#1F2937]">{r.style}</td>
+                          <td className="px-3 py-1.5 text-[#1F2937]">{r.warna}</td>
+                          <td className="px-3 py-1.5 text-[#1F2937]">{r.ukuran}</td>
+                          <td className="px-3 py-1.5 text-[#6B7280]">{r.tanggal || "-"}</td>
                           <td className="px-3 py-1.5">
-                            {r.errors.length === 0 ? <span className="font-bold text-emerald-400">OK</span> : <span className="text-rose-300">{r.errors.join("; ")}</span>}
+                            {r.errors.length === 0 ? <span className="font-bold text-emerald-600">OK</span> : <span className="text-[#EF4444]">{r.errors.join("; ")}</span>}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                {parsed.length > 100 && <p className="border-t border-brand-border bg-brand-surface px-3 py-2 text-center text-xs text-brand-grey">... +{parsed.length - 100} baris lagi (preview 100 pertama)</p>}
+                {parsed.length > 100 && <p className="border-t border-slate-200 bg-[#F5F7FA] px-3 py-2 text-center text-xs text-[#6B7280]">... +{parsed.length - 100} baris lagi (preview 100 pertama)</p>}
               </div>
             )}
 
             {/* progress / result */}
             {importing && (
               <div className="space-y-2">
-                <div className="h-2 overflow-hidden rounded-full bg-brand-surface">
-                  <div className="h-full bg-brand-gold transition-all" style={{ width: `${progress}%` }} />
+                <div className="h-2 overflow-hidden rounded-full bg-[#F5F7FA]">
+                  <div className="h-full bg-[#00A8E8] transition-all" style={{ width: `${progress}%` }} />
                 </div>
-                <p className="text-xs text-brand-grey">Mengimpor {progress}% — jangan tutup modal...</p>
+                <p className="text-xs text-[#6B7280]">Mengimpor {progress}% — jangan tutup modal...</p>
               </div>
             )}
             {result && (
-              <div className={`rounded-lg border px-4 py-3 text-sm ${result.fail === 0 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-200"}`}>
+              <div className={`rounded-lg border px-4 py-3 text-sm ${result.fail === 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
                 <p className="font-bold">Selesai: {result.ok} berhasil, {result.fail} gagal dari {validRows.length} valid.</p>
                 {result.fails.length > 0 && (
                   <ul className="mt-2 max-h-32 list-disc overflow-auto pl-5 text-xs">
@@ -412,9 +412,9 @@ export function VariantImportModal({ open, onClose, products, styles, colors, si
           </div>
         </div>
 
-        <div className="flex justify-between gap-2 border-t border-brand-border bg-brand-surface/40 px-6 py-4">
-          <button type="button" onClick={handleClose} disabled={importing} className="rounded-lg border border-brand-border bg-brand-surface px-4 py-2.5 text-sm font-bold text-brand-grey-light hover:text-white disabled:opacity-40">Tutup</button>
-          <button type="button" disabled={importing || validRows.length === 0} onClick={() => void doImport()} className="rounded-lg border border-brand-gold/30 bg-brand-gold/10 px-4 py-2.5 text-sm font-bold text-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:opacity-40">
+        <div className="flex justify-between gap-2 border-t border-slate-200 bg-[#F5F7FA]/40 px-6 py-4">
+          <button type="button" onClick={handleClose} disabled={importing} className="inline-flex min-h-[48px] items-center rounded-lg border border-[#D1D5DB] bg-white px-6 py-3 text-base font-medium text-[#1F2937] hover:bg-[#F5F7FA] disabled:opacity-40">Tutup</button>
+          <button type="button" disabled={importing || validRows.length === 0} onClick={() => void doImport()} className="inline-flex min-h-[48px] items-center rounded-lg bg-[#00A8E8] px-6 py-3 text-base font-medium text-white transition duration-200 ease hover:bg-[#0088C0] disabled:opacity-40">
             {importing ? `Mengimpor ${progress}%...` : `Import ${validRows.length} variant`}
           </button>
         </div>

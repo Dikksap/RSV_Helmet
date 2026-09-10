@@ -12,7 +12,7 @@ export function Pagination({
   return (
     <nav aria-label="Pagination" className="flex items-center justify-between gap-2 pt-1 sm:justify-center sm:gap-2">
       <button
-        className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-xl border border-brand-border bg-brand-surface-card px-3 py-2 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-5 sm:text-sm"
+        className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1 rounded-lg border border-[#D1D5DB] bg-white px-3 py-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-6"
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage <= 1}
         aria-label="Halaman sebelumnya"
@@ -36,10 +36,10 @@ export function Pagination({
             <button
               key={pageNum}
               aria-current={active ? "page" : undefined}
-              className={`flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border px-2 text-sm font-bold tabular-nums transition active:scale-95 ${
+              className={`flex h-12 min-w-12 shrink-0 items-center justify-center rounded-lg border px-2 text-sm font-medium tabular-nums transition duration-200 ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 active:scale-95 ${
                 active
-                  ? "border-brand-gold bg-brand-gold text-brand-black shadow-lg shadow-brand-gold/20"
-                  : "border-brand-border bg-brand-surface-card text-brand-grey-light hover:border-brand-gold hover:text-white"
+                  ? "border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-[0_4px_20px_rgba(30,58,95,0.25)]"
+                  : "border-[#D1D5DB] bg-white text-[#1F2937] hover:border-[#00A8E8] hover:text-[#00A8E8]"
               }`}
               onClick={() => onPageChange(pageNum)}
             >
@@ -50,7 +50,7 @@ export function Pagination({
       </div>
 
       <button
-        className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-xl border border-brand-border bg-brand-surface-card px-3 py-2 text-xs font-bold text-brand-grey-light transition hover:border-brand-gold hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-5 sm:text-sm"
+        className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1 rounded-lg border border-[#D1D5DB] bg-white px-3 py-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:border-[#00A8E8] hover:text-[#00A8E8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-6"
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage >= totalPages}
         aria-label="Halaman berikutnya"
