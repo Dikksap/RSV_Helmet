@@ -47,26 +47,26 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  REGISTER: "bg-amber-500/10 text-amber-300 border-amber-500/20",
-  FINISHGOOD: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  RETUR: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  OUT: "bg-brand-gold/10 text-brand-gold border-brand-gold/20",
-  BAD: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  REGISTER: "bg-amber-50 text-amber-700 border-amber-200",
+  FINISHGOOD: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  RETUR: "bg-sky-50 text-[#0088C0] border-sky-200",
+  OUT: "bg-[#1E3A5F]/5 text-[#1E3A5F] border-[#1E3A5F]/15",
+  BAD: "bg-red-50 text-[#EF4444] border-red-200",
 };
 
 const STATUS_BAR: Record<string, string> = {
-  REGISTER: "bg-amber-300",
-  FINISHGOOD: "bg-emerald-400",
-  RETUR: "bg-blue-400",
-  OUT: "bg-brand-gold",
-  BAD: "bg-rose-400",
+  REGISTER: "bg-amber-500",
+  FINISHGOOD: "bg-[#10B981]",
+  RETUR: "bg-[#00A8E8]",
+  OUT: "bg-[#1E3A5F]",
+  BAD: "bg-[#EF4444]",
 };
 
 const CHART_TOOLTIP = {
-  backgroundColor: "#141416",
-  titleColor: "#FFFFFF",
-  bodyColor: "#9B9B9C",
-  borderColor: "#232326",
+  backgroundColor: "#FFFFFF",
+  titleColor: "#1F2937",
+  bodyColor: "#6B7280",
+  borderColor: "#D1D5DB",
   borderWidth: 1,
   padding: 10,
 };
@@ -170,16 +170,16 @@ function AdminDashboard() {
   }, [stats?.perVariant]);
 
   const VARIANT_COLORS = [
-    "#E6AA5A",
-    "#34D399",
-    "#60A5FA",
-    "#F472B6",
-    "#A78BFA",
-    "#FACC15",
-    "#9B9B9C",
-    "#F87171",
-    "#22D3EE",
-    "#A3E635",
+    "#1E3A5F",
+    "#00A8E8",
+    "#10B981",
+    "#F59E0B",
+    "#8B5CF6",
+    "#EC4899",
+    "#6B7280",
+    "#EF4444",
+    "#14B8A6",
+    "#84CC16",
   ];
 
   const variantColors = variantEntries.map(
@@ -216,29 +216,29 @@ function AdminDashboard() {
   });
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+    <div className="space-y-6 sm:space-y-8">
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <h2 className="flex flex-wrap items-center gap-2.5 text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">
             Ringkasan Eksekutif
             <span
               title={isConnected ? "WebSocket terhubung — KPI update otomatis" : "WebSocket terputus — refresh tiap 30 detik"}
               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
                 isConnected
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                  : "border-brand-border bg-brand-surface text-brand-grey"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-slate-200 bg-[#F5F7FA] text-[#6B7280]"
               }`}
             >
               <span className="relative flex h-1.5 w-1.5">
                 {isConnected && (
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#10B981] opacity-75"></span>
                 )}
-                <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-400" : "bg-brand-grey"}`}></span>
+                <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${isConnected ? "bg-[#10B981]" : "bg-[#6B7280]"}`}></span>
               </span>
               {isConnected ? "Live" : "Offline"}
             </span>
           </h2>
-          <p className="mt-1 text-sm text-brand-grey-light">
+          <p className="mt-1 text-[15px] leading-[1.6] text-[#6B7280] sm:text-base">
             Performa inventaris dan data analitik terkini.
           </p>
         </div>
@@ -248,28 +248,30 @@ function AdminDashboard() {
             setShowToday((v) => !v);
             void fetchOverview();
           }}
-          className={`inline-flex items-center gap-2 self-start rounded-xl border px-3 py-1.5 text-xs font-medium transition sm:self-auto ${
+          aria-pressed={showToday}
+          className={`inline-flex items-center gap-2 self-start rounded-lg border px-3 py-2 text-[15px] font-medium transition duration-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8] sm:self-auto ${
             showToday
-              ? "border-brand-gold/40 bg-brand-gold/10 text-brand-gold"
-              : "border-brand-border bg-brand-surface-card text-brand-grey"
+              ? "border-[#1E3A5F] bg-[#1E3A5F]/5 text-[#1E3A5F]"
+              : "border-[#D1D5DB] bg-white text-[#6B7280] hover:border-[#00A8E8] hover:text-[#1F2937]"
           }`}
         >
           <span
-            className={`relative inline-flex h-4 w-7 items-center rounded-full transition ${
-              showToday ? "bg-brand-gold" : "bg-brand-border"
+            aria-hidden="true"
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition duration-200 ${
+              showToday ? "bg-[#00A8E8]" : "bg-slate-300"
             }`}
           >
             <span
-              className={`inline-block h-3 w-3 transform rounded-full bg-white transition ${
-                showToday ? "translate-x-3.5" : "translate-x-0.5"
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                showToday ? "translate-x-4" : "translate-x-0.5"
               }`}
             ></span>
           </span>
           Hari Ini
         </button>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
+      <section aria-label="Indikator utama" className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-4">
         <KpiCard
           label={showToday ? "Total Barang Hari Ini" : "Total Barang"}
           value={
@@ -281,7 +283,7 @@ function AdminDashboard() {
           }
           sub={`${batchValue} batch`}
           icon={faBoxesStacked}
-          accent="gold"
+          accent="primary"
         />
         <KpiCard
           label={showToday ? "Finish Good Hari Ini" : "Finish Good"}
@@ -294,7 +296,7 @@ function AdminDashboard() {
           }
           sub={`${pct(finishGoodValue, totalValue)} dari total`}
           icon={faCartShopping}
-          accent="grey"
+          accent="accent"
         />
         <KpiCard
           label={showToday ? "Dalam Proses Hari Ini" : "Dalam Proses"}
@@ -307,7 +309,7 @@ function AdminDashboard() {
           }
           sub={`${pct(prosesValue, totalValue)} dari total`}
           icon={faUserCheck}
-          accent="gold"
+          accent="success"
         />
         <KpiCard
           label={showToday ? "Total Batch Hari Ini" : "Total Batch"}
@@ -320,28 +322,29 @@ function AdminDashboard() {
           }
           sub={showToday ? "batch hari ini" : "batch keseluruhan"}
           icon={faWallet}
-          accent="grey"
+          accent="neutral"
         />
-      </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="flex flex-col justify-between rounded-2xl border border-brand-border bg-brand-surface-card p-6 lg:col-span-2">
+        <section aria-label="Finishgood per bulan" className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition duration-200 hover:shadow-[0_8px_30px_rgba(0,0,0,0.10)] lg:col-span-2">
           <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h3 className="text-lg font-bold text-white">
+              <h3 className="text-xl font-semibold leading-[1.4] text-[#1E3A5F]">
                 Finishgood per Bulan
               </h3>
-              <p className="text-xs text-brand-grey">
+              <p className="text-[13px] leading-[1.5] text-[#6B7280]">
                 Jumlah barang berstatus Finish Good tiap bulan
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <label className="flex items-center gap-1.5 text-brand-grey-light">
-                <span>Bulan</span>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <label htmlFor="filter-bulan" className="flex items-center gap-1.5 text-[#6B7280]">
+                <span className="text-sm font-medium">Bulan</span>
                 <select
+                  id="filter-bulan"
                   value={bulanTerpilih}
                   onChange={(e) => setBulanTerpilih(e.target.value)}
-                  className="rounded-lg border border-brand-border bg-brand-surface px-2.5 py-1.5 text-brand-grey-light outline-none transition focus:border-brand-gold"
+                  className="h-12 rounded-lg border border-[#D1D5DB] bg-white px-2.5 text-[15px] text-[#1F2937] outline-none transition duration-200 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20"
                 >
                   <option value="">Semua Bulan</option>
                   {NAMA_BULAN.map((nama, i) => (
@@ -361,9 +364,9 @@ function AdminDashboard() {
                   {
                     label: "Finishgood",
                     data: jumlahPerBulan,
-                    backgroundColor: "rgba(230, 170, 90, 0.75)",
-                    hoverBackgroundColor: "#F2C889",
-                    borderColor: "#E6AA5A",
+                    backgroundColor: "rgba(0, 168, 232, 0.8)",
+                    hoverBackgroundColor: "#0088C0",
+                    borderColor: "#0088C0",
                     borderWidth: 1,
                     borderRadius: 6,
                     maxBarThickness: 42,
@@ -379,28 +382,28 @@ function AdminDashboard() {
                 },
                 scales: {
                   x: {
-                    grid: { color: "rgba(35, 35, 38, 0.5)" },
-                    ticks: { color: "#9B9B9C", font: { family: "Inter" } },
+                    grid: { color: "rgba(209, 213, 219, 0.4)" },
+                    ticks: { color: "#6B7280", font: { family: "Inter" } },
                   },
                   y: {
                     beginAtZero: true,
-                    grid: { color: "rgba(35, 35, 38, 0.5)" },
-                    ticks: { color: "#9B9B9C", font: { family: "Inter" } },
+                    grid: { color: "rgba(209, 213, 219, 0.4)" },
+                    ticks: { color: "#6B7280", font: { family: "Inter" } },
                   },
                 },
               }}
             />
           </div>
-        </div>
+        </section>
 
-        <div className="flex flex-col justify-between rounded-2xl border border-brand-border bg-brand-surface-card p-6">
+        <section aria-label="Distribusi varian" className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition duration-200 hover:shadow-[0_8px_30px_rgba(0,0,0,0.10)]">
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white">
+              <h3 className="text-xl font-semibold leading-[1.4] text-[#1E3A5F]">
                 Distribusi Varian
               </h3>
             </div>
-            <p className="mb-4 text-xs text-brand-grey">
+            <p className="mb-4 text-[13px] leading-[1.5] text-[#6B7280]">
               Jumlah disatukan per style + color (tanpa ukuran)
             </p>
           </div>
@@ -413,8 +416,8 @@ function AdminDashboard() {
                   {
                     data: variantEntries.map((v) => v.total),
                     backgroundColor:
-                      variantColors.length > 0 ? variantColors : ["#3A3A3D"],
-                    borderColor: "#141416",
+                      variantColors.length > 0 ? variantColors : ["#D1D5DB"],
+                    borderColor: "#FFFFFF",
                     borderWidth: 3,
                     hoverOffset: 6,
                   },
@@ -432,7 +435,7 @@ function AdminDashboard() {
             />
           </div>
 
-          <div className="mt-2 flex max-h-20 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto text-[11px] text-brand-grey">
+          <div className="mt-2 flex max-h-20 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto text-[13px] text-[#6B7280]">
             {variantEntries.map((v, i) => (
               <span
                 key={v.nama}
@@ -453,52 +456,52 @@ function AdminDashboard() {
             {variantEntries.length === 0 && <span>Belum ada data.</span>}
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-brand-border pt-4 text-center text-xs">
+          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-200 pt-4 text-center text-sm">
             <div>
-              <p className="text-brand-grey">Total</p>
-              <p className="mt-0.5 font-bold text-brand-gold">
+              <p className="text-[#6B7280]">Total</p>
+              <p className="mt-0.5 font-bold text-[#1E3A5F]">
                 {stats?.total ?? "-"}
               </p>
             </div>
             <div>
-              <p className="text-brand-grey">Batch</p>
-              <p className="mt-0.5 font-bold text-white">
+              <p className="text-[#6B7280]">Batch</p>
+              <p className="mt-0.5 font-bold text-[#1F2937]">
                 {stats?.perBatch.length ?? "-"}
               </p>
             </div>
             <div>
-              <p className="text-brand-grey">Varian</p>
-              <p className="mt-0.5 font-bold text-brand-grey-light">
+              <p className="text-[#6B7280]">Varian</p>
+              <p className="mt-0.5 font-bold text-[#0088C0]">
                 {stats ? variantEntries.length : "-"}
               </p>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card lg:col-span-2">
-          <div className="flex flex-col justify-between gap-4 border-b border-brand-border p-6 sm:flex-row sm:items-center">
+        <section aria-label="Transaksi terbaru" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)] lg:col-span-2">
+          <div className="flex flex-col justify-between gap-4 border-b border-slate-200 p-6 sm:flex-row sm:items-center">
             <div>
-              <h3 className="text-lg font-bold text-white">
+              <h3 className="text-xl font-semibold leading-[1.4] text-[#1E3A5F]">
                 Transaksi Terbaru
               </h3>
-              <p className="text-xs text-brand-grey">
+              <p className="text-[13px] leading-[1.5] text-[#6B7280]">
                 Daftar riwayat barang masuk real-time
               </p>
             </div>
             <Link
               to="/admin/barang"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-grey-light transition hover:border-brand-gold hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-[15px] font-medium text-[#1E3A5F] transition duration-200 hover:bg-[#1E3A5F]/5 focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
             >
               <span>Lihat semua</span>
             </Link>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+            <table className="w-full border-collapse text-left text-[15px]">
               <thead>
-                <tr className="border-b border-brand-border bg-brand-surface/40 text-xs uppercase tracking-wider text-brand-grey">
+                <tr className="border-b border-slate-200 bg-[#F5F7FA] text-[13px] uppercase tracking-wider text-[#6B7280]">
                   <th className="px-6 py-3.5 font-semibold">Kode</th>
                   <th className="px-6 py-3.5 font-semibold">Produk</th>
                   <th className="px-6 py-3.5 font-semibold">Batch</th>
@@ -508,30 +511,30 @@ function AdminDashboard() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-brand-border font-normal text-brand-grey-light">
+              <tbody className="divide-y divide-slate-100 font-normal text-[#1F2937]">
                 {recent.map((item) => (
-                  <tr key={item.id} className="transition group hover:bg-brand-surface/60">
-                    <td className="px-6 py-4 font-mono text-xs text-brand-gold">
+                  <tr key={item.id} className="transition duration-200 hover:bg-[#F5F7FA]">
+                    <td className="px-6 py-4 font-mono text-[13px] font-medium text-[#1E3A5F]">
                       {item.kodeBarang}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-white">
+                      <div className="font-medium text-[#1F2937]">
                         {item.variant.product.nama}
                       </div>
-                      <div className="text-xs text-brand-grey">
+                      <div className="text-[13px] text-[#6B7280]">
                         {item.variant.style.nama} / {item.variant.color.nama} /{" "}
                         {item.variant.size.nama}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs">
+                    <td className="px-6 py-4 text-[13px] text-[#6B7280]">
                       {item.batch ? `BC${String(item.batch.nomorBatch).padStart(3, "0")}` : "-"}
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_COLOR[item.status] ?? "text-brand-grey"}`}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[13px] font-medium ${STATUS_COLOR[item.status] ?? "text-[#6B7280]"}`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${STATUS_BAR[item.status] ?? "bg-brand-grey"}`}
+                          className={`h-1.5 w-1.5 rounded-full ${STATUS_BAR[item.status] ?? "bg-[#6B7280]"}`}
                         ></span>
                         {STATUS_LABEL[item.status] ?? item.status}
                       </span>
@@ -539,7 +542,7 @@ function AdminDashboard() {
                     <td className="px-6 py-4 text-right">
                       <button
                         type="button"
-                        className="rounded-lg p-1.5 text-brand-grey transition hover:bg-brand-surface hover:text-brand-gold"
+                        className="rounded-lg p-2 text-[#6B7280] transition duration-200 hover:bg-[#F5F7FA] hover:text-[#00A8E8] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
                         aria-label="Lihat detail"
                       >
                         <FontAwesomeIcon icon={faEye} className="h-4 w-4" />
@@ -551,7 +554,7 @@ function AdminDashboard() {
                   <tr>
                     <td
                       colSpan={5}
-                      className="px-6 py-10 text-center text-sm text-brand-grey"
+                      className="px-6 py-10 text-center text-[15px] text-[#6B7280]"
                     >
                       Belum ada transaksi.
                     </td>
@@ -560,11 +563,11 @@ function AdminDashboard() {
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-brand-border bg-brand-surface-card p-6">
-            <h3 className="mb-4 text-lg font-bold text-white">
+          <section aria-label="Akses cepat" className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+            <h3 className="mb-4 text-xl font-semibold leading-[1.4] text-[#1E3A5F]">
               Akses Cepat
             </h3>
             <div className="space-y-3">
@@ -579,9 +582,8 @@ function AdminDashboard() {
                 icon={faChartPie}
               />
             </div>
-          </div>
+          </section>
 
-          
         </div>
       </div>
     </div>
@@ -599,35 +601,38 @@ function KpiCard({
   value: string;
   sub?: string;
   icon: React.ComponentProps<typeof FontAwesomeIcon>["icon"];
-  accent: "gold" | "grey";
+  accent: "primary" | "accent" | "success" | "neutral";
 }) {
   const iconCls =
-    accent === "gold"
-      ? "border-brand-gold/20 bg-brand-gold/10 text-brand-gold"
-      : "border-brand-grey/20 bg-brand-grey/10 text-brand-grey-light";
+    accent === "primary"
+      ? "bg-[#1E3A5F]/5 text-[#1E3A5F]"
+      : accent === "accent"
+        ? "bg-[#00A8E8]/10 text-[#0088C0]"
+        : accent === "success"
+          ? "bg-emerald-50 text-emerald-600"
+          : "bg-[#F5F7FA] text-[#6B7280]";
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-card p-3 transition duration-300 hover:border-brand-gold/50 sm:p-5">
-      <div className="mb-2 flex items-center justify-between gap-2 sm:mb-4">
-        <span className="text-[11px] font-semibold uppercase leading-tight tracking-wider text-brand-grey sm:text-xs">
+    <div className="group rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.10)]">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <span className="text-[13px] font-semibold uppercase leading-tight tracking-wider text-[#6B7280]">
           {label}
         </span>
         <div
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition duration-300 group-hover:scale-110 sm:h-10 sm:w-10 ${iconCls}`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition duration-200 group-hover:scale-105 ${iconCls}`}
         >
-          <FontAwesomeIcon icon={icon} className="h-4 w-4 sm:h-5 sm:w-5" />
+          <FontAwesomeIcon icon={icon} className="h-5 w-5" />
         </div>
       </div>
       <div className="space-y-1">
-        <h3 className="text-xl font-bold tabular-nums tracking-tight text-white sm:text-2xl">
+        <h3 className="text-2xl font-bold tabular-nums tracking-tight text-[#1E3A5F] sm:text-3xl">
           {value}
         </h3>
         {sub && (
-          <p className="truncate text-[11px] text-brand-grey sm:text-xs">
+          <p className="truncate text-[13px] text-[#6B7280]">
             {sub}
           </p>
         )}
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-brand-gold to-transparent opacity-0 transition group-hover:opacity-100"></div>
     </div>
   );
 }
@@ -644,13 +649,13 @@ function QuickAction({
   return (
     <Link
       to={to}
-      className="flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface p-3.5 text-sm font-medium text-brand-grey-light transition hover:border-brand-gold hover:text-white"
+      className="flex items-center justify-between rounded-lg bg-[#00A8E8] px-6 py-3 text-[15px] font-medium text-white transition duration-200 hover:bg-[#0088C0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
     >
       <span className="flex items-center gap-3">
-        <FontAwesomeIcon icon={icon} className="h-4 w-4 text-brand-gold" />
+        <FontAwesomeIcon icon={icon} className="h-4 w-4" />
         {label}
       </span>
-      <span className="text-brand-gold">→</span>
+      <span aria-hidden="true">→</span>
     </Link>
   );
 }
