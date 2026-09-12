@@ -288,7 +288,7 @@ function ScanQr() {
   const loadingCount = scannedItemsCount - Object.values(itemsPerVariant).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-slate-100 font-[Inter,sans-serif] text-slate-800 md:min-h-[calc(100dvh-72px)] lg:h-[calc(100dvh-72px)] lg:overflow-hidden">
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-transparent font-[Inter,sans-serif] text-slate-800 md:min-h-[calc(100dvh-72px)] lg:h-[calc(100dvh-72px)] lg:overflow-hidden">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed inset-x-0 top-0 z-50 flex justify-center p-4">
@@ -437,7 +437,7 @@ function ScanQr() {
         </section>
 
         {/* Right Panel: Daftar Scan */}
-        <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-slate-100 lg:border-l lg:border-t-0 lg:flex-1">
+        <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-transparent lg:border-l lg:border-t-0 lg:flex-1">
           <div className="flex flex-col p-5 sm:p-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Daftar Scan Terbaru</h2>

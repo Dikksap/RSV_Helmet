@@ -50,6 +50,20 @@
   color-scheme: dark;
 }
 
+/* Public background — tiru gambar: biru kiri-bawah → putih kanan-atas. Admin tidak pakai. */
+.app-public {
+  background: linear-gradient(
+    to top right,
+    #5ea9ec 0%,
+    #8ec2f1 22%,
+    #c3ddf7 42%,
+    #e8f1fc 62%,
+    #f7fbff 80%,
+    #ffffff 100%
+  );
+  background-attachment: fixed;
+}
+
 .app-admin h1,
 .app-admin h2,
 .app-admin h3,

@@ -36,7 +36,7 @@ function Login() {
   };
 
   return (
-    <div className="w-full bg-[#F5F7FA]">
+    <div className="w-full bg-transparent">
       <div className="grid w-full lg:min-h-[calc(100svh-72px)] lg:grid-cols-2">
         {/* Left — brand panel (desktop) */}
         <div className="relative hidden overflow-hidden bg-[#0F1C2E] lg:flex lg:flex-col lg:justify-between">

@@ -219,7 +219,7 @@ function CetakLabel() {
     .join(" > ");
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-slate-100 font-[Inter,sans-serif] text-slate-800 md:min-h-[calc(100dvh-72px)] lg:h-[calc(100dvh-72px)] lg:overflow-hidden">
+    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-transparent font-[Inter,sans-serif] text-slate-800 lg:h-[calc(100dvh-3.5rem)] lg:overflow-hidden">
       {error && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4">
           <div className="pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-md bg-red-600 p-4 text-sm text-white shadow-2xl">
@@ -239,8 +239,8 @@ function CetakLabel() {
       <main className="flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
 
         {/* Left Panel: Data Entry */}
-        <section className="w-full min-w-0 border-r border-slate-200 bg-white p-5 sm:p-8 lg:w-3/5 lg:flex-1 lg:overflow-y-auto xl:w-2/3">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
+        <section className="w-full min-w-0 border-r border-slate-200 bg-white p-4 lg:w-3/5 lg:flex-1 lg:overflow-y-auto lg:p-5 xl:w-2/3">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
             <h2 className="text-lg font-bold text-slate-800">Konfigurasi Label</h2>
             <span className="rounded bg-slate-100 px-2 py-1 text-sm font-medium text-slate-500">
               Batch: <span className="text-slate-800">{generateInfo?.batch.kodeBatch ?? "-"}</span>
@@ -252,8 +252,8 @@ function CetakLabel() {
               <p className="animate-pulse text-sm font-medium text-slate-500">Memuat data produk industri...</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-              <div className="space-y-7">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="space-y-5">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700">1. Pilih Produk</label>
                   <select
@@ -284,7 +284,7 @@ function CetakLabel() {
                           setGenerateInfo(null);
                           setGeneratedCode(null);
                         }}
-                        className={`option-btn w-full rounded-md px-4 py-3.5 text-base transition-colors focus:outline-none ${String(s.id) === styleId ? activeBtn : idleBtn}`}
+                        className={`option-btn w-full rounded-md px-4 py-2.5 text-base transition-colors focus:outline-none ${String(s.id) === styleId ? activeBtn : idleBtn}`}
                       >
                         {s.nama}
                       </button>
@@ -293,7 +293,7 @@ function CetakLabel() {
                 </div>
               </div>
 
-              <div className="space-y-7">
+              <div className="space-y-5">
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <label className="block text-sm font-semibold text-slate-700">3. Warna</label>
@@ -314,7 +314,7 @@ function CetakLabel() {
                           setGenerateInfo(null);
                           setGeneratedCode(null);
                         }}
-                        className={`option-btn truncate rounded-md px-4 py-3.5 text-left text-base transition-colors focus:outline-none ${String(c.id) === colorId ? activeBtn : idleBtn}`}
+                        className={`option-btn truncate rounded-md px-4 py-2.5 text-left text-base transition-colors focus:outline-none ${String(c.id) === colorId ? activeBtn : idleBtn}`}
                       >
                         {c.nama}
                       </button>
@@ -340,7 +340,7 @@ function CetakLabel() {
                           setSizeId(String(s.id));
                           setGeneratedCode(null);
                         }}
-                        className={`option-btn rounded-md py-3.5 text-center text-base transition-colors focus:outline-none ${String(s.id) === sizeId ? activeBtn : idleBtn}`}
+                        className={`option-btn rounded-md py-2.5 text-center text-base transition-colors focus:outline-none ${String(s.id) === sizeId ? activeBtn : idleBtn}`}
                       >
                         {s.nama}
                       </button>
@@ -352,7 +352,7 @@ function CetakLabel() {
           )}
 
           {/* Printer Settings */}
-          <div className="mt-8 border-t border-slate-200 pt-6">
+          <div className="mt-5 border-t border-slate-200 pt-4">
             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Pengaturan Printer</h3>
             <div className="flex flex-col gap-4 sm:flex-row">
               <div className="flex-1">
@@ -423,7 +423,7 @@ function CetakLabel() {
         </section>
 
         {/* Right Panel: Fixed Preview and Action */}
-        <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-slate-100 lg:w-2/5 lg:border-l lg:border-t-0 xl:w-1/3">
+        <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-transparent lg:w-2/5 lg:border-l lg:border-t-0 xl:w-1/3">
           <div className="flex flex-col p-4 sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Live Preview</h2>
@@ -433,7 +433,7 @@ function CetakLabel() {
               </span>
             </div>
 
-            <div className="flex h-[300px] flex-none items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:h-[340px]">
+            <div className="flex h-[240px] flex-none items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:h-[280px]">
               {!selectedVariant ? (
                 <div className="text-center text-slate-400">
                   <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-2 h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
@@ -478,7 +478,7 @@ function CetakLabel() {
           </div>
 
           {/* Fixed Bottom Action Area */}
-          <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] sm:p-6">
+          <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
             <div className="mb-3">
               <p className="text-center text-xs text-slate-500">Pastikan printer thermal siap sebelum klik Generate.</p>
             </div>
@@ -486,7 +486,7 @@ function CetakLabel() {
               type="button"
               disabled={!selectedVariant || isGenerating || !generateInfo}
               onClick={handleGenerate}
-              className="flex w-full transform items-center justify-center gap-2 rounded-md bg-sky-500 px-6 py-4 text-lg font-bold text-white shadow-lg transition active:scale-[0.98] hover:bg-sky-600 focus:outline-none focus:ring-4 focus:ring-sky-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+              className="flex w-full transform items-center justify-center gap-2 rounded-md bg-sky-500 px-6 py-3 text-lg font-bold text-white shadow-lg transition active:scale-[0.98] hover:bg-sky-600 focus:outline-none focus:ring-4 focus:ring-sky-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
             >
               {isGenerating ? (
                 <>
