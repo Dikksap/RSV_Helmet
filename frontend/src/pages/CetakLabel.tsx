@@ -46,6 +46,12 @@ function CetakLabel() {
   const [selectedPrinter, setSelectedPrinter] = useState<string>(() =>
     loadDefaultPrinter(),
   );
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const selectedPrintPage = resolveLabelPage(printSize, customMm);
@@ -242,8 +248,8 @@ function CetakLabel() {
         <section className="w-full min-w-0 border-r border-slate-200 bg-white p-4 lg:w-3/5 lg:flex-1 lg:overflow-y-auto lg:p-5 xl:w-2/3">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
             <h2 className="text-lg font-bold text-slate-800">Konfigurasi Label</h2>
-            <span className="rounded bg-slate-100 px-2 py-1 text-sm font-medium text-slate-500">
-              Batch: <span className="text-slate-800">{generateInfo?.batch.kodeBatch ?? "-"}</span>
+            <span className="text-xl font-bold tabular-nums text-slate-800" suppressHydrationWarning>
+              {now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} • {now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
           </div>
 
@@ -298,7 +304,7 @@ function CetakLabel() {
                   <div className="mb-2 flex items-center justify-between">
                     <label className="block text-sm font-semibold text-slate-700">3. Warna</label>
                     {selectedColorName && (
-                      <span className="rounded bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-600">
+                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
                         Terpilih: {selectedColorName}
                       </span>
                     )}
@@ -326,7 +332,7 @@ function CetakLabel() {
                   <div className="mb-2 flex items-center justify-between">
                     <label className="block text-sm font-semibold text-slate-700">4. Ukuran</label>
                     {selectedSizeName && (
-                      <span className="rounded bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-600">
+                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
                         Terpilih: {selectedSizeName}
                       </span>
                     )}
@@ -353,7 +359,7 @@ function CetakLabel() {
 
           {/* Printer Settings */}
           <div className="mt-5 border-t border-slate-200 pt-4">
-            <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">Pengaturan Printer</h3>
+            <h3 className="mb-4 text-sm font-bold tracking-wider text-slate-700">Pengaturan Printer</h3>
             <div className="flex flex-col gap-4 sm:flex-row">
               <div className="flex-1">
                 <label className="mb-1 block text-xs font-semibold text-slate-500">Ukuran Label</label>
@@ -461,27 +467,34 @@ function CetakLabel() {
               )}
             </div>
 
-            <div className="mt-4 rounded-md bg-slate-800 p-3 text-sm shadow-sm">
-              <div className="mb-1 flex justify-between border-b border-slate-600 pb-1">
-                <span className="text-slate-400">Kode Varian</span>
-                <span className="font-mono font-bold text-white">{selectedVariant?.kodeVariant ?? "-"}</span>
+            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm shadow-sm">
+              <div className="mb-1 flex justify-between border-b border-gray-200 pb-1">
+                <span className="text-slate-500">Batch</span>
+                <span className="font-mono font-bold text-slate-900">{generateInfo?.batch.kodeBatch ?? "-"}</span>
               </div>
-              <div className="mb-1 flex justify-between border-b border-slate-600 pb-1">
-                <span className="text-slate-400">QR Value</span>
-                <span className="max-w-[180px] truncate font-mono text-xs font-bold text-sky-400" title={qrValue}>{qrValue}</span>
+              <div className="mb-1 flex justify-between border-b border-gray-200 pb-1">
+                <span className="text-slate-500">Kode Varian</span>
+                <span className="font-mono font-bold text-slate-900">{selectedVariant?.kodeVariant ?? "-"}</span>
+              </div>
+              <div className="mb-1 flex justify-between border-b border-gray-200 pb-1">
+                <span className="text-slate-500">QR Value</span>
+                <span className="max-w-[180px] truncate font-mono text-xs font-bold text-blue-700" title={qrValue}>{qrValue}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Tanggal Batch</span>
-                <span className="font-mono font-bold text-white">{generateInfo ? formatDate(generateInfo.tanggal) : "-"}</span>
+                <span className="text-slate-500">Tanggal Batch</span>
+                <span className="font-mono font-bold text-slate-900">{generateInfo ? formatDate(generateInfo.tanggal) : "-"}</span>
               </div>
             </div>
           </div>
 
           {/* Fixed Bottom Action Area */}
           <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <div className="mb-3">
+            <div className="mb-5">
               <p className="text-center text-xs text-slate-500">Pastikan printer thermal siap sebelum klik Generate.</p>
             </div>
+            <p className="mb-3 truncate text-center text-xs font-semibold text-slate-700" title={variantDescription}>
+              {variantDescription || "—"}
+            </p>
             <button
               type="button"
               disabled={!selectedVariant || isGenerating || !generateInfo}
@@ -500,10 +513,6 @@ function CetakLabel() {
                 </>
               )}
             </button>
-            <div className="mt-3 flex justify-between rounded bg-slate-100 p-2 text-xs font-semibold text-slate-700">
-              <span>Ringkasan:</span>
-              <span className="ml-2 truncate text-slate-900">{variantDescription || "—"}</span>
-            </div>
           </div>
         </section>
       </main>

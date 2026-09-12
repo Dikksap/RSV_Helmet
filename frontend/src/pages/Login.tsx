@@ -37,7 +37,7 @@ function Login() {
 
   return (
     <div className="w-full bg-transparent">
-      <div className="grid w-full lg:min-h-[calc(100svh-72px)] lg:grid-cols-2">
+      <div className="grid w-full lg:min-h-svh lg:grid-cols-2">
         {/* Left — brand panel (desktop) */}
         <div className="relative hidden overflow-hidden bg-[#0F1C2E] lg:flex lg:flex-col lg:justify-between">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#1E3A5F] via-[#0F1C2E] to-[#0F1C2E]" aria-hidden="true" />
@@ -52,7 +52,7 @@ function Login() {
             </Link>
           </div>
 
-          <div className="relative px-10 pb-10">
+          <div className="relative flex flex-1 flex-col justify-center px-10 py-10">
             <div className="max-w-md">
               <h1 className="text-4xl font-bold leading-[1.2] tracking-tight text-white">
                 Sistem Inventaris
@@ -93,20 +93,19 @@ function Login() {
                 </span>
                 <p className="mt-3 text-sm font-bold tracking-tight text-[#1E3A5F]">RSV HELMET</p>
               </div>
-              <div className="mb-6 text-center lg:mb-8 lg:text-left">
-                <h1 className="text-[28px] font-semibold leading-[1.3] tracking-tight text-[#1E3A5F]">
-                  Masuk
-                </h1>
-                <p className="mt-2 text-[15px] text-[#6B7280]">
-                  Silakan masuk untuk melanjutkan.
-                </p>
-              </div>
-
               <form
                 className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                 onSubmit={handleSubmit}
                 noValidate
               >
+                <div className="mb-6">
+                  <h1 className="text-[28px] font-semibold leading-[1.3] tracking-tight text-[#1E3A5F]">
+                    Masuk
+                  </h1>
+                  <p className="mt-2 text-[15px] text-[#6B7280]">
+                    Silakan masuk untuk melanjutkan.
+                  </p>
+                </div>
                 {error && (
                   <div className="mb-5 flex items-start gap-3 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/5 px-4 py-3 text-sm font-medium text-[#1F2937]" role="alert">
                     <span aria-hidden="true" className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#EF4444] text-xs font-bold text-white">!</span>

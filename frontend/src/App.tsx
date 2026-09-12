@@ -3,7 +3,7 @@ import logoUrl from "./assets/logo.svg";
 
 function App() {
   const { pathname } = useLocation();
-  const showTopbar = pathname !== "/" && pathname !== "/live-view";
+  const showTopbar = pathname !== "/" && pathname !== "/live-view" && pathname !== "/login";
 
   return (
     <main className="app-public min-h-screen text-zinc-950">
