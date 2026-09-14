@@ -22,11 +22,10 @@ import { PrintDocument } from "../components/CetakLabel/PrintDocument";
 
 type PrintSize = LabelSize;
 
-// PERBAIKAN: Gunakan border-2 untuk keduanya agar layout tidak melompat (jitter) saat diklik
 const activeBtn =
-  "border-2 border-slate-800 bg-slate-800 text-white font-bold shadow-inner";
+  "border-2 border-slate-900 bg-slate-900 text-white shadow-sm";
 const idleBtn =
-  "border-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300 font-medium";
+  "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100";
 
 function CetakLabel() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -213,6 +212,26 @@ function CetakLabel() {
     }
   };
 
+  const handleReset = () => {
+    if (products.length > 0) handleProductSelect(String(products[0].id));
+    setCopies(1);
+  };
+
+  // Enter / Spasi = cetak instan (kecuali fokus di input/select/textarea)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (/INPUT|SELECT|TEXTAREA/.test(t.tagName)) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (selectedVariant && !isGenerating) void handleGenerate();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariant, isGenerating, copies, printSize, customMm, selectedPrinter]);
+
   const formatDate = (date: string) => new Date(date).toLocaleDateString("id-ID");
 
   const previewCode = generateInfo && selectedVariant
@@ -224,230 +243,278 @@ function CetakLabel() {
     .filter(Boolean)
     .join(" > ");
 
-  return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-transparent font-[Inter,sans-serif] text-slate-800 lg:h-[calc(100dvh-3.5rem)] lg:overflow-hidden">
-      {error && (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4">
-          <div className="pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-md bg-red-600 p-4 text-sm text-white shadow-2xl">
+  const btnBase = "rounded-xl px-3 py-3 text-xs transition-all active:scale-95 focus:outline-none";
+  const checkIcon = (
+    <svg className="h-4 w-4 shrink-0 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+      <path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd" />
+    </svg>
+  );
+  const whiteCheckIcon = (
+    <svg className="h-3.5 w-3.5 shrink-0 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+      <path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd" />
+    </svg>
+  );
+  // ponytail: subtitle statis hanya untuk model yang dikenal, fallback = jumlah varian agar tidak bohong untuk produk baru
+  const modelSubtitle = (nama: string, varianCount: number): string => {
+    const known: Record<string, string> = {
+      windbreaker: "Open Face Series",
+      sv300: "Double Visor",
+      ffs21: "Full Face Racing",
+      classic: "Retro Jet Series",
+    };
+    return known[nama.trim().toLowerCase()] ?? `${varianCount} varian`;
+  };
+
+return (
+  <div className="w-full max-w-full bg-white font-[Inter,sans-serif] text-slate-800">
+    {/* Error Toast */}
+    {error && (
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4">
+        <div className="pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-xl border border-red-500/30 bg-red-600 p-4 text-sm text-white shadow-2xl">
+          <div className="flex items-center gap-3">
+            <svg className="h-5 w-5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path clipRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" fillRule="evenodd" />
+            </svg>
             <span className="font-semibold">{error}</span>
-            <button
-              type="button"
-              onClick={() => setError(null)}
-              className="shrink-0 rounded bg-red-700 px-3 py-1 font-bold hover:bg-red-800 focus:ring-2 focus:ring-white"
-            >
-              Tutup
-            </button>
           </div>
+          <button type="button" onClick={() => setError(null)} className="shrink-0 rounded-lg bg-red-700 px-3 py-1.5 font-bold transition-colors hover:bg-red-800">
+            Tutup
+          </button>
         </div>
-      )}
+      </div>
+    )}
 
-      {/* Main Content Area: Split layout */}
-      <main className="flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6">
+      {/* Status Bar */}
+      <div className="mb-5 flex flex-wrap items-center gap-2 text-xs font-semibold">
+        <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono tabular-nums text-slate-700 shadow-sm">
+          {now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} • {now.toLocaleTimeString("id-ID")}
+        </span>
+        <span className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700 shadow-sm sm:flex">
+          <span className="h-2 w-2 rounded-full bg-blue-500" />Shift 1 (Budi S.) • Line 04
+        </span>
+        <span className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-bold text-emerald-800 shadow-sm">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+          </span>
+          {isInElectron() ? (selectedPrinter || "Printer Siap (Online)") : "ZD230 • Browser Mode"}
+        </span>
+      </div>
 
-        {/* Left Panel: Data Entry */}
-        <section className="w-full min-w-0 border-r border-slate-200 bg-white p-4 lg:w-3/5 lg:flex-1 lg:overflow-y-auto lg:p-5 xl:w-2/3">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
-            <h2 className="text-lg font-bold text-slate-800">Konfigurasi Label</h2>
-            <span className="text-xl font-bold tabular-nums text-slate-800" suppressHydrationWarning>
-              {now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} • {now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-            </span>
-          </div>
-
-          {isLoading ? (
-            <div className="flex h-full items-center justify-center">
-              <p className="animate-pulse text-sm font-medium text-slate-500">Memuat data produk industri...</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div className="space-y-5">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">1. Pilih Produk</label>
-                  <select
-                    value={productId}
-                    onChange={(e) => handleProductSelect(e.target.value)}
-                    className="w-full rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-base font-medium text-slate-800 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  >
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nama} ({p.variants.length} Varian)
-                      </option>
-                    ))}
-                  </select>
+      <main className="flex flex-col items-start gap-5 xl:flex-row">
+        {/* Kiri: Konfigurasi */}
+        <section className="flex w-full min-w-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="p-4 sm:p-5">
+            {/* Header */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                  <h2 className="text-lg font-extrabold tracking-tight text-slate-900 sm:text-xl">Konfigurasi Label Thermal</h2>
                 </div>
+                <p className="mt-1 text-xs text-slate-500">Ikuti 3 langkah cepat di bawah sebelum mencetak ke mesin thermal.</p>
+              </div>
+              <span className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 font-mono text-xs font-bold text-white shadow-sm">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />MODE OPERATOR CEPAT
+              </span>
+            </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">2. Style</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {styles.length === 0 && <p className="col-span-2 text-sm text-slate-400">Pilih produk dulu.</p>}
-                    {styles.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setStyleId(String(s.id));
-                          setColorId("");
-                          setSizeId("");
-                          setGenerateInfo(null);
-                          setGeneratedCode(null);
-                        }}
-                        className={`option-btn w-full rounded-md px-4 py-2.5 text-base transition-colors focus:outline-none ${String(s.id) === styleId ? activeBtn : idleBtn}`}
-                      >
-                        {s.nama}
-                      </button>
-                    ))}
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+                <p className="mt-3 text-sm font-medium text-slate-500">Memuat data produk...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Langkah 1 */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">1</span>
+                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Pilih Model Helm &amp; Style</label>
+                    </div>
+                    <span className="rounded-md border border-blue-200 bg-blue-100/80 px-2.5 py-0.5 text-xs font-bold text-blue-700">
+                      Model: {selectedProduct?.nama ?? "-"}
+                    </span>
+                  </div>
+                  <div className="mb-3.5 grid grid-cols-2 gap-2.5">
+                    {products.map((p) => {
+                      const on = String(p.id) === productId;
+                      return (
+                        <button key={p.id} type="button" onClick={() => handleProductSelect(String(p.id))}
+                          className={`${btnBase} flex flex-col justify-between p-3 text-left ${on ? activeBtn : idleBtn}`}>
+                          <div className="mb-1 flex w-full items-center justify-between">
+                            <span className="text-xs font-black tracking-tight">{p.nama.toUpperCase()}</span>
+                            {on && checkIcon}
+                          </div>
+                          <span className={`text-[11px] font-medium ${on ? "text-slate-300" : "text-slate-500"}`}>{modelSubtitle(p.nama, p.variants.length)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-3 border-t border-slate-200/80 pt-3">
+                    <span className="whitespace-nowrap text-xs font-bold text-slate-600">Style Helm:</span>
+                    <div className="grid flex-1 grid-cols-2 gap-2">
+                      {styles.map((s) => {
+                        const on = String(s.id) === styleId;
+                        return (
+                          <button key={s.id} type="button"
+                            onClick={() => { setStyleId(String(s.id)); setColorId(""); setSizeId(""); setGenerateInfo(null); setGeneratedCode(null); }}
+                            className={`${btnBase} flex items-center justify-center gap-1.5 px-4 py-2 text-center text-xs ${on ? "bg-slate-900 font-bold text-white shadow-sm" : "border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
+                            {on && whiteCheckIcon}{s.nama}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-5">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="block text-sm font-semibold text-slate-700">3. Warna</label>
-                    {selectedColorName && (
-                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
-                        Terpilih: {selectedColorName}
-                      </span>
+                {/* Langkah 2 */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">2</span>
+                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Pilih Varian Warna &amp; Ukuran</label>
+                    </div>
+                    <span className="rounded-md border border-blue-200 bg-blue-100/80 px-2.5 py-0.5 text-xs font-bold text-blue-700">
+                      {selectedColorName ?? "-"} • Size {selectedSizeName ?? "-"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <span className="block text-xs font-bold text-slate-600">Varian Grafis:</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {colors.map((c) => {
+                          const on = String(c.id) === colorId;
+                          return (
+                            <button key={c.id} type="button"
+                              onClick={() => { setColorId(String(c.id)); setSizeId(""); setGenerateInfo(null); setGeneratedCode(null); }}
+                              className={`${btnBase} flex items-center justify-between p-3 text-left text-xs ${on ? "border-2 border-slate-900 bg-slate-900 font-bold text-white shadow-sm" : "border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
+                              <span className="truncate">{c.nama}</span>{on && checkIcon}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <span className="block text-xs font-bold text-slate-600">Ukuran Helm:</span>
+                      <div className="grid grid-cols-4 gap-2">
+                        {sizes.map((s) => {
+                          const on = String(s.id) === sizeId;
+                          return (
+                            <button key={s.id} type="button" onClick={() => { setSizeId(String(s.id)); setGeneratedCode(null); }}
+                              className={`${btnBase} py-3.5 text-center text-lg ${on ? "border-2 border-slate-900 bg-slate-900 font-black text-white shadow-sm" : "border border-slate-300 bg-white font-bold text-slate-700 hover:bg-slate-100"}`}>
+                              {s.nama}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Langkah 3 */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">3</span>
+                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Jumlah Cetak &amp; Preset Cepat</label>
+                    </div>
+                    <span className="font-mono text-xs font-bold text-slate-600">Target: {isInElectron() ? (selectedPrinter || "Default OS") : "Zebra ZD230"}</span>
+                  </div>
+                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+                    <div className="flex items-center overflow-hidden rounded-xl border-2 border-slate-300 bg-white shadow-sm">
+                      <button type="button" onClick={() => setCopies((c) => Math.max(1, c - 1))} className="flex h-12 w-12 items-center justify-center text-lg font-bold text-slate-700 transition-colors hover:bg-slate-100">−</button>
+                      <input value={copies} min={1} max={500} type="number" onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                        className="h-12 w-16 border-0 text-center font-mono text-base font-extrabold text-slate-900 focus:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                      <button type="button" onClick={() => setCopies((c) => Math.min(500, c + 1))} className="flex h-12 w-12 items-center justify-center text-lg font-bold text-slate-700 transition-colors hover:bg-slate-100">+</button>
+                    </div>
+                    <div className="flex flex-1 items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-500">Preset:</span>
+                      {[1, 5, 10, 50].map((n) => (
+                        <button key={n} type="button" onClick={() => setCopies(n)}
+                          className={`flex-1 rounded-lg border px-3 py-2.5 text-xs transition-colors ${copies === n ? "border-blue-200 bg-blue-50 font-bold text-blue-700" : "border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
+                          {n} Pcs
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Pengaturan lanjutan */}
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <select value={printSize} onChange={(e) => setPrintSize(e.target.value as PrintSize)}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                      <option value="100x75mm">100 × 75 mm (Hangtag)</option>
+                      <option value="50x50mm">50 × 50 mm (Sticker)</option>
+                      <option value="33x15mm">33 × 15 mm (Kecil)</option>
+                      <option value="58x58mm">58 × 58 mm (Thermal)</option>
+                      <option value="100x100mm">100 × 100 mm</option>
+                      <option value="custom">Custom...</option>
+                    </select>
+                    {isInElectron() ? (
+                      <select value={selectedPrinter} onChange={(e) => { setSelectedPrinter(e.target.value); saveDefaultPrinter(e.target.value); }}
+                        className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 sm:col-span-2">
+                        <option value="">Default OS Printer</option>
+                        {printers.map((p) => (
+                          <option key={p.name} value={p.name}>{p.displayName || p.name}{p.isDefault ? " (Default)" : ""}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-500 sm:col-span-2">ZDesigner (Browser Mode)</span>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {colors.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setColorId(String(c.id));
-                          setSizeId("");
-                          setGenerateInfo(null);
-                          setGeneratedCode(null);
-                        }}
-                        className={`option-btn truncate rounded-md px-4 py-2.5 text-left text-base transition-colors focus:outline-none ${String(c.id) === colorId ? activeBtn : idleBtn}`}
-                      >
-                        {c.nama}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="block text-sm font-semibold text-slate-700">4. Ukuran</label>
-                    {selectedSizeName && (
-                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
-                        Terpilih: {selectedSizeName}
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-4 gap-3">
-                    {sizes.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setSizeId(String(s.id));
-                          setGeneratedCode(null);
-                        }}
-                        className={`option-btn rounded-md py-2.5 text-center text-base transition-colors focus:outline-none ${String(s.id) === sizeId ? activeBtn : idleBtn}`}
-                      >
-                        {s.nama}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Printer Settings */}
-          <div className="mt-5 border-t border-slate-200 pt-4">
-            <h3 className="mb-4 text-sm font-bold tracking-wider text-slate-700">Pengaturan Printer</h3>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="flex-1">
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Ukuran Label</label>
-                <select
-                  value={printSize}
-                  onChange={(e) => setPrintSize(e.target.value as PrintSize)}
-                  className="w-full rounded border border-slate-300 bg-slate-50 px-2 py-1.5 text-sm shadow-sm focus:border-sky-500 focus:outline-none"
-                >
-                  <option value="100x75mm">100 &times; 75 mm (Hangtag)</option>
-                  <option value="50x50mm">50 &times; 50 mm (Sticker)</option>
-                  <option value="33x15mm">33 &times; 15 mm (Kecil)</option>
-                  <option value="58x58mm">58 &times; 58 mm (Thermal)</option>
-                  <option value="100x100mm">100 &times; 100 mm</option>
-                  <option value="custom">Custom Ukuran...</option>
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Target Printer</label>
-                {isInElectron() ? (
-                  <select
-                    value={selectedPrinter}
-                    onChange={(e) => {
-                      setSelectedPrinter(e.target.value);
-                      saveDefaultPrinter(e.target.value);
-                    }}
-                    className="w-full rounded border border-slate-300 bg-slate-50 px-2 py-1.5 text-sm shadow-sm focus:border-sky-500 focus:outline-none"
-                  >
-                    <option value="">Default OS Printer</option>
-                    {printers.map((p) => (
-                      <option key={p.name} value={p.name}>
-                        {p.displayName || p.name} {p.isDefault ? " (Default)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <select disabled className="w-full rounded border border-slate-300 bg-slate-50 px-2 py-1.5 text-sm text-slate-500 shadow-sm">
-                    <option>ZDesigner (Browser Mode)</option>
-                  </select>
-                )}
-              </div>
-              <div className="w-full sm:w-24">
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Jumlah</label>
-                <input
-                  type="number"
-                  value={copies}
-                  min={1}
-                  max={100}
-                  onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-center text-sm font-bold shadow-sm focus:border-sky-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {printSize === "custom" && (
-              <div className="mt-3 flex gap-3">
-                <div className="flex-1">
-                  <span className="text-xs font-medium text-slate-500">Lebar (mm)</span>
-                  <input type="number" min={10} max={500} value={customMm.width} onChange={(e) => setCustomMm({ ...customMm, width: Number(e.target.value) })} className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-xs font-medium text-slate-500">Tinggi (mm)</span>
-                  <input type="number" min={10} max={500} value={customMm.height} onChange={(e) => setCustomMm({ ...customMm, height: Number(e.target.value) })} className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+                  {printSize === "custom" && (
+                    <div className="mt-3 flex gap-3">
+                      <label className="flex-1 text-xs text-slate-500">Lebar (mm)
+                        <input type="number" min={10} max={500} value={customMm.width} onChange={(e) => setCustomMm({ ...customMm, width: Number(e.target.value) })} className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+                      </label>
+                      <label className="flex-1 text-xs text-slate-500">Tinggi (mm)
+                        <input type="number" min={10} max={500} value={customMm.height} onChange={(e) => setCustomMm({ ...customMm, height: Number(e.target.value) })} className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
+
+          {/* Footer Konfigurasi */}
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-500 sm:px-5">
+            <span className="flex items-center gap-1.5 font-medium">
+              <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                <path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd" />
+              </svg>
+              Sensor label kalibrasi otomatis • Ukuran standar 100×75mm
+            </span>
+            <span className="font-mono text-[11px] text-slate-400">Driver v3.4.1 OK</span>
+          </div>
         </section>
 
-        {/* Right Panel: Fixed Preview and Action */}
-        <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-transparent lg:w-2/5 lg:border-l lg:border-t-0 xl:w-1/3">
-          <div className="flex flex-col p-4 sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Live Preview</h2>
-              <span className="relative flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-500"></span>
-              </span>
+        {/* Kanan: Preview */}
+        <section className="flex w-full flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:w-[420px] xl:shrink-0">
+          <div>
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">Live Preview Hangtag</h3>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
+                </span>
+              </div>
+              <span className="rounded bg-slate-100 px-2.5 py-1 font-mono text-[11px] font-bold text-slate-500">100×75 mm • 203 DPI</span>
             </div>
 
-            <div className="flex h-[240px] flex-none items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:h-[280px]">
+            <div className="flex items-center justify-center overflow-hidden rounded-xl border border-slate-200 p-4 sm:p-6"
+              style={{ backgroundColor: "#f1f5f9", backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)", backgroundSize: "16px 16px" }}>
               {!selectedVariant ? (
-                <div className="text-center text-slate-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-2 h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                  <p className="text-sm font-medium">Pilih spesifikasi produk untuk melihat preview label.</p>
+                <div className="flex flex-col items-center py-12">
+                  <svg className="h-10 w-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p className="mt-3 text-center text-sm font-medium text-slate-500">Pilih spesifikasi produk untuk melihat preview.</p>
                 </div>
               ) : (
-                <div>
-                  <div className="origin-center scale-[0.55] sm:scale-[0.75]">
+                <div className="origin-center scale-[0.55] sm:scale-[0.75]">
                   <div className="h-[284px] w-[378px] border border-slate-200 bg-white shadow-lg">
                     <Hangtag
                       productName={selectedProduct?.nama ?? "-"}
@@ -462,76 +529,73 @@ function CetakLabel() {
                       qrValue={qrValue}
                     />
                   </div>
-                  </div>
                 </div>
               )}
             </div>
 
-            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm shadow-sm">
-              <div className="mb-1 flex justify-between border-b border-gray-200 pb-1">
-                <span className="text-slate-500">Batch</span>
-                <span className="font-mono font-bold text-slate-900">{generateInfo?.batch.kodeBatch ?? "-"}</span>
+            <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-xs">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="font-medium text-slate-500">Batch &amp; Tanggal</span>
+                <span className="font-mono font-bold text-slate-900">{generateInfo ? `${generateInfo.batch.kodeBatch} • ${formatDate(generateInfo.tanggal)}` : "-"}</span>
               </div>
-              <div className="mb-1 flex justify-between border-b border-gray-200 pb-1">
-                <span className="text-slate-500">Kode Varian</span>
-                <span className="font-mono font-bold text-slate-900">{selectedVariant?.kodeVariant ?? "-"}</span>
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="font-medium text-slate-500">Spesifikasi</span>
+                <span className="truncate font-bold text-slate-900" title={variantDescription}>{variantDescription || "-"}</span>
               </div>
-              <div className="mb-1 flex justify-between border-b border-gray-200 pb-1">
-                <span className="text-slate-500">QR Value</span>
-                <span className="max-w-[180px] truncate font-mono text-xs font-bold text-blue-700" title={qrValue}>{qrValue}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Tanggal Batch</span>
-                <span className="font-mono font-bold text-slate-900">{generateInfo ? formatDate(generateInfo.tanggal) : "-"}</span>
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="font-medium text-slate-500">QR Code Payload</span>
+                <span className="ml-4 truncate font-mono font-bold text-blue-600" title={qrValue}>{qrValue}</span>
               </div>
             </div>
           </div>
 
-          {/* Fixed Bottom Action Area */}
-          <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <div className="mb-5">
-              <p className="text-center text-xs text-slate-500">Pastikan printer thermal siap sebelum klik Generate.</p>
-            </div>
-            <p className="mb-3 truncate text-center text-xs font-semibold text-slate-700" title={variantDescription}>
-              {variantDescription || "—"}
-            </p>
-            <button
-              type="button"
-              disabled={!selectedVariant || isGenerating || !generateInfo}
-              onClick={handleGenerate}
-              className="flex w-full transform items-center justify-center gap-2 rounded-md bg-sky-500 px-6 py-3 text-lg font-bold text-white shadow-lg transition active:scale-[0.98] hover:bg-sky-600 focus:outline-none focus:ring-4 focus:ring-sky-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
-            >
+          <div className="space-y-3">
+            <button type="button" disabled={!selectedVariant || isGenerating || !generateInfo} onClick={handleGenerate} title="Cetak label thermal sekarang (Tekan Enter)"
+              className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-2xl bg-[#0090ff] px-6 py-4 text-base font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-600 active:scale-[0.99] active:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none">
               {isGenerating ? (
-                <>
-                  <svg className="h-6 w-6 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  MENCETAK...
-                </>
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                  CETAK LABEL SEKARANG
-                </>
+                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
+                </svg>
               )}
+              <span className="tracking-wide uppercase">{isGenerating ? "MENCETAK..." : `CETAK LABEL (${copies} PCS)`}</span>
             </button>
+            <div className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-slate-500">
+              <kbd className="rounded border border-slate-300 bg-slate-100 px-2 py-0.5 font-mono text-[10px] text-slate-700">Enter</kbd>
+              <span>atau</span>
+              <kbd className="rounded border border-slate-300 bg-slate-100 px-2 py-0.5 font-mono text-[10px] text-slate-700">Spasi</kbd>
+              <span>untuk cetak instan</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button type="button" onClick={() => printFn()} disabled={!selectedVariant}
+                className="rounded-xl border border-slate-300 bg-slate-50 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50">
+                Test Print (1 Lembar)
+              </button>
+              <button type="button" onClick={handleReset}
+                className="rounded-xl border border-slate-300 bg-slate-50 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600">
+                Reset Pilihan
+              </button>
+            </div>
           </div>
         </section>
       </main>
-
-      {/* Tersembunyi untuk keperluan print API */}
-      <PrintDocument
-        contentRef={contentRef}
-        generatedCode={generatedCode}
-        selectedVariant={selectedVariant}
-        selectedProduct={selectedProduct}
-        sizes={sizes}
-        sizeId={sizeId}
-        generateInfo={generateInfo}
-        printSize={printSize}
-        customMm={customMm}
-        formatDate={formatDate}
-      />
     </div>
-  );
+
+    <PrintDocument
+      contentRef={contentRef}
+      generatedCode={generatedCode}
+      selectedVariant={selectedVariant}
+      selectedProduct={selectedProduct}
+      sizes={sizes}
+      sizeId={sizeId}
+      generateInfo={generateInfo}
+      printSize={printSize}
+      customMm={customMm}
+      formatDate={formatDate}
+    />
+  </div>
+);
 }
 
 export default CetakLabel;
