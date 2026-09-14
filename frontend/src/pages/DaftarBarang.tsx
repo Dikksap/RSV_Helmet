@@ -35,8 +35,8 @@ function DaftarBarang() {
   const [statusFilter, setStatusFilter] = useState("");
   const [variantFilter, setVariantFilter] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
-  const [tanggalAwal, setTanggalAwal] = useState("");
-  const [tanggalAkhir, setTanggalAkhir] = useState("");
+  const [tanggalAwal, setTanggalAwal] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tanggalAkhir, setTanggalAkhir] = useState(() => new Date().toISOString().slice(0, 10));
   const [datePreset, setDatePreset] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
