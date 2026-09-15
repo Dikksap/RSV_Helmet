@@ -148,7 +148,7 @@ function LandingPage() {
       <footer className="mt-auto bg-[#0f172a] text-sm text-slate-300">
         <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-2 px-4 py-3 text-center md:flex-row md:px-6 md:text-left">
           <div className="flex items-center gap-2">
-            <img src={logoUrl} alt="Logo RSV Helmet" className="h-6 w-6 object-contain brightness-0 invert" />
+            <img src={logoUrl} alt="Logo RSV Helmet" className="h-5 w-15 " />
             <span className="font-bold text-white">RSV HELMET</span>
           </div>
           <a href="mailto:info@rsvhelmet.com" className="hidden transition-colors hover:text-white md:block">

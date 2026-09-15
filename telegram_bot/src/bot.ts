@@ -2,6 +2,8 @@ import "dotenv/config";
 import cron from "node-cron";
 import { Telegraf } from "telegraf";
 import { barangHandler, getBarangMessage } from "./handlers/barang.handler.js";
+import { chatHandler, clearHistory } from "./handlers/chat.handler.js";
+import { modelCallbackHandler, modelHandler } from "./handlers/model.handler.js";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -24,33 +26,24 @@ bot.help((ctx) => {
     "📋 Menu\n\n" +
       "/start - Mulai bot\n" +
       "/help - Bantuan\n" +
-      "/barang - Ambil data barang dari API",
+      "/barang - Ambil data barang dari API\n" +
+      "/model - Pilih model AI\n" +
+      "/clear - Hapus history chat\n" +
+      "Kirim pesan untuk chat dengan asisten AI",
   );
 });
 
 bot.command("barang", barangHandler);
+bot.command("model", modelHandler);
+bot.command("clear", (ctx) => {
+  clearHistory(ctx.chat.id);
+  ctx.reply("🗑️ History dihapus.");
+});
+bot.action(/^model:(.+)$/, modelCallbackHandler);
+bot.on("text", chatHandler);
 
-const chatId = process.env.TELEGRAM_CHAT_ID;
-
-if (chatId) {
-  cron.schedule(
-    "30 16 * * *",
-    async () => {
-      try {
-        await bot.telegram.sendMessage(chatId, await getBarangMessage());
-      } catch (error) {
-        console.error("Gagal mengirim laporan otomatis:", error);
-      }
-    },
-    { timezone: "Asia/Jakarta" },
-  );
-  console.log("⏰ Laporan otomatis dijadwalkan setiap hari pukul 16:30 WIB.");
-} else {
-  console.warn("TELEGRAM_CHAT_ID belum diset; laporan otomatis dinonaktifkan.");
-}
-
-bot.on("text", (ctx) => {
-  ctx.reply(`Anda mengirim: ${ctx.message.text}`);
+bot.catch((err: any, ctx) => {
+  console.error(`Unhandled error for ${ctx.updateType}`, err);
 });
 
 bot.launch();

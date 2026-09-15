@@ -19,7 +19,7 @@ export async function getBarangMessage() {
   }).format(sekarang);
 
   return (
-    `📦 Produksi FINISHGOOD Hari Ini\n\n` +
+    ` Produksi FINISHGOOD Hari Ini\n\n` +
     `Tanggal: ${tanggal}\n` +
     `Jam: ${jam} WIB\n` +
     `Jumlah: ${jumlah.toLocaleString("id-ID")} barang`
