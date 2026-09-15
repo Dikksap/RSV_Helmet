@@ -9,39 +9,40 @@ type Props = {
 
 export function VariantHeader({ onCreateProduct, onCreateVariant, onImport }: Props) {
   return (
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div>
-        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-[#00A8E8]">
-          Product Inventory / Variant
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-lg font-bold leading-none tracking-tight text-[#1E3A5F] sm:text-xl">Variant Produk</h1>
+          <span className="hidden text-xs leading-none text-[#6B7280] sm:inline">Product Inventory / Variant</span>
+        </div>
+        <p className="mt-0.5 hidden text-xs leading-none text-[#6B7280] sm:block">
+          Daftar produk & varian (style, warna, ukuran)
         </p>
-        <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Variant Produk</h1>
-        <p className="mt-1 max-w-2xl text-base text-[#6B7280]">
-          Daftar seluruh produk beserta varian (style, warna, dan ukuran).
-        </p>
+        <p className="mt-0.5 text-[11px] leading-none text-[#6B7280] sm:hidden">Product Inventory</p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
           onClick={onImport}
-          className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-base font-medium text-[#1E3A5F] transition duration-200 ease hover:bg-[#1E3A5F]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-slate-50"
         >
-          <FontAwesomeIcon icon={faFileArrowUp} className="h-4 w-4" />
+          <FontAwesomeIcon icon={faFileArrowUp} className="h-3 w-3" />
           Import
         </button>
         <button
           type="button"
           onClick={onCreateProduct}
-          className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-base font-medium text-[#1E3A5F] transition duration-200 ease hover:bg-[#1E3A5F]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-slate-50"
         >
-          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" />
+          <FontAwesomeIcon icon={faCirclePlus} className="h-3 w-3" />
           Produk
         </button>
         <button
           type="button"
           onClick={onCreateVariant}
-          className="inline-flex min-h-[48px] items-center gap-2 rounded-lg bg-[#00A8E8] px-6 py-3 text-base font-medium text-white transition duration-200 ease hover:bg-[#0088C0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40"
+          className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#00A8E8] px-3 text-xs font-semibold text-white hover:bg-[#0088C0]"
         >
-          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" />
+          <FontAwesomeIcon icon={faCirclePlus} className="h-3 w-3" />
           Variant
         </button>
       </div>

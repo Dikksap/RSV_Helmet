@@ -44,8 +44,8 @@ export function VariantFilters({
   onReset,
 }: Props) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
+      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
         <input
           type="search"
           className={inputCls}
@@ -109,7 +109,7 @@ export function VariantFilters({
           </select>
         </label>
       </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
         <label className={labelCls}>
           <span>Ukuran</span>
           <select
@@ -125,18 +125,18 @@ export function VariantFilters({
           </select>
         </label>
         <label className={labelCls}>
-          <span className="text-transparent" aria-hidden="true">Aksi</span>
+          <span className="hidden lg:block text-transparent" aria-hidden="true">Aksi</span>
           <button
             type="button"
-            className="h-12 rounded-lg bg-[#F5F7FA] px-4 text-sm font-medium text-[#6B7280] transition duration-200 ease hover:bg-slate-200 hover:text-[#1F2937] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-[#F5F7FA] px-3 text-xs font-medium text-[#6B7280] hover:bg-slate-200 hover:text-[#1F2937] disabled:opacity-40"
             onClick={onReset}
             disabled={!hasActiveFilters}
           >
             Reset filter
           </button>
         </label>
-        <span className="flex items-end pb-2 text-sm font-medium text-[#6B7280]" aria-live="polite">
-          Menampilkan {rowsLength} dari {totalVarian} varian
+        <span className="flex items-end pb-1 text-xs font-medium text-[#6B7280] lg:col-span-2" aria-live="polite">
+          {rowsLength} dari {totalVarian} varian
         </span>
       </div>
     </div>

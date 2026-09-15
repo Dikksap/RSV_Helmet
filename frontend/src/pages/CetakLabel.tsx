@@ -266,7 +266,7 @@ function CetakLabel() {
   };
 
 return (
-  <div className="w-full max-w-full bg-white font-[Inter,sans-serif] text-slate-800">
+  <div className="-mx-6 -mt-6 min-h-[calc(100vh-72px)] w-[calc(100%+3rem)] bg-white font-[Inter,sans-serif] text-slate-800 md:-mx-12 md:-mt-8 md:w-[calc(100%+6rem)]">
     {/* Error Toast */}
     {error && (
       <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4">
@@ -284,7 +284,7 @@ return (
       </div>
     )}
 
-    <div className="mx-auto max-w-7xl p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl bg-white p-4 sm:p-6 md:px-12 md:pt-8">
       {/* Status Bar */}
       <div className="mb-5 flex flex-wrap items-center gap-2 text-xs font-semibold">
         <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono tabular-nums text-slate-700 shadow-sm">
@@ -328,7 +328,7 @@ return (
             ) : (
               <div className="space-y-4">
                 {/* Langkah 1 */}
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">1</span>
@@ -371,7 +371,7 @@ return (
                 </div>
 
                 {/* Langkah 2 */}
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">2</span>
@@ -415,7 +415,7 @@ return (
                 </div>
 
                 {/* Langkah 3 */}
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">3</span>
@@ -479,7 +479,7 @@ return (
           </div>
 
           {/* Footer Konfigurasi */}
-          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-500 sm:px-5">
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-500 sm:px-5">
             <span className="flex items-center gap-1.5 font-medium">
               <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                 <path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd" />
@@ -533,7 +533,7 @@ return (
               )}
             </div>
 
-            <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-xs">
+            <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white text-xs">
               <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="font-medium text-slate-500">Batch &amp; Tanggal</span>
                 <span className="font-mono font-bold text-slate-900">{generateInfo ? `${generateInfo.batch.kodeBatch} • ${formatDate(generateInfo.tanggal)}` : "-"}</span>

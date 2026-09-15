@@ -276,16 +276,16 @@ function VariantProduk() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-3">
       <VariantHeader onCreateProduct={openCreateProduct} onCreateVariant={openCreateVariant} onImport={() => setImportOpen(true)} />
       <VariantTabs tab={tab} onChange={setTab} totalVarian={allRows.length} totalProduk={products.length} />
 
-      {isLoading && <p className="text-[15px] text-[#6B7280]">Memuat variant produk...</p>}
-      {error && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[15px] text-[#EF4444]">{error}</p>}
-      {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[15px] text-emerald-700">{notice}</p>}
+      {isLoading && <p className="text-sm text-[#6B7280]">Memuat variant produk...</p>}
+      {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-[#EF4444]">{error}</p>}
+      {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">{notice}</p>}
 
       {!isLoading && !error && tab === "variant" && (
-        <section aria-label="Daftar variant produk" className="space-y-5">
+        <section aria-label="Daftar variant produk" className="space-y-3">
           <VariantFilters
             search={search}
             productFilter={productFilter}
@@ -311,7 +311,7 @@ function VariantProduk() {
       )}
 
       {!isLoading && !error && tab === "produk" && (
-        <section aria-label="Daftar produk" className="space-y-5">
+        <section aria-label="Daftar produk" className="space-y-3">
           <ProductTable products={products} onEdit={openEditProduct} onDelete={deleteProductHandler} />
         </section>
       )}

@@ -44,6 +44,8 @@ function DaftarBarang() {
   const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // CRUD modal state
   const [showCreate, setShowCreate] = useState(false);
@@ -121,6 +123,14 @@ function DaftarBarang() {
           "total" in data.meta ? data.meta.total : data.meta.count,
         );
         setCurrentPage(page);
+        // keep only selections that still exist on page
+        setSelectedIds((prev) => {
+          const ids = new Set(data.data.map((b) => b.id));
+          const next = new Set<number>();
+          prev.forEach((id) => { if (ids.has(id)) next.add(id); });
+          // if searching, clear stale; page change also prunes
+          return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Gagal memuat barang");
       } finally {
@@ -191,6 +201,69 @@ function DaftarBarang() {
     setTanggalAwal("");
     setTanggalAkhir("");
     setDatePreset("");
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(barang.map((b) => b.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Hapus ${selectedIds.size} barang terpilih? Tindakan tidak dapat dibatalkan.`)) return;
+    setIsBulkDeleting(true);
+    setCrudError(null);
+    try {
+      const ids = [...selectedIds];
+      for (const id of ids) {
+        await deleteBarang(id);
+      }
+      setSuccessMsg(`${ids.length} barang berhasil dihapus`);
+      setSelectedIds(new Set());
+      const nextPage = barang.length === ids.length && currentPage > 1 ? currentPage - 1 : currentPage;
+      await fetchBarang(nextPage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal hapus massal");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleBulkExport = () => {
+    if (selectedIds.size === 0) return;
+    const selected = barang.filter((b) => selectedIds.has(b.id));
+    const headers = ["id", "kodeBarang", "status", "produk", "varian", "batch", "createdAt"];
+    const rows = selected.map((b) => [
+      String(b.id),
+      b.kodeBarang,
+      b.status,
+      b.variant.product.nama,
+      `${b.variant.style.nama} ${b.variant.color.nama} ${b.variant.size.nama}`,
+      b.batch ? `BC${String(b.batch.nomorBatch).padStart(3, "0")}` : "",
+      b.createdAt,
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `barang-selected-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleExport = async (format: "json" | "csv") => {
@@ -400,7 +473,7 @@ function DaftarBarang() {
     "min-h-[88px] w-full rounded-lg border border-[#D1D5DB] bg-white px-3 py-2.5 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 sm:space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-3">
       <HeaderSection
         totalBarang={totalBarang}
         isExporting={isExporting}
@@ -504,11 +577,45 @@ function DaftarBarang() {
             </div>
           ) : (
             <>
+              {selectedIds.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#00A8E8]/30 bg-sky-50 px-3 py-2.5">
+                  <span className="text-sm font-semibold text-[#1E3A5F]">{selectedIds.size} dipilih</span>
+                  <span className="hidden text-slate-300 sm:inline">|</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleBulkExport}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#1E3A5F] bg-white px-3 text-xs font-medium text-[#1E3A5F] hover:bg-[#1E3A5F]/5"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                      Export ({selectedIds.size})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBulkDelete}
+                      disabled={isBulkDeleting}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50"
+                    >
+                      {isBulkDeleting ? "Menghapus..." : `Hapus (${selectedIds.size})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds(new Set())}
+                      className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-[#6B7280] hover:text-[#1F2937]"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              )}
               <BarangTable
                 barang={barang}
                 currentPage={currentPage}
                 totalBarang={totalBarang}
                 now={now}
+                selectedIds={selectedIds}
+                onToggle={toggleSelect}
+                onToggleAll={toggleSelectAll}
                 onRowClick={setSelectedBarang}
                 onEdit={openEdit}
                 onDelete={setDeletingBarang}
