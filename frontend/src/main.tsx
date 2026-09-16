@@ -7,7 +7,7 @@ import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "@fontsource/inter/800.css";
 import "./index.css";
-import App from "./App";
+import PublicLayout from "./layouts/PublicLayout.tsx";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
 import AdminLayout from "./layouts/AdminLayout.tsx";
 import CetakLabel from "./pages/CetakLabel.tsx";
@@ -24,7 +24,7 @@ import Login from "./pages/Login.tsx";
 
 const routes = (
   <Routes>
-    <Route element={<App />}>
+    <Route element={<PublicLayout />}>
       <Route path="/" element={<LandingPage />} />
       <Route path="/cetak-label" element={<CetakLabel />} />
       <Route path="/live-view" element={<LiveView />} />

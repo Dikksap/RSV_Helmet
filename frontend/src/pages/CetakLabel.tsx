@@ -266,7 +266,7 @@ function CetakLabel() {
   };
 
 return (
-  <div className="-mx-6 -mt-6 min-h-[calc(100vh-72px)] w-[calc(100%+3rem)] bg-white font-[Inter,sans-serif] text-slate-800 md:-mx-12 md:-mt-8 md:w-[calc(100%+6rem)]">
+  <div className="flex flex-1 flex-col bg-white font-[Inter,sans-serif] text-slate-800">
     {/* Error Toast */}
     {error && (
       <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4">
@@ -284,7 +284,7 @@ return (
       </div>
     )}
 
-    <div className="mx-auto max-w-7xl bg-white p-4 sm:p-6 md:px-12 md:pt-8">
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col bg-white p-4 pb-6 sm:p-6 sm:pb-6 md:px-12 md:pt-8 md:pb-8">
       {/* Status Bar */}
       <div className="mb-5 flex flex-wrap items-center gap-2 text-xs font-semibold">
         <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono tabular-nums text-slate-700 shadow-sm">
