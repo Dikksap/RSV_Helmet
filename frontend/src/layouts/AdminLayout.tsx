@@ -38,7 +38,8 @@ function AdminLayout() {
   const [barangProduksiOpen, setBarangProduksiOpen] = useState(
     () =>
       location.pathname.startsWith("/admin/barang") ||
-      location.pathname.startsWith("/admin/barang/statistik"),
+      location.pathname.startsWith("/admin/barang/statistik") ||
+      location.pathname.startsWith("/admin/plan-production"),
   );
   const [notifCount, setNotifCount] = useState(0);
   const [notifList, setNotifList] = useState<NotifItem[]>([]);
@@ -53,6 +54,7 @@ function AdminLayout() {
   const [selectedNotif, setSelectedNotif] = useState<NotifItem | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifButtonRef = useRef<HTMLButtonElement>(null);
+  const recentToastRef = useRef<Map<string, number>>(new Map());
 
   const { subscribe } = useLiveSocketContext();
 
@@ -76,6 +78,11 @@ function AdminLayout() {
 
   useEffect(() => {
     const pushToast = (type: string, message: string) => {
+      const key = `${type}::${message}`;
+      const now = Date.now();
+      const last = recentToastRef.current.get(key);
+      if (last && now - last < 3000) return;
+      recentToastRef.current.set(key, now);
       const id = Date.now() + Math.floor(Math.random() * 1000);
       const toast = { id, type, message: message || type };
       setLiveToasts((prev) => [...prev, toast].slice(-5));

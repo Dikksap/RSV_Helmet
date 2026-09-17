@@ -18,6 +18,7 @@
 - [6. Variant Produk Standalone](#6-variant-produk-standalone)
 - [7. Style / Color / Size](#7-style--color--size-master-referensi)
 - [8. Barang](#8-barang)
+  - [8.8 Production Order (Master Produksi)](#88-production-order-master-produksi)
 - [9. WebSocket Realtime](#9-websocket-realtime)
 - [10. Domain Model & Aturan Bisnis](#10-domain-model--aturan-bisnis)
 - [11. Error & Status Code](#11-error--status-code)
@@ -77,6 +78,17 @@
 | PATCH | `/api/barang/:id/status` | — | `{ status, keterangan? }` |
 | GET | `/api/barang/:id/riwayat` | — | `{ data[], summary }` |
 | GET | `/api/barang/:id` | — | Detail (paling akhir agar tidak telan route di atas) |
+| GET | `/api/production-orders` | — | List header + `_count.items`, tanpa pagination/filter |
+| GET | `/api/production-orders/:id?summary=1` | — | Detail + items; `summary=1` menambah `ringkasan` |
+| POST | `/api/production-orders` | — | `{ nomor, periode, label?, status?, items? }` |
+| PUT | `/api/production-orders/:id` | — | Update parsial header, bukan items |
+| DELETE | `/api/production-orders/:id` | — | Hapus order + cascade items |
+| POST | `/api/production-orders/:id/items` | — | `{ variantId, qty, priority? }` |
+| PUT | `/api/production-orders/:id/items/:itemId` | — | Parsial `{ qty?, priority? }` + hitung ulang total |
+| DELETE | `/api/production-orders/:id/items/:itemId` | — | Hapus item + hitung ulang total order |
+| GET | `/api/production-orders/:id/capacities` | — | List kapasitas per tahap (`urutan,id` asc) |
+| PUT | `/api/production-orders/:id/capacities` | — | Replace-all kapasitas, body array |
+| GET | `/api/production-orders/:id/schedule?prep=&qc=` | — | Jadwal otomatis (fungsi murni, tanpa tabel) |
 
 ### 0.2 Auth matrix — hanya 2 endpoint pakai middleware
 
@@ -91,11 +103,13 @@
 ```ts
 type StatusBarang = "REGISTER" | "FINISHGOOD" | "RETUR" | "OUT" | "BAD";
 type StatusBatch = "AKTIF" | "SELESAI";
+type StatusProductionOrder = "DRAFT" | "AKTIF" | "SELESAI" | "BATAL";
 // Transisi valid (src/model/barang/barang.status.ts:14):
 // REGISTER   -> FINISHGOOD | OUT | RETUR | BAD
 // FINISHGOOD -> OUT | RETUR | BAD
 // RETUR      -> FINISHGOOD | OUT | BAD
-// OUT, BAD   -> terminal
+// OUT       -> RETUR
+// BAD       -> FINISHGOOD
 // PENTING: same-status (X->X) DITOLAK di POST /scan/bulk,
 //           DITERIMA di PATCH /:id/status dan POST /bulk-status.
 ```
@@ -106,6 +120,7 @@ type StatusBatch = "AKTIF" | "SELESAI";
 - Tidak ada MQTT / RFID / IoT / EPC di repo ini. Jangan bikin topic/payload IoT.
 - Tidak ada endpoint update status ProductVariant; field status variant sudah tidak ada di schema.
 - Tidak ada pagination di `GET /api/products` dan `GET /api/variant-produk`.
+- `GET /api/production-orders` tanpa pagination/filter; `PUT /:id` tidak menyentuh items/`totalQty`; write production-order tidak emit event WS dan tidak pakai cache Redis.
 
 ---
 
@@ -127,8 +142,16 @@ npm run docker:up  # mysql+redis
 npm run db:seed    # seed style/color/size awal
 ```
 
-- `GET /` → `200 { message: "API berjalan" }` (`src/app.ts:21`).
-- CORS global `cors()`, body `express.json()` + `urlencoded` (`src/app.ts:17-19`).
+### Seed Production Order (Docker)
+
+```bash
+docker exec backend-api-1 npx tsx prisma/seed-production-order.ts
+```
+
+- Seed baca `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME`, bukan `DATABASE_URL` (`prisma/seed-production-order.ts:6-13`). Jalan di dalam container agar host DB Docker (`db`) resolve. Detail isi + perilaku upsert: [8.8](#88-production-order-master-produksi).
+
+- `GET /` → `200 { message: "API berjalan" }` (`src/app.ts:22`).
+- CORS global `cors()`, body `express.json()` + `urlencoded` (`src/app.ts:18-20`).
 - Vercel (`VERCEL=1`): WS tidak diinisialisasi, hanya HTTP (`api/index.ts:12`).
 
 ---
@@ -336,6 +359,43 @@ descending by tanggal.
 - `format` default `json`, selain itu → 400; `limit` max 10000 default 10000; filter sama seperti list.
 - JSON: `Content-Disposition: attachment; filename="barang-export-<ts>.json"`, body `{ data, meta }`. CSV: `text/csv`, header `id,kodeBarang,status,tanggal,variantId,kodeVariant,product,style,color,size,batchId,nomorBatch`, escape koma/quote.
 
+### 8.8 Production Order (Master Produksi)
+
+Router `src/routes/production-orders.ts` (tanpa auth), controller `src/controller/production-order/production-order.ts`, model `src/model/production-order/production-order.ts`. Tanpa cache Redis, tanpa broadcast WS (verified: tidak ada import `broadcast`/`redis` di kedua file).
+
+**GET /api/production-orders** — list header + `_count.items`, `orderBy createdAt desc`. Tanpa pagination/filter. 200 array.
+
+**GET /api/production-orders/:id[?summary=1]** — detail + `items[]` (include `variant { product, style, color, size }`, order `priority asc, variantId asc`). `?summary=1` tambah `ringkasan[]` grup per `"Style Color"`: `{ item, total, priority, persentase }`, `persentase = total/order.totalQty*100` 2 desimal (0 bila `totalQty` 0), `priority` dari item pertama grup. ID harus integer >0 → `400 { message: "ID harus angka bulat positif" }`; hilang → 404.
+
+**POST /api/production-orders**
+```json
+{ "nomor": "PO-202610-001", "periode": "2026-10", "label": "…", "status": "AKTIF",
+  "items": [{ "variantId": 1, "qty": 600, "priority": 5 }] }
+```
+- `nomor`/`periode` string non-kosong wajib → 400; `status` salah satu `DRAFT/AKTIF/SELESAI/BATAL` → 400; `items` bila ada harus array, tiap item `variantId` integer >0, `qty` integer >=0, `priority` integer >=0 bila ada → 400.
+- `nomor`/`periode` di-trim, `label` kosong → `null`, `status` default `AKTIF`, `totalQty = sum(qty)`.
+- 201 + detail (include items). `P2002` nomor duplikat → `409 { message: "Nomor production order sudah ada" }`. Catatan: `variantId` FK invalid saat create nested → 500 (tidak dipetakan ke 404, beda dengan `POST /:id/items`).
+
+**PUT /api/production-orders/:id** — update parsial header (`nomor/periode/label/status`) saja; **tidak menyentuh items/`totalQty`**. Validasi sama. `P2002` → 409, `P2025` → 404.
+
+**DELETE /api/production-orders/:id** — hapus order, items ikut cascade (`onDelete: Cascade`, `schema.prisma:220`). `P2025` → 404, else 200 `{ message: "Production order berhasil dihapus" }`.
+
+**POST /api/production-orders/:id/items** — `{ variantId*, qty >=0, priority? default 0 }`, validasi sama → 400. Sukses 201 + `syncTotal` (hitung ulang `totalQty` dari seluruh item). `P2002` → `409 "Variant sudah ada di order ini"`; `P2003`/`P2025` → `404 "Production order atau variant tidak ditemukan"`.
+
+**PUT /api/production-orders/:id/items/:itemId** — parsial `{ qty?, priority? }`, min satu field → 400; angka integer >=0 → 400. Sukses 200 + `syncTotal`. `P2025` → 404. Dipakai cell-edit frontend.
+
+**DELETE /api/production-orders/:id/items/:itemId** — hapus by `itemId` + `syncTotal`. Tidak verifikasi item milik order (`delete where: { id: itemId }`, `production-order.ts:115`). `P2025` → 404, else 200 `{ message: "Item berhasil dihapus" }`.
+
+**GET /api/production-orders/:id/capacities** — list `ProductionCapacity` milik order, order `urutan asc, id asc`. ID invalid → 400. Order hilang → 200 array kosong (tanpa 404).
+
+**PUT /api/production-orders/:id/capacities** — body **array** (boleh `[]` untuk kosongkan), tiap item `{ stage*, kapasitasWeekday?, kapasitasSabtu?, mulai?, selesai?, hariKerja?, totalKapasitas?, catatan?, urutan? }`: `stage` non-kosong, angka integer >=0, tanggal valid, `catatan` string bila ada → 400. Replace-all dalam satu transaction (`deleteMany` + `createMany`), response 200 list baru. Order hilang → 404. `hariKerja`/`totalKapasitas` disimpan mentah sesuai input (input manual dari sheet, bukan kalkulasi).
+
+**GET /api/production-orders/:id/schedule[?prep=YYYY-MM-DD,..&qc=..]** — jadwal otomatis, fungsi murni `buildSchedule` (`src/model/production-order/schedule.ts`, tanpa tabel baru). Aturan: Senin–Jumat Jam 7, Sabtu Jam 3.5 (`kapasitasSabtu`), Minggu `LIBUR` target 0; target total tiap tahap = demand master (decal solid = sum item style Solid, decal motif = sum style Motif, sisanya = total order — seed menghitungnya, bukan hardcode); tanggal akhir bebas sampai kumulatif = target (guard 730 hari + stall 30 hari); target harian = cap mentah dicap sisa demand; target hanya di baris pertama tiap tanggal (baris lanjutan 0, ikut sheet); alokasi `Jumlah` ikut tahap TOP COAT (kolom Perakitan = TopCoat, tidak diakru di hari fixed agar budget tak hangus); item urut priority, size urut `Size.urutan`; hari di `prep`/`qc` tanpa alokasi. Default `prep` = tgl 1–3 bulan `periode`, `qc` = 3 hari kerja terakhir bulan itu. Response `{ order {id,nomor,periode,totalQty}, rows[] {tanggal,hari,size,jam,persiapan,decalSolid,decalMotif,topCoat,perakitan,qc,item,jumlah}, meta {dialokasikan,sisa,hariProduksi,prepDays,qcDays} }`. ID invalid → 400, order hilang → 404.
+
+Seed `prisma/seed-production-order.ts` (sumber `prisma/data/master-produksi-oktober-2026.ts`: `PO-202610-001`, periode `2026-10`, status `AKTIF`, produk `Windbreaker`, 5000 pcs, 24 baris = 6 style+color × 4 size):
+- Upsert header by `nomor`, item by `(orderId, variantId)`; variant dibuat bila belum ada (`PREFIX + nomor milik produk`). Master product/style/color/size hilang → throw, seed gagal.
+- Rerun menimpa header/qty/priority sumber, tapi tidak hapus item tambahan di DB; `totalQty` = sum sumber seed. Bukan satu transaksi global — gagal di tengah bisa parsial. Tidak buat Barang/ProductionBatch, tidak broadcast WS, tidak invalidate cache.
+
 ---
 
 ## 9. WebSocket Realtime
@@ -356,6 +416,8 @@ descending by tanggal.
 | `barang.created` / `barang.updated` | `Barang` | POST / PUT `/api/barang` |
 | `barang.deleted` | `{ id }` | DELETE barang |
 
+Write production-order tidak emit event WS (verified: controller tanpa `broadcast`).
+
 ---
 
 ## 10. Domain Model & Aturan Bisnis
@@ -369,8 +431,11 @@ descending by tanggal.
 - **Barang** `id, kodeBarang @unique, variantId, batchId?, tanggal?, status REGISTER default`; `Restrict` ke variant & batch.
 - **RiwayatBarang** `id, barangId, status, tanggal default now(), keterangan?`; `Restrict`.
 - **BarangCounter** `@@unique([batchId,variantId,tanggal])` — reset per kombinasi.
+- **ProductionOrder** `id, nomor @unique, periode, label?, totalQty default 0, status DRAFT|AKTIF(default)|SELESAI|BATAL`, `@@index([periode],[status])`; **ProductionOrderItem** `id, orderId, variantId, qty default 0, priority default 0`, `@@unique([orderId,variantId])` (`schema.prisma:195-226`).
+- **ProductionCapacity** `id, orderId, stage, kapasitasWeekday/Sabtu default 0, mulai?/selesai?, hariKerja/totalKapasitas default 0, catatan?, urutan default 0`, `@@unique([orderId,stage])`, cascade dari Order. Seed Oktober: mulai/selesai/hariKerja/catatan ikut sheet; `totalKapasitas` dihitung dari master (decal solid 2399 = sum Solid, decal motif 2601 = sum Motif, sisanya 5000 = total order). Jadwal live: kumulatif pas demand, 5000/0, 1 Okt–12 Nov.
 - **Barcode:** `BC{batch 3 digit}-{kodeVariant}-{DDMMYY}-{4 digit}`, cth `BC001-W001-250826-0001`.
-- Cascade: hanya Product→Variant. Hapus variant yang dipakai Barang → 409 P2003.
+- Cascade: Product→Variant dan ProductionOrder→Item; Variant→OrderItem `Restrict`. Hapus variant yang dipakai Barang → 409 P2003.
+- `totalQty`: di-set saat create dari sum items; dihitung ulang (`syncTotal`) hanya saat add/delete item; `PUT` header dan seed-rerun tidak merekonsiliasi item di luar sumbernya (lihat 8.8).
 
 ---
 
@@ -411,7 +476,7 @@ export interface Paged<T> { data: T[]; meta: { page: number; limit: number; tota
 - Pola wajib: route → controller (validasi+status) → model (`src/lib/prisma.ts` shared instance). Jangan query DB di route.
 - ESM: import lokal pakai `.js`. Strict TS, hindari `any`.
 - Schema berubah → migration baru + generate; jangan edit `generated/` atau migration lama.
-- Perilaku endpoint berubah → update/tambah test di `tests/` (`auth`, `variantproduk`, `barang` — mock model+WS).
+- Perilaku endpoint berubah → update/tambah test di `tests/` (`auth`, `variantproduk`, `barang`, `production-order` — mock model+WS).
 - Jangan commit/reset/clean tanpa instruksi. Jangan reset DB destruktif.
 
 ---
@@ -458,6 +523,14 @@ curl "$BASE/api/barang/stats?variantId=1"
 curl "$BASE/api/barang/search?q=BC001&limit=10"
 curl "$BASE/api/barang/export?format=csv&status=FINISHGOOD" -o export.csv
 
+# production order
+curl $BASE/api/production-orders
+curl "$BASE/api/production-orders/1?summary=1"
+curl -X POST $BASE/api/production-orders -H "Content-Type: application/json" \
+  -d '{"nomor":"PO-202610-002","periode":"2026-10","items":[{"variantId":1,"qty":100}]}'
+curl -X POST $BASE/api/production-orders/1/items -H "Content-Type: application/json" \
+  -d '{"variantId":2,"qty":50,"priority":1}'
+
 # websocket: wscat -c ws://localhost:8000
 # -> {"message":"WebSocket terhubung"}
 
@@ -468,12 +541,12 @@ curl -X POST $BASE/api/auth/logout -H "Authorization: Bearer <token>"
 ---
 
 ## 14. File Referensi
-- Routes: `src/routes/auth.ts`, `admin.ts`, `products.ts`, `variant-produk.ts`, `barang.ts`, `styles.ts`, `colors.ts`, `sizes.ts`, `src/app.ts`
-- Controller: `src/controller/auth/auth.ts`, `product/product.ts`, `variantproduk/variantproduk.ts`, `style|color|size/*.ts`, `src/controller/barang/*`
-- Model: `src/model/product/product.ts`, `variantproduk/variantproduk.ts`, `src/model/barang/barang.ts|barang.generate.ts|barang.status.ts|barang.stats.ts|barang.crud.ts`, `style|color|size/*.ts`, `user/user.ts`
+- Routes: `src/routes/auth.ts`, `admin.ts`, `products.ts`, `variant-produk.ts`, `barang.ts`, `production-orders.ts` (+ `/:id/capacities`, `/:id/schedule`), `styles.ts`, `colors.ts`, `sizes.ts`, `src/app.ts`
+- Controller: `src/controller/auth/auth.ts`, `product/product.ts`, `variantproduk/variantproduk.ts`, `production-order/production-order.ts`, `style|color|size/*.ts`, `src/controller/barang/*`
+- Model: `src/model/product/product.ts`, `variantproduk/variantproduk.ts`, `production-order/production-order.ts`, `src/model/barang/barang.ts|barang.generate.ts|barang.status.ts|barang.stats.ts|barang.crud.ts`, `style|color|size/*.ts`, `user/user.ts`
 - Lib: `src/lib/prisma.ts`, `jwt.ts`, `tokenBlacklist.ts`, `redis.ts`, `barangCache.ts`
 - WS: `src/websocket/socket.ts` — runtime `api/index.ts`
-- Schema/env/runtime: `prisma/schema.prisma`, `prisma/seed.ts`, `.env.example`, `package.json`, `docker-compose.yml`, `vercel.json`
-- Test acuan: `tests/auth.test.ts`, `tests/variantproduk.test.ts`, `tests/barang.test.ts`
+- Schema/env/runtime: `prisma/schema.prisma`, `prisma/seed.ts`, `prisma/seed-production-order.ts`, `prisma/data/master-produksi-oktober-2026.ts`, `.env.example`, `package.json`, `docker-compose.yml`, `vercel.json`
+- Test acuan: `tests/auth.test.ts`, `tests/variantproduk.test.ts`, `tests/barang.test.ts`, `tests/production-order.test.ts`
 
-> Changelog doc ini: port default dikoreksi `3000`→`8000`; tabel quick-contract + auth matrix ditambah untuk konsumen luar; bentuk aktual `status-summary {total,perStatus}`, `stats {total,perStatus,perVariant,perBatch}`, `riwayat {data,summary:{kodeBarang,currentStatus,total}}` dikoreksi dari source; `nomorBatch` Int (string hanya display) ditegaskan; 11 WS event (termasuk `barang.created/updated/deleted`) diverifikasi dari `socket.ts`; penegasan tidak ada MQTT/RFID/IoT; perbedaan same-status scan/bulk vs bulk-status didokumentasikan; `GET /api/barang/hari-ini` ditambahkan.
+> Changelog doc ini: port default dikoreksi `3000`→`8000`; tabel quick-contract + auth matrix ditambah untuk konsumen luar; bentuk aktual `status-summary {total,perStatus}`, `stats {total,perStatus,perVariant,perBatch}`, `riwayat {data,summary:{kodeBarang,currentStatus,total}}` dikoreksi dari source; `nomorBatch` Int (string hanya display) ditegaskan; 11 WS event (termasuk `barang.created/updated/deleted`) diverifikasi dari `socket.ts`; penegasan tidak ada MQTT/RFID/IoT; perbedaan same-status scan/bulk vs bulk-status didokumentasikan; `GET /api/barang/hari-ini` ditambahkan; transisi `OUT→RETUR` / `BAD→FINISHGOOD` dikoreksi dari source (bukan terminal); section 8.8 + quick-contract + model + cURL + file referensi untuk `production-orders` ditambahkan.

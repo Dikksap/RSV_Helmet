@@ -142,9 +142,26 @@ export interface VariantProdukParams {
   sizeId?: number;
 }
 
+// Bentuk aktual GET /api/variant-produk: flat row dari ViewVariantProduk,
+// BUKAN ProductVariant nested.
+export interface VariantProdukRow {
+  id: number;
+  kodeVariant: string;
+  productId: number;
+  namaProduk: string;
+  styleId: number;
+  namaStyle: string;
+  colorId: number;
+  namaColor: string;
+  sizeId: number;
+  namaSize: string;
+  urutanSize: number;
+  tanggal: string;
+}
+
 export async function getVariantProduk(
   params: VariantProdukParams = {},
-): Promise<ProductVariant[]> {
+): Promise<VariantProdukRow[]> {
   const searchParams = new URLSearchParams();
   if (params.productId) searchParams.set("productId", String(params.productId));
   if (params.styleId) searchParams.set("styleId", String(params.styleId));
@@ -152,13 +169,13 @@ export async function getVariantProduk(
   if (params.sizeId) searchParams.set("sizeId", String(params.sizeId));
   const query = searchParams.toString();
 
-  return request<ProductVariant[]>(
+  return request<VariantProdukRow[]>(
     `/variant-produk${query ? `?${query}` : ""}`,
   );
 }
 
-export async function getVariantProdukById(id: number): Promise<ProductVariant> {
-  return request<ProductVariant>(`/variant-produk/${id}`);
+export async function getVariantProdukById(id: number): Promise<VariantProdukRow> {
+  return request<VariantProdukRow>(`/variant-produk/${id}`);
 }
 
 export async function createVariantProduk(

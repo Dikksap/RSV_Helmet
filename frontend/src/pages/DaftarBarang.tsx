@@ -29,7 +29,6 @@ function DaftarBarang() {
   const [barang, setBarang] = useState<Barang[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -175,12 +174,6 @@ function DaftarBarang() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedBarang, showCreate, editingBarang, deletingBarang]);
 
-  useEffect(() => {
-    if (!successMsg) return;
-    const t = window.setTimeout(() => setSuccessMsg(null), 3000);
-    return () => window.clearTimeout(t);
-  }, [successMsg]);
-
   const variantOptions = useMemo(
     () =>
       products
@@ -230,7 +223,6 @@ function DaftarBarang() {
       for (const id of ids) {
         await deleteBarang(id);
       }
-      setSuccessMsg(`${ids.length} barang berhasil dihapus`);
       setSelectedIds(new Set());
       const nextPage = barang.length === ids.length && currentPage > 1 ? currentPage - 1 : currentPage;
       await fetchBarang(nextPage);
@@ -329,7 +321,6 @@ function DaftarBarang() {
 
       const created = await createBarang(payload);
       setShowCreate(false);
-      setSuccessMsg(`Barang ${created.kodeBarang} berhasil dibuat`);
       window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.created", message: `Barang ${created.kodeBarang} berhasil dibuat` } }));
       await fetchBarang(1);
     } catch (err) {
@@ -418,7 +409,6 @@ function DaftarBarang() {
 
       const updated = await updateBarang(editingBarang.id, payload);
       setEditingBarang(null);
-      setSuccessMsg(`Barang ${updated.kodeBarang} berhasil diperbarui`);
       window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `Barang ${updated.kodeBarang} berhasil diperbarui` } }));
       await fetchBarang(currentPage);
     } catch (err) {
@@ -435,7 +425,6 @@ function DaftarBarang() {
     try {
       await deleteBarang(deletingBarang.id);
       setDeletingBarang(null);
-      setSuccessMsg(`Barang ${deletingBarang.kodeBarang} berhasil dihapus`);
       window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.deleted", message: `Barang ${deletingBarang.kodeBarang} berhasil dihapus` } }));
       // if last item on page, go prev page
       const nextPage = barang.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
@@ -501,13 +490,6 @@ function DaftarBarang() {
         onTanggalAkhirChange={setTanggalAkhir}
         onResetFilters={handleResetFilters}
       />
-
-      {successMsg && (
-        <div role="status" className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-[15px] text-emerald-700">
-          <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
-          <span>{successMsg}</span>
-        </div>
-      )}
 
       {isLoading && (
         <div className="space-y-3" aria-label="Memuat data barang">

@@ -15,8 +15,8 @@ export const VALID_TRANSITIONS: Record<StatusBarang, StatusBarang[]> = {
   REGISTER: ["FINISHGOOD", "OUT", "RETUR", "BAD"],
   FINISHGOOD: ["OUT", "RETUR", "BAD"],
   RETUR: ["FINISHGOOD", "OUT", "BAD"],
-  OUT: [],
-  BAD: [],
+  OUT: ["RETUR"],
+  BAD: ["FINISHGOOD"],
 };
 
 function validateTransition(

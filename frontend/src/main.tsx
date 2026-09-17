@@ -16,6 +16,7 @@ import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
 import LandingPage from "./pages/LandingPage.tsx";
 import LiveView from "./pages/LiveView.tsx";
 import MasterData from "./pages/MasterData.tsx";
+import PlanProduction from "./pages/PlanProduction.tsx";
 import PrintManager from "./pages/PrintManager.tsx";
 import ScanQr from "./pages/ScanQr.tsx";
 import StatistikBarang from "./pages/StatistikBarang.tsx";
@@ -45,6 +46,7 @@ const routes = (
       <Route path="/admin/barang/statistik" element={<StatistikBarang />} />
       <Route path="/admin/variant-produk" element={<VariantProduk />} />
       <Route path="/admin/master-data" element={<MasterData />} />
+      <Route path="/admin/plan-production" element={<PlanProduction />} />
     </Route>
   </Routes>
 );

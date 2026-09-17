@@ -1,0 +1,191 @@
+const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+
+export type StatusProductionOrder = "DRAFT" | "AKTIF" | "SELESAI" | "BATAL";
+
+export interface ProductionOrderListItem {
+  id: number;
+  nomor: string;
+  periode: string;
+  label: string | null;
+  totalQty: number;
+  status: StatusProductionOrder;
+  createdAt: string;
+  updatedAt: string;
+  _count: { items: number };
+}
+
+export interface OrderItemVariant {
+  id: number;
+  kodeVariant: string;
+  product: { id: number; nama: string; prefix: string };
+  style: { id: number; nama: string };
+  color: { id: number; nama: string };
+  size: { id: number; nama: string; urutan: number };
+}
+
+export interface ProductionOrderItem {
+  id: number;
+  orderId: number;
+  variantId: number;
+  qty: number;
+  priority: number;
+  variant: OrderItemVariant;
+}
+
+export interface ProductionOrderRingkasan {
+  item: string;
+  total: number;
+  priority: number;
+  persentase: number;
+}
+
+export interface ProductionOrderDetail extends Omit<ProductionOrderListItem, "_count"> {
+  items: ProductionOrderItem[];
+}
+
+export interface ProductionOrderSummary extends ProductionOrderDetail {
+  ringkasan: ProductionOrderRingkasan[];
+}
+
+async function request<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiUrl}${path}`);
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const body = await response.json();
+      if (typeof body?.message === "string") message = body.message;
+    } catch {
+      /* ignore parse errors */
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function getProductionOrders(): Promise<ProductionOrderListItem[]> {
+  return request<ProductionOrderListItem[]>("/production-orders");
+}
+
+async function mutate<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${apiUrl}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const data = await response.json();
+      if (typeof data?.message === "string") message = data.message;
+    } catch {
+      /* ignore parse errors */
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function updateOrder(
+  id: number,
+  body: { nomor?: string; periode?: string; label?: string | null; status?: StatusProductionOrder },
+): Promise<ProductionOrderDetail> {
+  return mutate<ProductionOrderDetail>(`/production-orders/${id}`, "PUT", body);
+}
+
+export async function addOrderItem(
+  orderId: number,
+  body: { variantId: number; qty: number; priority?: number },
+): Promise<ProductionOrderItem> {
+  return mutate<ProductionOrderItem>(`/production-orders/${orderId}/items`, "POST", body);
+}
+
+export async function updateOrderItem(
+  orderId: number,
+  itemId: number,
+  body: { qty?: number; priority?: number },
+): Promise<ProductionOrderItem> {
+  return mutate<ProductionOrderItem>(`/production-orders/${orderId}/items/${itemId}`, "PUT", body);
+}
+
+export async function deleteOrderItem(orderId: number, itemId: number): Promise<void> {
+  await mutate<unknown>(`/production-orders/${orderId}/items/${itemId}`, "DELETE");
+}
+
+export async function getProductionOrderSummary(
+  id: number,
+): Promise<ProductionOrderSummary> {
+  return request<ProductionOrderSummary>(`/production-orders/${id}?summary=1`);
+}
+
+export interface ProductionCapacity {
+  id: number;
+  orderId: number;
+  stage: string;
+  kapasitasWeekday: number;
+  kapasitasSabtu: number;
+  mulai: string | null;
+  selesai: string | null;
+  hariKerja: number;
+  totalKapasitas: number;
+  catatan: string | null;
+  urutan: number;
+}
+
+export async function getProductionCapacities(
+  orderId: number,
+): Promise<ProductionCapacity[]> {
+  return request<ProductionCapacity[]>(`/production-orders/${orderId}/capacities`);
+}
+
+export interface ScheduleRow {
+  tanggal: string;
+  hari: string;
+  size: string;
+  jam: number;
+  persiapan: number;
+  decalSolid: number;
+  decalMotif: number;
+  topCoat: number;
+  perakitan: number;
+  qc: number;
+  item: string;
+  jumlah: number;
+}
+
+export interface ProductionSchedule {
+  order: { id: number; nomor: string; periode: string; totalQty: number };
+  rows: ScheduleRow[];
+  meta: {
+    dialokasikan: number;
+    sisa: number;
+    hariProduksi: number;
+    prepDays: string[];
+    qcDays: string[];
+  };
+}
+
+export async function getProductionSchedule(orderId: number): Promise<ProductionSchedule> {
+  return request<ProductionSchedule>(`/production-orders/${orderId}/schedule`);
+}
+
+export async function replaceProductionCapacities(
+  orderId: number,
+  items: Omit<ProductionCapacity, "id" | "orderId">[],
+): Promise<ProductionCapacity[]> {
+  const response = await fetch(`${apiUrl}/production-orders/${orderId}/capacities`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(items),
+  });
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const body = await response.json();
+      if (typeof body?.message === "string") message = body.message;
+    } catch {
+      /* ignore parse errors */
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<ProductionCapacity[]>;
+}

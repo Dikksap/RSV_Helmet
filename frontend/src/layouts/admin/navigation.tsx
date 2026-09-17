@@ -2,6 +2,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBoxesStacked,
   faChartPie,
+  faClipboardList,
   faDatabase,
   faGaugeHigh,
   faHouse,
@@ -44,6 +45,12 @@ export const BARANG_PRODUKSI = {
       to: "/admin/master-data",
       label: "Master Data",
       icon: faDatabase,
+      end: false,
+    },
+    {
+      to: "/admin/plan-production",
+      label: "Plan Production",
+      icon: faClipboardList,
       end: false,
     },
   ],
