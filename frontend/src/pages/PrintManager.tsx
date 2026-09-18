@@ -288,6 +288,7 @@ function PrintManager() {
           kodeBatch="BATCH-001"
           tanggal="01/01/2026"
           qrValue="TEST-PRINT-OPERATOR"
+          barcodeValue="RSVAAB001MD"
         />
       </div>
     </main>

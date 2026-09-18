@@ -19,6 +19,7 @@ import {
 } from "../lib/print";
 import { Hangtag } from "../components/Hangtag/Hangtag";
 import { PrintDocument } from "../components/CetakLabel/PrintDocument";
+import { getManufactureBarcode } from "../lib/manufactureBarcode";
 
 type PrintSize = LabelSize;
 
@@ -239,6 +240,13 @@ function CetakLabel() {
     : null;
 
   const qrValue = generatedCode ?? previewCode ?? "-";
+  const barcodeValue = selectedVariant
+    ? (getManufactureBarcode(
+        selectedVariant.style.nama,
+        selectedVariant.color.nama,
+        selectedVariant.size.nama,
+      ) ?? undefined)
+    : undefined;
   const variantDescription = [selectedProduct?.nama, selectedStyleName, selectedColorName, selectedSizeName]
     .filter(Boolean)
     .join(" > ");
@@ -527,6 +535,7 @@ return (
                       kodeBatch={generateInfo?.batch.kodeBatch}
                       tanggal={generateInfo ? formatDate(generateInfo.tanggal) : undefined}
                       qrValue={qrValue}
+                      barcodeValue={barcodeValue}
                     />
                   </div>
                 </div>
@@ -593,6 +602,7 @@ return (
       printSize={printSize}
       customMm={customMm}
       formatDate={formatDate}
+      barcodeValue={barcodeValue}
     />
   </div>
 );

@@ -386,7 +386,6 @@ async function parseApiError(
     message?: string;
   } | null;
   if (response.status === 404) return new Error("Variant tidak ditemukan");
-  if (response.status >= 500) return new Error("Gagal generate barang");
   return new Error(payload?.message || fallback);
 }
 

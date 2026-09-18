@@ -58,7 +58,7 @@
   max-width: 88mm;
   height: 12pt;
   margin: auto;
-  margin-top: 3mm;
+  margin-top: 1.5mm;
 }
 
 .hangtag-title {
@@ -139,8 +139,8 @@
   align-items: center;
   justify-content: center;
   gap: 1.5mm;
-  height: 8mm;
-  min-height: 8mm;
+  height: 7mm;
+  min-height: 7mm;
   padding: 0 1mm 0 2.5mm;
   border: 0;
   border-radius: 4mm;
@@ -176,23 +176,18 @@
 
 
 .hangtag-openface {
-  margin: 0 0 0;
-  padding-top: 5mm;
-  text-align: center;
+  margin: 0;
+  text-align: left;
   font-family: Arial, Helvetica, sans-serif;
   font-size: 3mm;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.15mm;
   text-transform: uppercase;
-  position: absolute;
-  left: 0mm;
-  right: 10mm;
-  top: 10mm;
 }
 
 .hangtag-middle {
-  margin-top: 2mm;
+  margin-top: 1mm;
   flex: 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -209,10 +204,11 @@
 
 .hangtag-art {
   display: block;
-  width: 30mm;
-  height: auto;
-  max-width: 100%;
-  max-height: 32mm;
+  position: relative;
+  z-index: 2;
+  width: 22mm;
+  height: 15mm;
+  object-fit: contain;
   margin: 0;
   justify-self: center;
   align-self: center;
@@ -294,9 +290,10 @@
 
 .hangtag-qr {
   display: block;
-  width: 25mm;
-  height: 25mm;
-  padding: 0.8mm;
+  flex-shrink: 0;
+  width: 15mm;
+  height: 15mm;
+  padding: 0.6mm;
   background: var(--ht-paper);
   border: 0.4mm solid var(--ht-ink);
 }
@@ -318,9 +315,37 @@
   overflow-wrap: anywhere;
 }
 
+.hangtag-barcode {
+  align-self: center;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5mm;
+}
+
+.hangtag-barcode-svg {
+  display: block;
+  width: 45mm;
+  height: 10mm;
+}
+
+.hangtag-barcode-text {
+  margin: 0;
+  font-family: var(--ht-font-mono);
+  font-size: 2mm;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.4mm;
+  text-indent: 0.4mm;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .hangtag-footer {
   margin-top: auto;
-  padding-top: 1.5mm;
+  padding-top: 1mm;
   /* border-top: 0.35mm solid var(--ht-hairline); */
   display: flex;
   flex-direction: row;

@@ -3,6 +3,7 @@ import { toJpeg } from "html-to-image";
 import type { Barang } from "../../api/barang";
 import type { Product } from "../../api/products";
 import { Hangtag } from "../Hangtag/Hangtag";
+import { getManufactureBarcode } from "../../lib/manufactureBarcode";
 import {
   buildHangtagPrintHtml,
   isInElectron,
@@ -204,6 +205,13 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
                   : undefined
               }
               qrValue={barang.kodeBarang}
+              barcodeValue={
+                getManufactureBarcode(
+                  barang.variant.style.nama,
+                  barang.variant.color.nama,
+                  barang.variant.size.nama,
+                ) ?? undefined
+              }
             />
           </div>
         </div>

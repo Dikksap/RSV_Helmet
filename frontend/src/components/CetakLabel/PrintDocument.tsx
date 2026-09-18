@@ -18,6 +18,7 @@ type PrintDocumentProps = {
   printSize: LabelSize;
   customMm: CustomLabelMm;
   formatDate: (date: string) => string;
+  barcodeValue?: string;
 };
 
 export function PrintDocument({
@@ -31,6 +32,7 @@ export function PrintDocument({
   printSize,
   customMm,
   formatDate,
+  barcodeValue,
 }: PrintDocumentProps) {
   const labelMm = resolveLabelMm(printSize, customMm);
   return (
@@ -59,6 +61,7 @@ export function PrintDocument({
               generateInfo ? formatDate(generateInfo.tanggal) : undefined
             }
             qrValue={generatedCode}
+            barcodeValue={barcodeValue}
           />
         </HangtagFit>
       )}
