@@ -143,9 +143,13 @@ export async function createBarang(input: CreateBarangInput) {
       if (existing) {
         targetBatch = existing;
       } else {
+        const maxRow = await tx.productionBatch.findFirst({
+          orderBy: { nomorBatch: "desc" },
+          select: { nomorBatch: true },
+        });
         targetBatch = await tx.productionBatch.create({
           data: {
-            nomorBatch: 1,
+            nomorBatch: (maxRow?.nomorBatch ?? 0) + 1,
             totalProduksi: 0,
             kapasitas: BATCH_KAPASITAS,
             status: "AKTIF",

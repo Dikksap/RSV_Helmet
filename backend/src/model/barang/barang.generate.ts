@@ -61,9 +61,16 @@ async function getOrCreateActiveBatch(tx: TxClient): Promise<{
 
   if (batch) return batch;
 
+  // Tidak ada batch AKTIF (mis. semua SELESAI): lanjutkan nomor tertinggi,
+  // bukan hardcode 1 yang menabrak unique constraint.
+  const maxRow = await tx.productionBatch.findFirst({
+    orderBy: { nomorBatch: "desc" },
+    select: { nomorBatch: true },
+  });
+
   return tx.productionBatch.create({
     data: {
-      nomorBatch: 1,
+      nomorBatch: (maxRow?.nomorBatch ?? 0) + 1,
       totalProduksi: 0,
       kapasitas: BATCH_KAPASITAS,
       status: "AKTIF",
@@ -328,9 +335,16 @@ export async function getGenerateInfo(variantId: number): Promise<{
   });
 
   if (!batch) {
+    // Tanpa batch AKTIF, generate akan membuka nomor tertinggi + 1 —
+    // tampilkan itu agar preview sama dengan kode yang nanti dibuat.
+    const maxRow = await prisma.productionBatch.findFirst({
+      orderBy: { nomorBatch: "desc" },
+      select: { nomorBatch: true },
+    });
+    const nextNomor = (maxRow?.nomorBatch ?? 0) + 1;
     batch = {
       id: 0,
-      nomorBatch: 1,
+      nomorBatch: nextNomor,
       totalProduksi: 0,
       kapasitas: BATCH_KAPASITAS,
     };
