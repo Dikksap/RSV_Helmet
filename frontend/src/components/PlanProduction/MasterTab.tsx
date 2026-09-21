@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClipboardList, faTrash, faPlus, faCheck, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faClipboardList, faTrash, faPlus, faCheck, faXmark, faUpload } from "@fortawesome/free-solid-svg-icons";
 import type { ProductionOrderSummary, StatusProductionOrder } from "../../api/productionOrders";
 import {
   updateOrder,
@@ -10,6 +10,7 @@ import {
 } from "../../api/productionOrders";
 import { getVariantProduk, type VariantProdukRow } from "../../api/products";
 import EditableCell from "./EditableCell";
+import OrderImportModal from "./OrderImportModal";
 import { STATUS_STYLE, fmt, fmtPct, groupItems, recomputeRingkasan } from "./utils";
 
 interface Props {
@@ -36,6 +37,10 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
   const [addPriority, setAddPriority] = useState("0");
   const [addError, setAddError] = useState<string | null>(null);
   const [addBusy, setAddBusy] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     getVariantProduk().then(setVariants).catch(() => undefined);
@@ -91,8 +96,7 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
     }
   };
 
-  const remove = async (itemId: number) => {
-    try {
+  const remove = async (itemId: number) => {    try {
       const gone = local.items.find((i) => i.id === itemId);
       await deleteOrderItem(orderId, itemId);
       setConfirmId(null);
@@ -105,6 +109,43 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Gagal menghapus");
     }
+  };
+
+  const toggleCheck = (itemId: number) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  const toggleCheckAll = () => {
+    setChecked((prev) => (prev.size === local.items.length && local.items.length > 0 ? new Set() : new Set(local.items.map((i) => i.id))));
+  };
+
+  const removeMany = async () => {
+    if (checked.size === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    const fails: number[] = [];
+    for (const itemId of checked) {
+      try {
+        await deleteOrderItem(orderId, itemId);
+      } catch {
+        fails.push(itemId);
+      }
+    }
+    const goneIds = new Set([...checked].filter((id) => !fails.includes(id)));
+    setChecked(new Set());
+    setConfirmBulk(false);
+    setBulkBusy(false);
+    setLocal((prev) => {
+      const items = prev.items.filter((i) => !goneIds.has(i.id));
+      const totalQty = items.reduce((n, i) => n + i.qty, 0);
+      return { ...prev, items, totalQty, ringkasan: refreshRingkasan(items, totalQty) };
+    });
+    if (fails.length > 0) window.alert(`${fails.length} baris gagal dihapus`);
+    onChanged();
   };
 
   const submitAdd = async () => {
@@ -176,17 +217,61 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
         <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)] xl:col-span-3">
           <div className="flex items-center justify-between border-b border-slate-100 p-4">
             <h3 className="font-semibold text-[#1E3A5F]">Data Master Produksi</h3>
-            <button
-              type="button"
-              onClick={() => {
-                setAddOpen((v) => !v);
-                setAddError(null);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#00A8E8] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#0088C0]"
-            >
-              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Tambah
-            </button>
+            <span className="inline-flex gap-2">
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1E3A5F] ring-1 ring-slate-200/70 transition hover:bg-[#F5F7FA]"
+              >
+                <FontAwesomeIcon icon={faUpload} className="h-3.5 w-3.5" /> Import
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddOpen((v) => !v);
+                  setAddError(null);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#00A8E8] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#0088C0]"
+              >
+                <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" /> Tambah
+              </button>
+            </span>
           </div>
+          {checked.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#00A8E8]/30 bg-sky-50 px-4 py-2.5">
+              <span className="text-sm font-semibold text-[#1E3A5F]">{checked.size} dipilih</span>
+              <span className="hidden text-slate-300 sm:inline">|</span>
+              <div className="flex gap-2">
+                {confirmBulk ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={bulkBusy}
+                      onClick={() => void removeMany()}
+                      className="inline-flex h-8 items-center rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-50"
+                    >
+                      {bulkBusy ? "Menghapus..." : `Ya, hapus (${checked.size})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmBulk(false)}
+                      className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-[#6B7280] hover:text-[#1F2937]"
+                    >
+                      Batal
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBulk(true)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:brightness-95"
+                  >
+                    <FontAwesomeIcon icon={faTrash} className="h-3 w-3" /> Hapus ({checked.size})
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {loading ? (
             <p className="animate-pulse p-6 text-[15px] text-[#6B7280]">Memuat rincian...</p>
           ) : (
@@ -194,6 +279,16 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
               <table className="w-full min-w-[640px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-[#6B7280]">
+                    <th className="w-10 px-2 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Pilih semua"
+                        checked={local.items.length > 0 && checked.size === local.items.length}
+                        ref={(el) => { if (el) el.indeterminate = checked.size > 0 && checked.size < local.items.length; }}
+                        onChange={toggleCheckAll}
+                        className="h-4 w-4 accent-[#00A8E8]"
+                      />
+                    </th>
                     <th className="w-10 px-4 py-3 font-semibold">No</th>
                     <th className="px-4 py-3 font-semibold">Item</th>
                     <th className="px-4 py-3 font-semibold">Size</th>
@@ -209,7 +304,16 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
                       const no =
                         groups.slice(0, gi).reduce((n, x) => n + x.rows.length, 0) + ri + 1;
                       return (
-                        <tr key={it.id} className="border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA]">
+                        <tr key={it.id} className={`border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA] ${checked.has(it.id) ? "bg-[#00A8E8]/5" : ""}`}>
+                          <td className="px-2 py-2.5">
+                            <input
+                              type="checkbox"
+                              aria-label={`Pilih ${g.item} ${it.variant.size.nama}`}
+                              checked={checked.has(it.id)}
+                              onChange={() => toggleCheck(it.id)}
+                              className="h-4 w-4 accent-[#00A8E8]"
+                            />
+                          </td>
                           <td className="px-4 py-2.5 tabular-nums text-[#6B7280]">{no}</td>
                           {ri === 0 && (
                             <td rowSpan={g.rows.length} className="border-l border-slate-100 px-4 py-2.5 align-top font-medium text-[#1F2937]">
@@ -265,6 +369,7 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
                   )}
                   {addOpen && (
                     <tr className="bg-[#00A8E8]/5">
+                      <td className="px-2 py-2.5" />
                       <td className="px-4 py-2.5 text-[#6B7280]">+</td>
                       <td colSpan={2} className="px-4 py-2.5">
                         <select
@@ -368,6 +473,14 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
           )}
         </section>
       </div>
+      <OrderImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        orderId={orderId}
+        variants={variants}
+        usedVariantIds={usedIds}
+        onImported={onChanged}
+      />
     </main>
   );
 }

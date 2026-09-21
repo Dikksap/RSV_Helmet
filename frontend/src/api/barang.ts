@@ -50,7 +50,7 @@ export function dedupeBarangById<T extends { id: number }>(items: T[]): T[] {
 
 export interface BarangListParams {
   page?: number;
-  limit?: number;
+  limit?: number | "all";
   variantId?: number;
   batchId?: number;
   status?: StatusBarang;
@@ -63,11 +63,9 @@ export async function getBarangPage(
   params: BarangListParams = {},
 ): Promise<BarangResponse> {
   const page = Math.max(1, params.page ?? 1);
-  const limit = Math.min(100, Math.max(1, params.limit ?? 20));
-  const query = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-  });
+  const query = new URLSearchParams({ page: String(page) });
+  if (params.limit === "all") query.set("limit", "all");
+  else query.set("limit", String(Math.min(100, Math.max(1, params.limit ?? 20))));
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
   if (params.status) query.set("status", params.status);
@@ -402,11 +400,13 @@ export async function getGenerateInfo(
 
 export async function generateBarang(
   variantId: number,
+  jumlah = 1,
 ): Promise<GenerateResponse> {
+  const n = Math.max(1, Math.min(500, Math.floor(jumlah) || 1));
   const response = await fetch(`${apiUrl}/barang/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ variantId, jumlah: 1 }),
+    body: JSON.stringify({ variantId, jumlah: n }),
   });
   if (!response.ok)
     throw await parseApiError(response, "Gagal generate barang");

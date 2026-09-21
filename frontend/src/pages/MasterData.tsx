@@ -33,8 +33,11 @@ export default function MasterData() {
   const [colors, setColors] = useState<MasterColor[]>([]);
   const [sizes, setSizes] = useState<MasterSize[]>([]);
   const [modal, setModal] = useState<{ open: boolean; editing: Row | null; nama: string; urutan: string; busy: boolean }>({ open: false, editing: null, nama: "", urutan: "", busy: false });
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const flash = (msg: string) => { setNotice(msg); window.setTimeout(() => setNotice(null), 3000); };
+  const switchTab = (t: Tab) => { setTab(t); setSearch(""); setSelected(new Set()); };
   const loadAll = async () => {
     setLoading(true);
     try { const [s, c, z] = await Promise.all([getStyles(), getColors(), getSizes()]); setStyles(s); setColors(c); setSizes(z); setError(null); }
@@ -76,6 +79,36 @@ export default function MasterData() {
     catch (e) { window.alert(e instanceof Error ? e.message : "Gagal hapus. Mungkin masih dipakai variant (409)."); }
   };
 
+  const toggle = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelected(prev => (prev.size === filtered.length ? new Set() : new Set(filtered.map(r => r.id))));
+  };
+
+  const removeMany = async () => {
+    if (selected.size === 0 || bulkBusy) return;
+    const rows = filtered.filter(r => selected.has(r.id));
+    if (!window.confirm(`Hapus ${rows.length} ${API[tab].label.toLowerCase()} yang dipilih?`)) return;
+    setBulkBusy(true);
+    let ok = 0;
+    const fails: string[] = [];
+    for (const r of rows) {
+      try { await API[tab].del(r.id); ok++; }
+      catch { fails.push(r.nama); }
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    await loadAll();
+    flash(fails.length === 0 ? `${ok} ${API[tab].label.toLowerCase()} dihapus.` : `${ok} dihapus, ${fails.length} gagal (masih dipakai): ${fails.join(", ")}`);
+  };
+
   const counts: Record<Tab, number> = { style: styles.length, color: colors.length, size: sizes.length };
   const tabLabel = tab === "style" ? "style" : tab === "color" ? "warna" : "ukuran";
 
@@ -96,7 +129,7 @@ export default function MasterData() {
         {TABS.map(t => {
           const active = tab === t.key;
           return (
-            <button key={t.key} type="button" onClick={() => { setTab(t.key); setSearch(""); }} aria-pressed={active}
+            <button key={t.key} type="button" onClick={() => switchTab(t.key)} aria-pressed={active}
               className={`rounded-xl bg-white p-6 text-left shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.10)] ${active ? "ring-2 ring-[#00A8E8]" : "ring-1 ring-slate-200/70"}`}>
               <span className={`inline-grid h-10 w-10 place-items-center rounded-lg ${active ? "bg-[#00A8E8] text-white" : "bg-[#F5F7FA] text-[#1E3A5F]"}`}><FontAwesomeIcon icon={t.icon} className="h-5 w-5" /></span>
               <span className="mt-3 block text-2xl font-bold tabular-nums text-[#1F2937]">{counts[t.key]}</span>
@@ -121,7 +154,7 @@ export default function MasterData() {
                 {TABS.map(t => {
                   const active = tab === t.key;
                   return (
-                    <button key={t.key} type="button" aria-selected={active} onClick={() => { setTab(t.key); setSearch(""); }}
+                    <button key={t.key} type="button" aria-selected={active} onClick={() => switchTab(t.key)}
                       className={`inline-flex items-center gap-2 rounded-lg px-6 py-3 text-[15px] font-medium ${active ? "bg-[#1E3A5F] text-white" : "bg-[#F5F7FA] text-[#6B7280] hover:bg-slate-200/70"}`}>
                       <FontAwesomeIcon icon={t.icon} className="h-4 w-4" />{t.label}
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${active ? "bg-white/20 text-white" : "bg-white text-[#6B7280] ring-1 ring-slate-200"}`}>{counts[t.key]}</span>
@@ -138,6 +171,29 @@ export default function MasterData() {
               </div>
             </div>
             <p className="mt-3 text-[13px] text-[#6B7280]">{filtered.length}/{raw.length} tampil</p>
+            {selected.size > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#00A8E8]/30 bg-sky-50 px-3 py-2.5">
+                <span className="text-sm font-semibold text-[#1E3A5F]">{selected.size} dipilih</span>
+                <span className="hidden text-slate-300 sm:inline">|</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => void removeMany()}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50"
+                  >
+                    <FontAwesomeIcon icon={faTrash} className="h-3 w-3" /> {bulkBusy ? "Menghapus..." : `Hapus (${selected.size})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(new Set())}
+                    className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-[#6B7280] hover:text-[#1F2937]"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
@@ -145,6 +201,16 @@ export default function MasterData() {
               <table className="w-full min-w-[520px] text-left">
                 <thead className="bg-[#F5F7FA] text-[#6B7280]">
                   <tr>
+                    <th className="w-12 px-6 py-4">
+                      <input
+                        type="checkbox"
+                        aria-label="Pilih semua"
+                        checked={filtered.length > 0 && selected.size === filtered.length}
+                        ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
+                        onChange={toggleAll}
+                        className="h-4 w-4 accent-[#00A8E8]"
+                      />
+                    </th>
                     <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">ID</th>
                     <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Nama {tab === "style" ? "Style" : tab === "color" ? "Warna" : "Ukuran"}</th>
                     {tab === "size" && <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Urutan</th>}
@@ -153,9 +219,18 @@ export default function MasterData() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={tab === "size" ? 4 : 3} className="px-6 py-8 text-center italic text-[#6B7280]">Belum ada {tabLabel}.</td></tr>
+                    <tr><td colSpan={tab === "size" ? 5 : 4} className="px-6 py-8 text-center italic text-[#6B7280]">Belum ada {tabLabel}.</td></tr>
                   ) : filtered.map(r => (
-                    <tr key={r.id} className="text-[15px] hover:bg-[#F5F7FA]">
+                    <tr key={r.id} className={`text-[15px] hover:bg-[#F5F7FA] ${selected.has(r.id) ? "bg-[#00A8E8]/5" : ""}`}>
+                      <td className="px-6 py-4">
+                        <input
+                          type="checkbox"
+                          aria-label={`Pilih ${r.nama}`}
+                          checked={selected.has(r.id)}
+                          onChange={() => toggle(r.id)}
+                          className="h-4 w-4 accent-[#00A8E8]"
+                        />
+                      </td>
                       <td className="px-6 py-4 font-mono text-sm text-[#6B7280]">{r.id}</td>
                       <td className="px-6 py-4 font-medium text-[#1F2937]">{r.nama}</td>
                       {tab === "size" && <td className="px-6 py-4 tabular-nums text-[#6B7280]">{(r as MasterSize).urutan}</td>}

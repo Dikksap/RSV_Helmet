@@ -14,6 +14,12 @@ vi.mock("../src/model/production-order/production-order.js", () => ({
   deleteOrderItem: vi.fn(),
   getCapacities: vi.fn(),
   replaceCapacities: vi.fn(),
+  getRealisasi: vi.fn(),
+  getFinishgoodCounts: vi.fn(),
+  saveRealisasi: vi.fn(),
+  getRealisasiStages: vi.fn(),
+  saveRealisasiStages: vi.fn(),
+  REALISASI_STAGES: ["persiapan", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"],
 }));
 
 import productionOrdersRouter from "../src/routes/production-orders.js";
@@ -29,6 +35,11 @@ import {
   deleteOrderItem,
   getCapacities,
   replaceCapacities,
+  getRealisasi,
+  getFinishgoodCounts,
+  saveRealisasi,
+  getRealisasiStages,
+  saveRealisasiStages,
 } from "../src/model/production-order/production-order.js";
 
 const mocked = {
@@ -43,6 +54,11 @@ const mocked = {
   deleteOrderItem: vi.mocked(deleteOrderItem),
   getCapacities: vi.mocked(getCapacities),
   replaceCapacities: vi.mocked(replaceCapacities),
+  getRealisasi: vi.mocked(getRealisasi),
+  getFinishgoodCounts: vi.mocked(getFinishgoodCounts),
+  saveRealisasi: vi.mocked(saveRealisasi),
+  getRealisasiStages: vi.mocked(getRealisasiStages),
+  saveRealisasiStages: vi.mocked(saveRealisasiStages),
 };
 
 const app = express();
@@ -231,5 +247,127 @@ describe("PUT /api/production-orders/:id/capacities", () => {
       .put("/api/production-orders/1/capacities")
       .send([{ stage: "QC" }]);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/production-orders/:id/realisasi", () => {
+  it("400 id invalid", async () => {
+    const res = await request(app).get("/api/production-orders/abc/realisasi");
+    expect(res.status).toBe(400);
+  });
+  it("400 tanggal invalid", async () => {
+    const res = await request(app).get("/api/production-orders/1/realisasi?awal=xx&akhir=2026-10-05");
+    expect(res.status).toBe(400);
+  });
+  it("404 order hilang", async () => {
+    mocked.getOrderById.mockResolvedValue(null);
+    const res = await request(app).get("/api/production-orders/99/realisasi?awal=2026-10-05&akhir=2026-10-05");
+    expect(res.status).toBe(404);
+  });
+  it("200 realisasi + finishgood", async () => {
+    mocked.getOrderById.mockResolvedValue({ id: 1 } as any);
+    mocked.getRealisasi.mockResolvedValue([{ tanggal: "2026-10-05", variantId: 1, qty: 100 }]);
+    mocked.getFinishgoodCounts.mockResolvedValue([{ tanggal: "2026-10-05", variantId: 1, qty: 90 }]);
+    const res = await request(app).get("/api/production-orders/1/realisasi?awal=2026-10-05&akhir=2026-10-05");
+    expect(res.status).toBe(200);
+    expect(res.body.realisasi).toHaveLength(1);
+    expect(res.body.finishgood).toHaveLength(1);
+  });
+});
+
+describe("PUT /api/production-orders/:id/realisasi", () => {
+  const body = { tanggal: "2026-10-05", items: [{ variantId: 1, qty: 100 }] };
+  it("400 tanggal invalid", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "xx", items: [] });
+    expect(res.status).toBe(400);
+  });
+  it("400 items kosong", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [] });
+    expect(res.status).toBe(400);
+    expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+  });
+  it("400 qty negatif", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [{ variantId: 1, qty: -1 }] });
+    expect(res.status).toBe(400);
+  });
+  it("200 sukses", async () => {
+    mocked.saveRealisasi.mockResolvedValue([{ tanggal: "2026-10-05", variantId: 1, qty: 100 }]);
+    const res = await request(app).put("/api/production-orders/1/realisasi").send(body);
+    expect(res.status).toBe(200);
+    expect(mocked.saveRealisasi).toHaveBeenCalled();
+  });
+  it("404 order hilang", async () => {
+    mocked.saveRealisasi.mockRejectedValue({ code: "P2025" });
+    const res = await request(app).put("/api/production-orders/1/realisasi").send(body);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PUT /api/production-orders/:id/realisasi tahapan", () => {
+  const body = { tanggal: "2026-10-05", items: [{ variantId: 1, qty: 10 }], tahapan: [{ stage: "topCoat", qty: 200 }] };
+  it("400 stage invalid", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ ...body, tahapan: [{ stage: "x", qty: 1 }] });
+    expect(res.status).toBe(400);
+    expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+  });
+  it("400 tahapan bukan array", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ ...body, tahapan: {} });
+    expect(res.status).toBe(400);
+  });
+  it("200 sukses + simpan tahapan", async () => {
+    mocked.saveRealisasi.mockResolvedValue([{ tanggal: "2026-10-05", variantId: 1, qty: 10 }]);
+    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "topCoat", qty: 200 }]);
+    const res = await request(app).put("/api/production-orders/1/realisasi").send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.tahapan).toHaveLength(1);
+    expect(mocked.saveRealisasiStages).toHaveBeenCalled();
+  });
+});
+
+describe("PUT /api/production-orders/:id/realisasi kunci tanggal", () => {
+  it("400 tanggal lampau terkunci", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2020-01-01", items: [{ variantId: 1, qty: 1 }] });
+    expect(res.status).toBe(400);
+    expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /api/production-orders/:id/realisasi reject", () => {
+  it("400 reject negatif", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [{ variantId: 1, qty: 1, reject: -1 }] });
+    expect(res.status).toBe(400);
+    expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+  });
+  it("200 dengan reject diteruskan", async () => {
+    mocked.saveRealisasi.mockResolvedValue([{ tanggal: "2026-10-05", variantId: 1, qty: 10, reject: 2 }]);
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [{ variantId: 1, qty: 10, reject: 2 }] });
+    expect(res.status).toBe(200);
+    expect(mocked.saveRealisasi).toHaveBeenCalledWith(1, expect.any(Date), [{ variantId: 1, qty: 10, reject: 2 }]);
+  });
+  it("200 GET tanpa tanggal = semua", async () => {
+    mocked.getOrderById.mockResolvedValue({ id: 1 } as any);
+    mocked.getRealisasi.mockResolvedValue([]);
+    mocked.getFinishgoodCounts.mockResolvedValue([]);
+    mocked.getRealisasiStages.mockResolvedValue([]);
+    const res = await request(app).get("/api/production-orders/1/realisasi");
+    expect(res.status).toBe(200);
+    expect(mocked.getRealisasi).toHaveBeenCalledWith(1, null, null);
+  });
+});
+
+describe("PUT /api/production-orders/:id mulaiProduksi", () => {
+  it("400 mulaiProduksi invalid", async () => {
+    const res = await request(app).put("/api/production-orders/1").send({ mulaiProduksi: "xx" });
+    expect(res.status).toBe(400);
+    expect(mocked.updateOrder).not.toHaveBeenCalled();
+  });
+  it("200 sukses + null reset", async () => {
+    mocked.updateOrder.mockResolvedValue({ id: 1, mulaiProduksi: "2026-10-06" } as any);
+    const res = await request(app).put("/api/production-orders/1").send({ mulaiProduksi: "2026-10-06" });
+    expect(res.status).toBe(200);
+    expect(mocked.updateOrder).toHaveBeenCalledWith(1, expect.objectContaining({ mulaiProduksi: "2026-10-06" }));
+    mocked.updateOrder.mockResolvedValue({ id: 1, mulaiProduksi: null } as any);
+    const res2 = await request(app).put("/api/production-orders/1").send({ mulaiProduksi: null });
+    expect(res2.status).toBe(200);
   });
 });

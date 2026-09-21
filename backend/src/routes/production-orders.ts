@@ -11,6 +11,8 @@ import {
   getCapacitiesHandler,
   replaceCapacitiesHandler,
   getScheduleHandler,
+  getRealisasiHandler,
+  saveRealisasiHandler,
 } from "../controller/production-order/production-order.js";
 
 const router = Router();
@@ -26,5 +28,7 @@ router.delete("/:id/items/:itemId", deleteOrderItemHandler);
 router.get("/:id/capacities", getCapacitiesHandler);
 router.put("/:id/capacities", replaceCapacitiesHandler);
 router.get("/:id/schedule", getScheduleHandler);
+router.get("/:id/realisasi", getRealisasiHandler);
+router.put("/:id/realisasi", saveRealisasiHandler);
 
 export default router;

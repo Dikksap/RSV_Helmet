@@ -9,7 +9,7 @@ import { resolveLabelMm } from "../../lib/print";
 
 type PrintDocumentProps = {
   contentRef: RefObject<HTMLDivElement | null>;
-  generatedCode: string | null; 
+  generatedCodes: string[];
   selectedVariant: ProductVariant | undefined;
   selectedProduct: Product | undefined;
   sizes: ProductSize[];
@@ -23,7 +23,7 @@ type PrintDocumentProps = {
 
 export function PrintDocument({
   contentRef,
-  generatedCode,
+  generatedCodes,
   selectedVariant,
   selectedProduct,
   sizes,
@@ -41,29 +41,35 @@ export function PrintDocument({
       className="print-document pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0 print:static print:flex print:h-auto print:w-full print:items-center print:justify-center print:overflow-visible print:opacity-100"
       aria-hidden="true"
     >
-      {generatedCode && selectedVariant && (
-        <HangtagFit
-          widthMm={labelMm.width}
-          heightMm={labelMm.height}
-        >
-          <Hangtag
-            productName={selectedProduct?.nama ?? "-"}
-            styleName={selectedVariant.style.nama}
-            colorName={selectedVariant.color.nama}
-            sizeName={selectedVariant.size.nama}
-            sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
-            selectedSizeId={Number(sizeId)}
-            kodeVariant={
-              selectedVariant.kodeVariant ?? `Variant #${selectedVariant.id}`
-            }
-            kodeBatch={generateInfo?.batch.kodeBatch}
-            tanggal={
-              generateInfo ? formatDate(generateInfo.tanggal) : undefined
-            }
-            qrValue={generatedCode}
-            barcodeValue={barcodeValue}
-          />
-        </HangtagFit>
+      {generatedCodes.length > 0 && selectedVariant && (
+        <>
+          {generatedCodes.map((code) => (
+            <div key={code} className="print-sheet">
+              <HangtagFit
+                widthMm={labelMm.width}
+                heightMm={labelMm.height}
+              >
+                <Hangtag
+                  productName={selectedProduct?.nama ?? "-"}
+                  styleName={selectedVariant.style.nama}
+                  colorName={selectedVariant.color.nama}
+                  sizeName={selectedVariant.size.nama}
+                  sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
+                  selectedSizeId={Number(sizeId)}
+                  kodeVariant={
+                    selectedVariant.kodeVariant ?? `Variant #${selectedVariant.id}`
+                  }
+                  kodeBatch={generateInfo?.batch.kodeBatch}
+                  tanggal={
+                    generateInfo ? formatDate(generateInfo.tanggal) : undefined
+                  }
+                  qrValue={code}
+                  barcodeValue={barcodeValue}
+                />
+              </HangtagFit>
+            </div>
+          ))}
+        </>
       )}
     </div>
   );

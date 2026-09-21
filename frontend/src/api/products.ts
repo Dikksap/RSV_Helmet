@@ -32,11 +32,11 @@ export interface Product {
   updatedAt: string;
   variants: ProductVariant[];
 }
-
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+
   const response = await fetch(`${apiUrl}${path}`, {
     headers: {
       "Content-Type": "application/json",
@@ -60,36 +60,96 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-export async function getProducts(): Promise<Product[]> {
-  return request<Product[]>("/products");
+// Cache list/detail produk di localStorage (TTL 5 menit) biar hemat hit API.
+// Setiap mutasi produk/variant langsung bust agar tak basi.
+const LS_PREFIX = "rsv:cache:";
+const PRODUCTS_TTL = 5 * 60 * 1000;
+
+function lsGet<T>(key: string, ttl: number): T | null {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw) as { ts: number; data: T };
+    if (Date.now() - ts > ttl) {
+      localStorage.removeItem(LS_PREFIX + key);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
 }
 
-export async function getProduct(id: number): Promise<Product> {
-  return request<Product>(`/products/${id}`);
+function lsSet(key: string, data: unknown): void {
+  try {
+    localStorage.setItem(LS_PREFIX + key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    /* storage penuh/nonaktif: abaikan */
+  }
+}
+
+function lsBust(prefix: string): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(LS_PREFIX + prefix)) localStorage.removeItem(k);
+    }
+  } catch {
+    /* abaikan */
+  }
+}
+
+export function bustProductCache(): void {
+  lsBust("products");
+}
+
+export async function getProducts(force = false): Promise<Product[]> {
+  if (!force) {
+    const hit = lsGet<Product[]>("products", PRODUCTS_TTL);
+    if (hit) return hit;
+  }
+  const data = await request<Product[]>("/products");
+  lsSet("products", data);
+  return data;
+}
+
+export async function getProduct(id: number, force = false): Promise<Product> {
+  if (!force) {
+    const hit = lsGet<Product>(`products/${id}`, PRODUCTS_TTL);
+    if (hit) return hit;
+  }
+  const data = await request<Product>(`/products/${id}`);
+  lsSet(`products/${id}`, data);
+  return data;
 }
 
 export async function createProduct(body: {
   nama: string;
   prefix: string;
 }): Promise<Product> {
-  return request<Product>("/products", {
+  const data = await request<Product>("/products", {
     method: "POST",
     body: JSON.stringify(body),
   });
+  lsBust("products");
+  return data;
 }
 
 export async function updateProduct(
   id: number,
   body: { nama: string },
 ): Promise<Product> {
-  return request<Product>(`/products/${id}`, {
+  const data = await request<Product>(`/products/${id}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
+  lsBust("products");
+  return data;
 }
 
 export async function deleteProduct(id: number): Promise<void> {
   await request<unknown>(`/products/${id}`, { method: "DELETE" });
+  lsBust("products");
 }
 
 export interface CreateVariantBody {
@@ -109,10 +169,12 @@ export async function createProductVariant(
   productId: number,
   body: CreateVariantBody,
 ): Promise<ProductVariant> {
-  return request<ProductVariant>(`/products/${productId}/variants`, {
+  const data = await request<ProductVariant>(`/products/${productId}/variants`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+  lsBust("products");
+  return data;
 }
 
 export async function updateProductVariantDate(
@@ -120,10 +182,12 @@ export async function updateProductVariantDate(
   variantId: number,
   body: { tanggal?: string },
 ): Promise<ProductVariant> {
-  return request<ProductVariant>(
+  const data = await request<ProductVariant>(
     `/products/${productId}/variants/${variantId}`,
     { method: "PATCH", body: JSON.stringify(body) },
   );
+  lsBust("products");
+  return data;
 }
 
 export async function deleteProductVariant(
@@ -133,6 +197,7 @@ export async function deleteProductVariant(
   await request<unknown>(`/products/${productId}/variants/${variantId}`, {
     method: "DELETE",
   });
+  lsBust("products");
 }
 
 export interface VariantProdukParams {
@@ -181,22 +246,27 @@ export async function getVariantProdukById(id: number): Promise<VariantProdukRow
 export async function createVariantProduk(
   body: CreateVariantBody & { productId: number },
 ): Promise<ProductVariant> {
-  return request<ProductVariant>("/variant-produk", {
+  const data = await request<ProductVariant>("/variant-produk", {
     method: "POST",
     body: JSON.stringify(body),
   });
+  lsBust("products");
+  return data;
 }
 
 export async function updateVariantProduk(
   id: number,
   body: Partial<CreateVariantBody>,
 ): Promise<ProductVariant> {
-  return request<ProductVariant>(`/variant-produk/${id}`, {
+  const data = await request<ProductVariant>(`/variant-produk/${id}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
+  lsBust("products");
+  return data;
 }
 
 export async function deleteVariantProduk(id: number): Promise<void> {
   await request<unknown>(`/variant-produk/${id}`, { method: "DELETE" });
+  lsBust("products");
 }

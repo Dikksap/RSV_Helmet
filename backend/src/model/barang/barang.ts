@@ -152,18 +152,17 @@ async function listBarangUncached(filter: BarangListFilter) {
       where,
       include: barangInclude,
       orderBy: { createdAt: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
+      ...(limit > 0 ? { skip: (page - 1) * limit, take: limit } : {}),
     }),
   ]);
 
   return {
     data,
     meta: {
-      page,
-      limit,
+      page: limit > 0 ? page : 1,
+      limit: limit > 0 ? limit : total,
       total,
-      totalPages: Math.max(1, Math.ceil(total / limit)),
+      totalPages: limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1,
     },
   };
 }

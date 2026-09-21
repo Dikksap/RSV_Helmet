@@ -80,6 +80,7 @@ model ProductVariant {
   barang         Barang[]
   barangCounters BarangCounter[]
   orderItems     ProductionOrderItem[]
+  realizations   ProductionRealization[]
 
   @@unique([productId, styleId, colorId, sizeId])
   @@index([productId])
@@ -199,11 +200,14 @@ model ProductionOrder {
   label     String?
   totalQty  Int                   @default(0)
   status    StatusProductionOrder @default(AKTIF)
+  mulaiProduksi DateTime?
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 
   items      ProductionOrderItem[]
   capacities ProductionCapacity[]
+  realizations ProductionRealization[]
+  realizationStages ProductionRealizationStage[]
 
   @@index([periode])
   @@index([status])
@@ -224,6 +228,47 @@ model ProductionOrderItem {
   @@unique([orderId, variantId])
   @@index([orderId])
   @@index([variantId])
+}
+
+// =============================================
+// Realisasi produksi harian per item variant.
+// 1 baris = aktual pcs 1 variant pada 1 tanggal dalam 1 order.
+// Rencana harian dibaca dari jadwal (GET schedule), bukan disimpan.
+// =============================================
+
+model ProductionRealization {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  variantId Int
+  tanggal   DateTime
+  qty       Int      @default(0)
+  reject    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order   ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, variantId, tanggal])
+  @@index([orderId, tanggal])
+}
+
+// Realisasi harian per tahap lini (agregat per hari, bukan per variant).
+// stage: persiapan | decalSolid | decalMotif | topCoat | perakitan | qc.
+
+model ProductionRealizationStage {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  tanggal   DateTime
+  stage     String
+  qty       Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, tanggal, stage])
+  @@index([orderId, tanggal])
 }
 
 // =============================================

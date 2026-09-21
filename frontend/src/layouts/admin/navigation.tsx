@@ -1,11 +1,14 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faBook,
   faBoxesStacked,
   faChartPie,
+  faClipboardCheck,
   faClipboardList,
   faDatabase,
   faGaugeHigh,
   faHouse,
+  faPlug,
   faTags,
 } from "@fortawesome/free-solid-svg-icons";
 import { NavLink } from "react-router-dom";
@@ -53,12 +56,32 @@ export const BARANG_PRODUKSI = {
       icon: faClipboardList,
       end: false,
     },
+    {
+      to: "/admin/realisasi-produksi",
+      label: "Realisasi Produksi",
+      icon: faClipboardCheck,
+      end: false,
+    },
   ],
 };
 
 export const NAV_MANAGEMENT = [
   { to: "/", label: "Halaman Utama", icon: faHouse, end: false },
 ];
+
+// Placeholder integrasi — belum diimplementasikan.
+export const NAV_INTEGRASI = {
+  label: "Integrasi",
+  icon: faPlug,
+  children: [
+    {
+      to: "/admin/integrasi-jurnal",
+      label: "Data Mekari Jurnal",
+      icon: faBook,
+      end: false,
+    },
+  ],
+};
 
 export const ADMIN_MOBILE_NAV = [
   { to: "/", label: "Home", icon: faHouse, end: true, center: false },

@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPen, faCheck, faXmark } from "@fortawesome/free-solid-svg-icons";
 import {
   replaceProductionCapacities,
+  updateOrder,
   type ProductionCapacity,
   type ProductionOrderSummary,
 } from "../../api/productionOrders";
@@ -43,6 +44,8 @@ export default function CapacityTab({ orderId, detail, capacities, loading, onCh
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mulai, setMulai] = useState("");
+  const [mulaiBusy, setMulaiBusy] = useState(false);
 
   const demands = useMemo(() => {
     const items = (detail?.items ?? []).map((i) => ({ qty: i.qty, style: i.variant.style.nama }));
@@ -135,7 +138,8 @@ export default function CapacityTab({ orderId, detail, capacities, loading, onCh
           mulai: d.mulai,
           selesai: d.selesai,
           hariKerja: Number(d.hariKerja),
-          totalKapasitas: d.totalKapasitas,
+          // Total selalu ikut demand master (decal ikut style-nya), bukan angka basi.
+          totalKapasitas: demands.get(d.id) ?? d.totalKapasitas,
           catatan: d.catatan.trim() || null,
           urutan: d.urutan,
         })),
@@ -147,6 +151,29 @@ export default function CapacityTab({ orderId, detail, capacities, loading, onCh
       setError(e instanceof Error ? e.message : "Gagal menyimpan");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const currentMulai = detail?.mulaiProduksi ? detail.mulaiProduksi.slice(0, 10) : "";
+
+  useEffect(() => {
+    setMulai(currentMulai);
+  }, [currentMulai, orderId]);
+
+  const saveMulai = async () => {
+    if (mulai && Number.isNaN(new Date(mulai).getTime())) {
+      setError("Tanggal mulai produksi tidak valid");
+      return;
+    }
+    setMulaiBusy(true);
+    try {
+      await updateOrder(orderId, { mulaiProduksi: mulai || null });
+      setError(null);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal menyimpan tanggal mulai");
+    } finally {
+      setMulaiBusy(false);
     }
   };
 
@@ -200,6 +227,31 @@ export default function CapacityTab({ orderId, detail, capacities, loading, onCh
           {error}
         </p>
       )}
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-[#F5F7FA] px-4 py-2.5 text-sm">
+        <label className="flex items-center gap-2 font-medium text-[#1F2937]">
+          Mulai produksi semua item
+          <input
+            type="date"
+            value={mulai}
+            onChange={(e) => setMulai(e.target.value)}
+            title="Kosong = ikut awal kapasitas"
+            className="rounded-lg border border-[#D1D5DB] bg-white px-2 py-1.5"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={mulaiBusy || mulai === currentMulai}
+          onClick={() => void saveMulai()}
+          className="rounded-lg bg-[#1E3A5F] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#16294a] disabled:opacity-40"
+        >
+          {mulaiBusy ? "Menyimpan..." : "Terapkan"}
+        </button>
+        <span className="text-xs text-[#6B7280]">
+          {currentMulai ? `Aktif: ${currentMulai.slice(8, 10)}/${currentMulai.slice(5, 7)}/${currentMulai.slice(0, 4)}.` : "Belum diset (ikut awal kapasitas)."}
+          {" "}Mulai efektif = yang paling akhir antara tanggal ini dan Mulai tiap tahap.
+        </span>
+      </div>
 
       {loading ? (
         <p className="animate-pulse p-6 text-[15px] text-[#6B7280]">Memuat kapasitas...</p>
@@ -286,7 +338,7 @@ export default function CapacityTab({ orderId, detail, capacities, loading, onCh
                 const need = required.get(c.id);
                 const short = need !== null && need !== undefined && c.kapasitasWeekday < need.kapW;
                 return (
-                <tr key={c.id} className={`border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA] ${short ? "bg-[#EF4444]/5" : ""}`}>
+                  <tr key={c.id} className={`border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA] ${short ? "bg-[#EF4444]/5" : ""}`}>
                   <td className="px-4 py-2.5 font-medium text-[#1F2937]">{c.stage}</td>
                   <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${short ? "text-[#EF4444]" : "text-[#1F2937]"}`}>{fmt(c.kapasitasWeekday)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-[#1F2937]">{fmt(c.kapasitasSabtu)}</td>
@@ -296,8 +348,8 @@ export default function CapacityTab({ orderId, detail, capacities, loading, onCh
                   <td className="whitespace-nowrap px-4 py-2.5 text-[#1F2937]">{fmtDate(c.mulai)}</td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-[#1F2937]">{fmtDate(c.selesai)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-[#1F2937]">{fmt(c.hariKerja)}</td>
-                  <td className="px-4 py-2.5 text-right font-bold tabular-nums text-[#1E3A5F]">
-                    {fmt(c.totalKapasitas)}
+                  <td className="px-4 py-2.5 text-right font-bold tabular-nums text-[#1E3A5F]" title="Otomatis dari master data (decal ikut style-nya)">
+                    {fmt(demands.get(c.id) ?? c.totalKapasitas)}
                   </td>
                   <td className="px-4 py-2.5 text-[#6B7280]">{c.catatan ?? "—"}</td>
                 </tr>

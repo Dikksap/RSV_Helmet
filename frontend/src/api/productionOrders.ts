@@ -9,6 +9,7 @@ export interface ProductionOrderListItem {
   label: string | null;
   totalQty: number;
   status: StatusProductionOrder;
+  mulaiProduksi: string | null;
   createdAt: string;
   updatedAt: string;
   _count: { items: number };
@@ -85,11 +86,21 @@ async function mutate<T>(path: string, method: string, body?: unknown): Promise<
   return response.json() as Promise<T>;
 }
 
+export async function createOrder(
+  body: { nomor: string; periode: string; label?: string; status?: StatusProductionOrder },
+): Promise<ProductionOrderDetail> {
+  return mutate<ProductionOrderDetail>("/production-orders", "POST", body);
+}
+
 export async function updateOrder(
   id: number,
-  body: { nomor?: string; periode?: string; label?: string | null; status?: StatusProductionOrder },
+  body: { nomor?: string; periode?: string; label?: string | null; status?: StatusProductionOrder; mulaiProduksi?: string | null },
 ): Promise<ProductionOrderDetail> {
   return mutate<ProductionOrderDetail>(`/production-orders/${id}`, "PUT", body);
+}
+
+export async function deleteOrder(id: number): Promise<void> {
+  await mutate<unknown>(`/production-orders/${id}`, "DELETE");
 }
 
 export async function addOrderItem(
@@ -150,6 +161,7 @@ export interface ScheduleRow {
   qc: number;
   item: string;
   jumlah: number;
+  variantId: number;
 }
 
 export interface ProductionSchedule {
@@ -166,6 +178,53 @@ export interface ProductionSchedule {
 
 export async function getProductionSchedule(orderId: number): Promise<ProductionSchedule> {
   return request<ProductionSchedule>(`/production-orders/${orderId}/schedule`);
+}
+
+export interface RealisasiRow {
+  tanggal: string;
+  variantId: number;
+  qty: number;
+  reject: number;
+}
+
+export interface RealisasiStageRow {
+  tanggal: string;
+  stage: string;
+  qty: number;
+}
+
+export interface RealisasiData {
+  orderId: number;
+  realisasi: RealisasiRow[];
+  finishgood: RealisasiRow[];
+  tahapan: RealisasiStageRow[];
+}
+
+export const REALISASI_STAGE_LABEL: Record<string, string> = {
+  persiapan: "Persiapan",
+  decalSolid: "Decal Solid",
+  decalMotif: "Decal Motif",
+  topCoat: "Top Coat",
+  perakitan: "Perakitan",
+  qc: "QC",
+};
+
+export async function getRealisasi(orderId: number, awal?: string, akhir?: string): Promise<RealisasiData> {
+  const q = awal && akhir ? `?awal=${awal}&akhir=${akhir}` : "";
+  return request<RealisasiData>(`/production-orders/${orderId}/realisasi${q}`);
+}
+
+export async function saveRealisasi(
+  orderId: number,
+  tanggal: string,
+  items: { variantId: number; qty: number; reject?: number }[],
+  tahapan?: { stage: string; qty: number }[],
+): Promise<{ items: RealisasiRow[]; tahapan: RealisasiStageRow[] }> {
+  return mutate<{ items: RealisasiRow[]; tahapan: RealisasiStageRow[] }>(
+    `/production-orders/${orderId}/realisasi`,
+    "PUT",
+    tahapan === undefined ? { tanggal, items } : { tanggal, items, tahapan },
+  );
 }
 
 export async function replaceProductionCapacities(

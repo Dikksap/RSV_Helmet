@@ -4,9 +4,10 @@ import type {
   StatusProductionOrder,
 } from "../../api/productionOrders";
 
-export type Tab = "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower";
+export type Tab = "orders" | "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower";
 
 export const TABS: { key: Tab; label: string }[] = [
+  { key: "orders", label: "Daftar Orders" },
   { key: "master", label: "Master Produksi" },
   { key: "jadwal", label: "Jadwal" },
   { key: "ringkasan", label: "Ringkasan" },

@@ -2,3 +2,5 @@
 .env
 /telegram_bot/dist
 /telegram_bot/.env
+/merkari-jurnal
+/__pycache__

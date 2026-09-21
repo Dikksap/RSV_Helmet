@@ -38,6 +38,7 @@ function DaftarBarang() {
   const [tanggalAkhir, setTanggalAkhir] = useState(() => new Date().toISOString().slice(0, 10));
   const [datePreset, setDatePreset] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | "all">(20);
   const [totalPages, setTotalPages] = useState(1);
   const [totalBarang, setTotalBarang] = useState(0);
   const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
@@ -45,6 +46,11 @@ function DaftarBarang() {
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [isBulkEditing, setIsBulkEditing] = useState(false);
+  const [bStatus, setBStatus] = useState("");
+  const [bTanggal, setBTanggal] = useState("");
+  const [bKeterangan, setBKeterangan] = useState("");
 
   // CRUD modal state
   const [showCreate, setShowCreate] = useState(false);
@@ -108,7 +114,7 @@ function DaftarBarang() {
             ? await searchBarang(debouncedSearch, 20)
             : await getBarangPage({
                 page,
-                limit: 20,
+                limit: pageSize,
                 variantId: variantFilter ? Number(variantFilter) : undefined,
                 status: statusFilter
                   ? (statusFilter as StatusBarang)
@@ -136,7 +142,7 @@ function DaftarBarang() {
         setIsLoading(false);
       }
     },
-    [tanggalAwal, tanggalAkhir, variantFilter, debouncedSearch, statusFilter],
+    [tanggalAwal, tanggalAkhir, variantFilter, debouncedSearch, statusFilter, pageSize],
   );
 
   useEffect(() => {
@@ -166,13 +172,14 @@ function DaftarBarang() {
         setShowCreate(false);
         setEditingBarang(null);
         setDeletingBarang(null);
+        setShowBulkEdit(false);
       }
     };
-    if (selectedBarang || showCreate || editingBarang || deletingBarang) {
+    if (selectedBarang || showCreate || editingBarang || deletingBarang || showBulkEdit) {
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedBarang, showCreate, editingBarang, deletingBarang]);
+  }, [selectedBarang, showCreate, editingBarang, deletingBarang, showBulkEdit]);
 
   const variantOptions = useMemo(
     () =>
@@ -230,6 +237,65 @@ function DaftarBarang() {
       setError(err instanceof Error ? err.message : "Gagal hapus massal");
     } finally {
       setIsBulkDeleting(false);
+    }
+  };
+
+  const openBulkEdit = () => {
+    setCrudError(null);
+    setBStatus("");
+    setBTanggal("");
+    setBKeterangan("");
+    setShowBulkEdit(true);
+  };
+
+  const handleBulkEdit = async () => {
+    if (selectedIds.size === 0) return;
+    if (!bStatus && !bTanggal) {
+      setCrudError("Pilih status dan/atau isi tanggal");
+      return;
+    }
+    if (bKeterangan.trim() && !bStatus) {
+      setCrudError("Keterangan hanya bisa diisi jika status diubah");
+      return;
+    }
+    const payload: { status?: StatusBarang; tanggal?: string; keterangan?: string } = {};
+    if (bStatus) payload.status = bStatus as StatusBarang;
+    if (bTanggal) {
+      const d = new Date(bTanggal + "T00:00:00");
+      if (Number.isNaN(d.getTime())) {
+        setCrudError("Field 'tanggal' harus tanggal valid");
+        return;
+      }
+      payload.tanggal = d.toISOString();
+    }
+    if (bKeterangan.trim()) payload.keterangan = bKeterangan.trim();
+
+    setIsBulkEditing(true);
+    setCrudError(null);
+    try {
+      const ids = [...selectedIds];
+      const failedIds: number[] = [];
+      let firstError = "";
+      for (const id of ids) {
+        try {
+          await updateBarang(id, payload);
+        } catch (err) {
+          failedIds.push(id);
+          if (!firstError) firstError = err instanceof Error ? err.message : "Gagal memperbarui";
+        }
+      }
+      const ok = ids.length - failedIds.length;
+      await fetchBarang(currentPage);
+      if (failedIds.length === 0) {
+        setSelectedIds(new Set());
+        setShowBulkEdit(false);
+        window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `${ok} barang berhasil diperbarui` } }));
+      } else {
+        setSelectedIds(new Set(failedIds));
+        setCrudError(`${ok} berhasil, ${failedIds.length} gagal. Contoh: ${firstError}`);
+      }
+    } finally {
+      setIsBulkEditing(false);
     }
   };
 
@@ -574,6 +640,13 @@ function DaftarBarang() {
                     </button>
                     <button
                       type="button"
+                      onClick={openBulkEdit}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#00A8E8] bg-white px-3 text-xs font-medium text-[#0088C0] hover:bg-sky-50"
+                    >
+                      Edit ({selectedIds.size})
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleBulkDelete}
                       disabled={isBulkDeleting}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50"
@@ -611,6 +684,24 @@ function DaftarBarang() {
                   onPageChange={fetchBarang}
                 />
               )}
+              <div className="flex items-center justify-center gap-2 text-sm text-[#6B7280]">
+                <label htmlFor="page-size">Tampil per halaman</label>
+                <select
+                  id="page-size"
+                  value={String(pageSize)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPageSize(v === "all" ? "all" : Number(v));
+                    setCurrentPage(1);
+                  }}
+                  className="rounded-lg border border-[#D1D5DB] bg-white px-2 py-2 focus:outline-2 focus:outline-[#00A8E8]"
+                >
+                  {[20, 50, 100].map((n) => (
+                    <option key={n} value={String(n)}>{n}</option>
+                  ))}
+                  <option value="all">Semua ({totalBarang.toLocaleString("id-ID")})</option>
+                </select>
+              </div>
             </>
           )}
         </section>
@@ -814,6 +905,79 @@ function DaftarBarang() {
                 className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
               >
                 {crudLoading ? "Menyimpan..." : "Update"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BULK EDIT MODAL — bottom sheet on mobile */}
+      {showBulkEdit && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+          onClick={() => setShowBulkEdit(false)}
+        >
+          <div
+            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-lg sm:rounded-xl"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setShowBulkEdit(false)}
+              aria-label="Tutup"
+              className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
+            >
+              ✕
+            </button>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Edit Massal</p>
+            <h2 className="mt-1 text-xl font-bold text-[#1E3A5F]">{selectedIds.size} barang terpilih</h2>
+            <p className="mt-1 text-sm text-[#6B7280]">Perubahan diterapkan ke semua barang terpilih, satu per satu.</p>
+
+            {crudError && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
+            )}
+
+            <div className="mt-4 grid gap-3">
+              <label className={labelCls}>
+                <span>Status</span>
+                <select className={inputCls} value={bStatus} onChange={(e) => setBStatus(e.target.value)}>
+                  <option value="">— Tidak diubah —</option>
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={labelCls}>
+                <span>Tanggal (opsional)</span>
+                <input type="date" className={inputCls} value={bTanggal} onChange={(e) => setBTanggal(e.target.value)} />
+              </label>
+
+              <label className={labelCls}>
+                <span>Keterangan (opsional, wajib ganti status)</span>
+                <textarea className={textareaCls} placeholder="Keterangan riwayat" value={bKeterangan} onChange={(e) => setBKeterangan(e.target.value)} />
+              </label>
+            </div>
+
+            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-slate-200 bg-white/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+              <button
+                type="button"
+                onClick={() => setShowBulkEdit(false)}
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkEdit}
+                disabled={isBulkEditing}
+                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
+              >
+                {isBulkEditing ? "Menyimpan..." : `Update ${selectedIds.size} barang`}
               </button>
             </div>
           </div>

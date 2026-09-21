@@ -9,6 +9,9 @@
 // - Item diurut priority asc, size diurut urutan asc.
 // - Hari fixed persiapan & QC+packing: tanpa alokasi (Jumlah 0); budget
 //   TOP COAT juga tidak diakru di hari itu agar tidak hangus.
+// - Jadwal diekor sampai akhir bulan (param akhirBulan YYYY-MM-DD):
+//   hari tanpa produksi setelah selesai = "Penyesuaian" (cadangan bila
+//   realisasi meleset / ada hutang produksi), tanggal terakhir = "QC & Packing".
 
 export interface ScheduleItem {
   variantId: number;
@@ -41,6 +44,7 @@ export interface ScheduleRow {
   qc: number;
   item: string;
   jumlah: number;
+  variantId: number;
 }
 
 export interface ScheduleMeta {
@@ -78,6 +82,8 @@ export function buildSchedule(
   capacities: ScheduleCapacity[],
   prepDays: string[],
   qcDays: string[],
+  akhirBulan: string | null = null,
+  mulaiProduksi: Date | string | null = null,
 ): { rows: ScheduleRow[]; meta: ScheduleMeta } {
   const total = items.reduce((n, i) => n + i.qty, 0);
   const styleSum = (kw: string) =>
@@ -113,6 +119,11 @@ export function buildSchedule(
   const queue = [...items]
     .sort((a, b) => a.priority - b.priority || a.variantId - b.variantId)
     .map((i) => ({ ...i, sisa: i.qty, label: `${i.style} ${i.color}` }));
+
+  // Alokasi item serentak dibuka pada tanggal mulai produksi order.
+  const mulaiGlobal = toDate(mulaiProduksi);
+  const allocationOpen = (cur: Date) =>
+    mulaiGlobal === null || stripTime(cur) >= stripTime(mulaiGlobal);
 
   const rows: ScheduleRow[] = [];
   let hariProduksi = 0;
@@ -151,6 +162,7 @@ export function buildSchedule(
       topCoat: t.topCoat,
       perakitan: t.topCoat,
       qc: t.qc,
+      variantId: 0,
     };
 
     let allocatedToday = 0;
@@ -170,6 +182,12 @@ export function buildSchedule(
           t.qc > 0 && "QC",
         ].filter((x): x is string => !!x);
         rows.push({ ...base, size: "-", item: active.length > 0 ? active.join(" + ") : "Selesai", jumlah: 0 });
+      } else if (!allocationOpen(cur)) {
+        // Alokasi belum dibuka: kapasitas hari ini jangan hanguskan demand.
+        for (const c of caps) {
+          if (c.key) c.cum -= t[c.key];
+        }
+        rows.push({ ...base, size: "-", item: "Menunggu", jumlah: 0 });
       } else {
         hariProduksi++;
         let emitted = false;
@@ -189,13 +207,15 @@ export function buildSchedule(
             g.sisa -= take;
             budget -= take;
             allocatedToday += take;
-            rows.push({ ...base, ...(head ? {} : zero), size: g.size, item: first.label, jumlah: take });
+            rows.push({ ...base, ...(head ? {} : zero), size: g.size, item: first.label, jumlah: take, variantId: g.variantId });
             head = false;
             emitted = true;
           }
         }
         if (!emitted) {
           rows.push({ ...base, size: "-", item: "Selesai", jumlah: 0 });
+        } else {
+          hariProduksi++;
         }
       }
     }
@@ -210,6 +230,45 @@ export function buildSchedule(
 
   const sisa = queue.reduce((n, i) => n + i.sisa, 0);
   const dialokasikan = total - sisa;
+
+  // Ekor sampai akhir bulan: tanpa produksi = Penyesuaian, hari terakhir QC & Packing.
+  if (akhirBulan && /^\d{4}-\d{2}-\d{2}$/.test(akhirBulan) && rows.length > 0) {
+    let akhir = akhirBulan;
+    const lastRow = rows[rows.length - 1];
+    if (lastRow.tanggal > akhir) {
+      // Produksi meluber lewat bulan: ekor sampai akhir bulan berjalannya.
+      const [y, m] = lastRow.tanggal.split("-").map(Number);
+      akhir = dayKey(new Date(y, m, 0));
+    }
+    if (lastRow.tanggal === akhir && lastRow.jumlah === 0 && lastRow.item !== "LIBUR") {
+      lastRow.item = "QC & Packing";
+    }
+    // ponytail: batas 93 hari lawan input tanggal ngawur.
+    for (let n = 0; n < 93; n++) {
+      if (dayKey(d) > akhir) break;
+      const tanggal = dayKey(d);
+      const dow = d.getDay();
+      const isSunday = dow === 0;
+      const isLast = tanggal === akhir;
+      rows.push({
+        tanggal,
+        hari: HARI[dow],
+        size: "-",
+        jam: isSunday ? 0 : dow === 6 ? 3.5 : 7,
+        persiapan: 0,
+        decalSolid: 0,
+        decalMotif: 0,
+        topCoat: 0,
+        perakitan: 0,
+        qc: 0,
+        item: isSunday ? "LIBUR" : isLast ? "QC & Packing" : "Penyesuaian",
+        jumlah: 0,
+        variantId: 0,
+      });
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
   return { rows, meta: { dialokasikan, sisa, hariProduksi } };
 }
 
@@ -217,19 +276,19 @@ function stripTime(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-// Default jangkar dari periode "YYYY-MM": prep = tgl 1-3,
-// qcPacking = 3 hari kerja terakhir (Senin-Sabtu) bulan itu.
-export function defaultAnchors(periode: string): { prepDays: string[]; qcDays: string[] } {
+// Tanggal terakhir bulan periode "YYYY-MM" (null bila tak parseable).
+export function endOfPeriode(periode: string): string | null {
   const m = /^(\d{4})-(\d{2})/.exec(periode);
-  if (!m) return { prepDays: [], qcDays: [] };
+  if (!m) return null;
   const y = Number(m[1]);
-  const mo = Number(m[2]) - 1;
-  const dim = new Date(y, mo + 1, 0).getDate();
-  const key = (d: number) => dayKey(new Date(y, mo, d));
-  const prepDays = [1, 2, 3].filter((d) => d <= dim).map(key);
-  const qcDays: string[] = [];
-  for (let d = dim; d >= 1 && qcDays.length < 3; d--) {
-    if (new Date(y, mo, d).getDay() !== 0) qcDays.unshift(key(d));
-  }
-  return { prepDays, qcDays };
+  const mo = Number(m[2]);
+  if (mo < 1 || mo > 12) return null;
+  return dayKey(new Date(y, mo, 0));
+}
+
+// Default jangkar dari periode "YYYY-MM": tanpa hari fixed.
+// Jadwal murni ikut kapasitas tahap + mulaiProduksi; hari Persiapan /
+// QC & Packing fixed hanya bila dikirim eksplisit via ?prep= / ?qc=.
+export function defaultAnchors(_periode: string): { prepDays: string[]; qcDays: string[] } {
+  return { prepDays: [], qcDays: [] };
 }

@@ -825,3 +825,17 @@ describe("POST /api/barang/bulk-status", () => {
     expect(mocked.broadcast).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("GET /api/barang limit=all", () => {
+  it("teruskan limit 0 (tanpa paginasi)", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 0, total: 0, totalPages: 1 },
+    } as any);
+    const res = await request(app).get("/api/barang?limit=all");
+    expect(res.status).toBe(200);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, limit: 0 })
+    );
+  });
+});

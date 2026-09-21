@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSchedule, defaultAnchors } from "../src/model/production-order/schedule.js";
+import { buildSchedule, defaultAnchors, endOfPeriode } from "../src/model/production-order/schedule.js";
 
 const CAPS = [
   { stage: "PERSIAPAN (BUFFING + BASECOAT)", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-20" },
@@ -85,10 +85,57 @@ describe("demand master + akhir bebas", () => {
 });
 
 describe("defaultAnchors", () => {
-  it("periode 2026-10: prep 1-3, qc 3 hari kerja terakhir", () => {
-    expect(defaultAnchors("2026-10")).toEqual({
-      prepDays: ["2026-10-01", "2026-10-02", "2026-10-03"],
-      qcDays: ["2026-10-29", "2026-10-30", "2026-10-31"],
-    });
+  it("tanpa hari fixed (ikut kapasitas + mulaiProduksi)", () => {
+    expect(defaultAnchors("2026-10")).toEqual({ prepDays: [], qcDays: [] });
+    expect(defaultAnchors("xx")).toEqual({ prepDays: [], qcDays: [] });
+  });
+});
+
+describe("ekor akhir bulan", () => {
+  // Fixture ITEMS/CAPS selesai 2026-10-07 (demand 350).
+  it("penyesuaian setelah selesai, tanggal terakhir QC & Packing", () => {
+    const { rows, meta } = buildSchedule(ITEMS, CAPS, PREP, [], "2026-10-31");
+    expect(rows[rows.length - 1]).toMatchObject({ tanggal: "2026-10-31", item: "QC & Packing", jumlah: 0 });
+    expect(rows.find((r) => r.tanggal === "2026-10-12")).toMatchObject({ item: "Penyesuaian", jumlah: 0 });
+    expect(rows.find((r) => r.tanggal === "2026-10-11")).toMatchObject({ item: "LIBUR", jumlah: 0 });
+    expect(meta).toMatchObject({ dialokasikan: 350, sisa: 0 });
+  });
+  it("tanpa akhirBulan perilaku lama (berhenti saat selesai)", () => {
+    const { rows } = buildSchedule(ITEMS, CAPS, PREP, []);
+    expect(rows[rows.length - 1].tanggal).toBe("2026-10-07");
+  });
+  it("produksi meluber: ekor sampai akhir bulan berjalannya", () => {
+    const { rows } = buildSchedule(ITEMS, CAPS, PREP, [], "2026-10-05");
+    expect(rows[rows.length - 1]).toMatchObject({ tanggal: "2026-10-31", item: "QC & Packing" });
+  });
+});
+
+describe("endOfPeriode", () => {
+  it("tanggal terakhir bulan + null bila tak valid", () => {
+    expect(endOfPeriode("2026-10")).toBe("2026-10-31");
+    expect(endOfPeriode("2026-02")).toBe("2026-02-28");
+    expect(endOfPeriode("xx")).toBeNull();
+  });
+});
+
+describe("mulaiProduksi order", () => {
+  const caps = [
+    { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 100, kapasitasSabtu: 50, mulai: "2026-10-01", selesai: "2026-10-31" },
+  ];
+  const items = [
+    { variantId: 1, qty: 100, priority: 1, style: "S", color: "A", size: "MD", sizeUrutan: 1 },
+  ];
+  it("alokasi menunggu sampai mulaiProduksi tiba", async () => {
+    const mod = await import("../src/model/production-order/schedule.js");
+    const { rows, meta } = mod.buildSchedule(items, caps, [], [], null, "2026-10-06");
+    expect(rows.find((r) => r.tanggal === "2026-10-01")).toMatchObject({ item: "Menunggu", jumlah: 0 });
+    const day6 = rows.filter((r) => r.tanggal === "2026-10-06" && r.jumlah > 0);
+    expect(day6.length).toBeGreaterThan(0);
+    expect(meta).toMatchObject({ dialokasikan: 100, sisa: 0 });
+  });
+  it("tanpa mulaiProduksi = perilaku lama", async () => {
+    const mod = await import("../src/model/production-order/schedule.js");
+    const { rows } = mod.buildSchedule(items, caps, [], []);
+    expect(rows[0]).toMatchObject({ tanggal: "2026-10-01", jumlah: 100 });
   });
 });

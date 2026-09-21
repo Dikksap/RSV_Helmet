@@ -35,7 +35,7 @@ function CetakLabel() {
   const [colorId, setColorId] = useState("");
   const [sizeId, setSizeId] = useState("");
   const [generateInfo, setGenerateInfo] = useState<GenerateInfo | null>(null);
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,14 +64,16 @@ function CetakLabel() {
       @media print {
         html, body { width: ${selectedPrintPage.split(" ")[0]} !important; height: ${selectedPrintPage.split(" ")[1]} !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; background: #ffffff !important; }
         body > *:not(.print-document) { display: none !important; }
-        .print-document { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; overflow: visible !important; visibility: visible !important; }
+        .print-document { position: static !important; width: 100% !important; height: auto !important; display: block !important; padding: 0 !important; overflow: visible !important; visibility: visible !important; }
+        .print-sheet { break-after: page !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; }
+        .print-sheet:last-child { break-after: auto !important; }
       }
     `,
     onPrintError: (errorLocation, printError) => {
       console.error(`Print error during ${errorLocation}:`, printError);
       setError(`Gagal print: ${printError.message}`);
     },
-    onAfterPrint: () => setGeneratedCode(null),
+    onAfterPrint: () => setGeneratedCodes([]),
   });
 
   useEffect(() => {
@@ -166,40 +168,39 @@ function CetakLabel() {
     setColorId("");
     setSizeId("");
     setGenerateInfo(null);
-    setGeneratedCode(null);
+    setGeneratedCodes([]);
   };
 
   const handleGenerate = async () => {
     if (!selectedVariant) return;
+    const jumlah = Math.max(1, Math.min(500, Math.floor(copies) || 1));
     setIsGenerating(true);
     setError(null);
-    setGeneratedCode(null);
+    setGeneratedCodes([]);
     try {
-      const response = await generateBarang(selectedVariant.id);
-      const code = response.batches[0]?.barang[0]?.kodeBarang;
-      if (!code) throw new Error("Gagal generate barang");
+      const response = await generateBarang(selectedVariant.id, jumlah);
+      const codes = response.batches.flatMap((b) => b.barang.map((x) => x.kodeBarang));
+      if (codes.length === 0) throw new Error("Gagal generate barang");
 
-      setGeneratedCode(code);
+      setGeneratedCodes(codes);
       setGenerateInfo(await getGenerateInfo(selectedVariant.id));
 
       if (isInElectron()) {
         await new Promise((resolve) => window.setTimeout(resolve, 150));
-        const hangtagMarkup = contentRef.current?.querySelector(".hangtag")?.outerHTML ?? "";
-        if (!hangtagMarkup) throw new Error("Label belum siap untuk dicetak");
+        const nodes = contentRef.current?.querySelectorAll(".hangtag") ?? [];
+        if (nodes.length === 0) throw new Error("Label belum siap untuk dicetak");
 
-        const result = await printHangtagSilently({
-          hangtagHtml: hangtagMarkup,
-          size: printSize,
-          customMm,
-          printerName: selectedPrinter || undefined,
-          copies: Math.max(1, copies),
-        });
-
-        if (result.status === "error") {
-          setError(`Gagal print: ${result.message}`);
-        } else {
-          setGeneratedCode(null);
+        for (const node of Array.from(nodes)) {
+          const result = await printHangtagSilently({
+            hangtagHtml: (node as HTMLElement).outerHTML,
+            size: printSize,
+            customMm,
+            printerName: selectedPrinter || undefined,
+            copies: 1,
+          });
+          if (result.status === "error") throw new Error(result.message);
         }
+        setGeneratedCodes([]);
       } else {
         window.setTimeout(() => printFn(), 100);
       }
@@ -239,7 +240,8 @@ function CetakLabel() {
     ? `${generateInfo.batch.kodeBatch}-${generateInfo.kodeVariant}-${generateInfo.tanggal.replaceAll("-", "").slice(2)}-${String(generateInfo.nextNumber).padStart(4, "0")}`
     : null;
 
-  const qrValue = generatedCode ?? previewCode ?? "-";
+  const qrValue = generatedCodes[0] ?? previewCode ?? "-";
+  const qrCount = generatedCodes.length > 1 ? ` (+${generatedCodes.length - 1} kode lain)` : "";
   const barcodeValue = selectedVariant
     ? (getManufactureBarcode(
         selectedVariant.style.nama,
@@ -368,7 +370,7 @@ return (
                         const on = String(s.id) === styleId;
                         return (
                           <button key={s.id} type="button"
-                            onClick={() => { setStyleId(String(s.id)); setColorId(""); setSizeId(""); setGenerateInfo(null); setGeneratedCode(null); }}
+                            onClick={() => { setStyleId(String(s.id)); setColorId(""); setSizeId(""); setGenerateInfo(null); setGeneratedCodes([]); }}
                             className={`${btnBase} flex items-center justify-center gap-1.5 px-4 py-2 text-center text-xs ${on ? "bg-slate-900 font-bold text-white shadow-sm" : "border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
                             {on && whiteCheckIcon}{s.nama}
                           </button>
@@ -397,7 +399,7 @@ return (
                           const on = String(c.id) === colorId;
                           return (
                             <button key={c.id} type="button"
-                              onClick={() => { setColorId(String(c.id)); setSizeId(""); setGenerateInfo(null); setGeneratedCode(null); }}
+                              onClick={() => { setColorId(String(c.id)); setSizeId(""); setGenerateInfo(null); setGeneratedCodes([]); }}
                               className={`${btnBase} flex items-center justify-between p-3 text-left text-xs ${on ? "border-2 border-slate-900 bg-slate-900 font-bold text-white shadow-sm" : "border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
                               <span className="truncate">{c.nama}</span>{on && checkIcon}
                             </button>
@@ -411,7 +413,7 @@ return (
                         {sizes.map((s) => {
                           const on = String(s.id) === sizeId;
                           return (
-                            <button key={s.id} type="button" onClick={() => { setSizeId(String(s.id)); setGeneratedCode(null); }}
+                            <button key={s.id} type="button" onClick={() => { setSizeId(String(s.id)); setGeneratedCodes([]); }}
                               className={`${btnBase} py-3.5 text-center text-lg ${on ? "border-2 border-slate-900 bg-slate-900 font-black text-white shadow-sm" : "border border-slate-300 bg-white font-bold text-slate-700 hover:bg-slate-100"}`}>
                               {s.nama}
                             </button>
@@ -553,7 +555,7 @@ return (
               </div>
               <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="font-medium text-slate-500">QR Code Payload</span>
-                <span className="ml-4 truncate font-mono font-bold text-blue-600" title={qrValue}>{qrValue}</span>
+                <span className="ml-4 truncate font-mono font-bold text-blue-600" title={`${qrValue}${qrCount}`}>{qrValue}{qrCount}</span>
               </div>
             </div>
           </div>
@@ -593,7 +595,7 @@ return (
 
     <PrintDocument
       contentRef={contentRef}
-      generatedCode={generatedCode}
+      generatedCodes={generatedCodes}
       selectedVariant={selectedVariant}
       selectedProduct={selectedProduct}
       sizes={sizes}

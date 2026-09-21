@@ -15,17 +15,17 @@ Fitur:
 
 Contoh:
 
-  python tambah_barang_random.py --jumlah 10
+  python tambah_barang.py --jumlah 10
 
-  python tambah_barang_random.py --jumlah 100 --delay 0.1
+  python tambah_barang.py --jumlah 100 --variant W001 --size M
 
-  python tambah_barang_random.py --jumlah 1000 --status REGISTER
+  python tambah_barang.py --jumlah 50 --variant 1 --variant 2 --size L
 
-  python tambah_barang_random.py --jumlah 100 --api-url http://192.168.100.250:8000/api
+  python tambah_barang.py --jumlah 1000 --status REGISTER
 
-  python tambah_barang_random.py --list-variant
+  python tambah_barang.py --list-variant --size M
 
-  python tambah_barang_random.py -i
+  python tambah_barang.py -i
 """
 
 import argparse
@@ -264,6 +264,7 @@ def get_variants(base_url, timeout=15):
                     "-"
                 ),
                 "nama": nama,
+                "size": size.get("nama", "-"),
             })
 
     if not variants:
@@ -275,17 +276,74 @@ def get_variants(base_url, timeout=15):
 
 
 # ============================================================
+# FILTER VARIANT / SIZE
+# ============================================================
+
+def filter_variants(
+    variants,
+    variant_filters=None,
+    size_filters=None,
+):
+    """
+    Saring variant berdasarkan pilihan user.
+
+    variant_filters:
+        list id atau kodeVariant.
+        Contoh: ["1", "W003"]
+
+    size_filters:
+        list nama size (case-insensitive).
+        Contoh: ["M", "L"]
+    """
+
+    variant_filters = [
+        str(v).strip()
+        for v in (variant_filters or [])
+        if str(v).strip()
+    ]
+
+    size_filters = [
+        str(s).strip().lower()
+        for s in (size_filters or [])
+        if str(s).strip()
+    ]
+
+    if not variant_filters and not size_filters:
+        return variants
+
+    filtered = []
+
+    for variant in variants:
+
+        if variant_filters and (
+            str(variant["id"]) not in variant_filters
+            and str(variant["kodeVariant"]) not in variant_filters
+        ):
+            continue
+
+        if size_filters and (
+            str(variant.get("size", "")).lower()
+            not in size_filters
+        ):
+            continue
+
+        filtered.append(variant)
+
+    if not filtered:
+        raise RuntimeError(
+            "Tidak ada variant yang cocok dengan "
+            f"filter variant={variant_filters or '-'} "
+            f"size={size_filters or '-'}."
+        )
+
+    return filtered
+
+
+# ============================================================
 # LIST VARIANTS
 # ============================================================
 
-def list_variants(base_url, timeout=15):
-
-    print(f"GET {base_url}/products")
-
-    variants = get_variants(
-        base_url,
-        timeout
-    )
+def list_variants_from_data(variants):
 
     print()
 
@@ -307,6 +365,18 @@ def list_variants(base_url, timeout=15):
 
     print()
     print(f"Total variant: {len(variants)}")
+
+
+def list_variants(base_url, timeout=15):
+
+    print(f"GET {base_url}/products")
+
+    variants = get_variants(
+        base_url,
+        timeout
+    )
+
+    list_variants_from_data(variants)
 
 
 # ============================================================
@@ -478,6 +548,34 @@ def interactive_args(args):
         if value:
             args.batch_id = int(value)
 
+    if not args.variant:
+
+        value = input(
+            "Variant id/kode, pisahkan koma "
+            "(kosong = semua): "
+        ).strip()
+
+        if value:
+            args.variant = [
+                v.strip()
+                for v in value.split(",")
+                if v.strip()
+            ]
+
+    if not args.size:
+
+        value = input(
+            "Size, pisahkan koma "
+            "(kosong = semua): "
+        ).strip()
+
+        if value:
+            args.size = [
+                s.strip()
+                for s in value.split(",")
+                if s.strip()
+            ]
+
     return args
 
 
@@ -520,6 +618,28 @@ def main():
         help=(
             "Gunakan status tertentu. "
             "Jika tidak diisi, status random."
+        ),
+    )
+
+    ap.add_argument(
+        "--variant",
+        action="append",
+        default=None,
+        help=(
+            "Hanya pakai variant ini (id atau kode). "
+            "Bisa diulang: --variant W001 --variant 2. "
+            "Kosong = semua variant."
+        ),
+    )
+
+    ap.add_argument(
+        "--size",
+        action="append",
+        default=None,
+        help=(
+            "Hanya pakai size ini (nama, case-insensitive). "
+            "Bisa diulang: --size M --size L. "
+            "Kosong = semua size."
         ),
     )
 
@@ -601,10 +721,18 @@ def main():
 
         try:
 
-            list_variants(
+            variants = get_variants(
                 base_url,
                 args.timeout
             )
+
+            variants = filter_variants(
+                variants,
+                args.variant,
+                args.size,
+            )
+
+            list_variants_from_data(variants)
 
         except Exception as e:
 
@@ -657,6 +785,12 @@ def main():
             args.timeout
         )
 
+        variants = filter_variants(
+            variants,
+            args.variant,
+            args.size,
+        )
+
     except Exception as e:
 
         print(
@@ -669,6 +803,18 @@ def main():
     print(
         f"Variant : {len(variants)} tersedia"
     )
+
+    if args.variant:
+
+        print(
+            f"Filter variant: {', '.join(args.variant)}"
+        )
+
+    if args.size:
+
+        print(
+            f"Filter size   : {', '.join(args.size)}"
+        )
 
     # --------------------------------------------------------
     # INFO

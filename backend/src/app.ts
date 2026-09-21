@@ -10,6 +10,7 @@ import colorsRouter from "./routes/colors.js";
 import sizesRouter from "./routes/sizes.js";
 import adminRouter from "./routes/admin.js";
 import authRouter from "./routes/auth.js";
+import integrasiJurnalRouter from "./routes/integrasi-jurnal.js";
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ app.use("/api/production-orders", productionOrdersRouter);
 app.use("/api/styles", stylesRouter);
 app.use("/api/colors", colorsRouter);
 app.use("/api/sizes", sizesRouter);
+app.use("/api/integrasi-jurnal", integrasiJurnalRouter);
 
 
 export default app;
