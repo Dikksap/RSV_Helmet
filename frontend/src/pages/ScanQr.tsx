@@ -15,6 +15,8 @@ type ScannedItem = {
   variant: string;
   waktu: string;
   loading: boolean;
+  // snapshot tujuan saat scan — validasi bandingkan ke ini, bukan select live (anti balapan + anti berubah tengah jalan)
+  targetStatus: StatusBarang;
 };
 
 const inputClass =
@@ -117,6 +119,7 @@ function ScanQr() {
         second: "2-digit",
       }),
       loading: true,
+      targetStatus: statusRef.current,
     };
 
     setScannedItems((prev) => [newItem, ...prev]);
@@ -136,8 +139,8 @@ function ScanQr() {
     (async () => {
       try {
         const barang = await getScanBarang(next.kode);
-        // status sama dengan tujuan = tidak perlu diproses, jangan masuk tabel
-        if (barang.status === statusRef.current) {
+        // status sama dengan tujuan saat scan = tidak perlu diproses, jangan masuk tabel
+        if (String(barang.status).toUpperCase() === next.targetStatus) {
           setScannedItems((prev) => prev.filter((it) => it.id !== next.id));
           setError(`DILEWATI! Kode ${next.kode} sudah berstatus ${barang.status} — sama dengan tujuan.`);
           beep(false);
@@ -208,7 +211,7 @@ function ScanQr() {
         const key = kode.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
-        newItems.push({ id: Date.now() + Math.random(), kode, variant: "MEMERIKSA...", waktu: now, loading: true });
+        newItems.push({ id: Date.now() + Math.random(), kode, variant: "MEMERIKSA...", waktu: now, loading: true, targetStatus: statusRef.current });
       }
       setScannedItems((prev) => [...newItems, ...prev]);
       setSuccessMsg(`BULK LOAD: ${newItems.length} kode antre validasi.`);
@@ -274,7 +277,9 @@ function ScanQr() {
       }
 
       if (event.key.length === 1) {
-        if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+        // SELECT sengaja TIDAK dikecualikan: fokus tertinggal di dropdown + burst "BC..."
+        // dimakan type-ahead native ("B" -> Bad) sehingga target berubah sendiri. Scanner selalu menang.
+        if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
         event.preventDefault();
         inputRef.current?.focus();
         // tulis sinkron ke DOM agar Enter langsung lihat nilai penuh
@@ -409,15 +414,20 @@ function ScanQr() {
 
             <div className="hidden sm:block">
               <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">2. Status Tujuan</h3>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as StatusBarang)}
-                className={inputClass}
-              >
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as StatusBarang)}
+                    disabled={scannedItemsCount > 0}
+                    title={scannedItemsCount > 0 ? "Reset tabel untuk ganti tujuan" : undefined}
+                    className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  {scannedItemsCount > 0 && (
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Terkunci selama tabel isi — reset tabel untuk ganti tujuan.</p>
+                  )}
               <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <summary className="cursor-pointer text-sm font-bold text-slate-600">Catatan & opsi lain</summary>
                 <div className="mt-3">

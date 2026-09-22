@@ -15,7 +15,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "electron .",
-    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron\"",
+    "electron-dev": "concurrently \"npm run dev:host\" \"wait-on http://rsv-server.local:5173 && npm run electron\"",
     "electron-build": "npm run build:electron && electron-builder",
     "electron-build-win": "npm run build:electron && electron-builder --win",
     "electron-build-mac": "npm run build:electron && electron-builder --mac",
