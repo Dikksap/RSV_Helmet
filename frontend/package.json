@@ -1,7 +1,7 @@
 {
   "name": "rsv-operator",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Aplikasi Operator RSV Helmet",
   "author": "RSV Helmet",
   "type": "module",
