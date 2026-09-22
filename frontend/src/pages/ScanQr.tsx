@@ -67,6 +67,9 @@ function ScanQr() {
   const validatingRef = useRef(false);
   const listRef = useRef<ScannedItem[]>([]);
   listRef.current = scannedItems;
+  // ponytail: status via ref — effect validasi cuma dep scannedItems, closure state basi saat operator ganti tujuan.
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   // Auto focus ke input saat render
   useEffect(() => {
@@ -133,6 +136,13 @@ function ScanQr() {
     (async () => {
       try {
         const barang = await getScanBarang(next.kode);
+        // status sama dengan tujuan = tidak perlu diproses, jangan masuk tabel
+        if (barang.status === statusRef.current) {
+          setScannedItems((prev) => prev.filter((it) => it.id !== next.id));
+          setError(`DILEWATI! Kode ${next.kode} sudah berstatus ${barang.status} — sama dengan tujuan.`);
+          beep(false);
+          return;
+        }
         const current = listRef.current;
         // duplikat = kode sudah ada di baris valid lain
         const dup = current.some(
