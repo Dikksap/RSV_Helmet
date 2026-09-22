@@ -206,10 +206,10 @@
   display: block;
   position: relative;
   z-index: 2;
-  width: 22mm;
-  height: 15mm;
+  width: 26mm;
+  height: 19mm;
   object-fit: contain;
-  margin: 0;
+  margin: 10;
   justify-self: center;
   align-self: center;
   color: var(--ht-ink);
@@ -291,8 +291,8 @@
 .hangtag-qr {
   display: block;
   flex-shrink: 0;
-  width: 15mm;
-  height: 15mm;
+  width: 20mm;
+  height: 20mm;
   padding: 0.6mm;
   background: var(--ht-paper);
   border: 0.4mm solid var(--ht-ink);

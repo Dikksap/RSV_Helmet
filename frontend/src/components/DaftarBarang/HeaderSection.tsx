@@ -4,6 +4,7 @@ type HeaderSectionProps = {
   onExportCSV: () => void;
   onExportJSON: () => void;
   onCreate?: () => void;
+  onImport?: () => void;
 };
 
 export function HeaderSection({
@@ -12,6 +13,7 @@ export function HeaderSection({
   onExportCSV,
   onExportJSON,
   onCreate,
+  onImport,
 }: HeaderSectionProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
@@ -36,6 +38,16 @@ export function HeaderSection({
 
       {/* right: actions compact single row */}
       <div className="flex shrink-0 items-center gap-1.5">
+        {onImport && (
+          <button
+            type="button"
+            onClick={onImport}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#00A8E8] bg-white px-3 text-xs font-semibold text-[#0088C0] hover:bg-sky-50 active:scale-[0.98]"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+            Import
+          </button>
+        )}
         {onCreate && (
           <button
             type="button"

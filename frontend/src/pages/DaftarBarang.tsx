@@ -15,6 +15,7 @@ import { FilterSection } from "../components/DaftarBarang/FilterSection";
 import { BarangTable } from "../components/DaftarBarang/BarangTable";
 import { Pagination } from "../components/DaftarBarang/Pagination";
 import { HangtagModal } from "../components/DaftarBarang/HangtagModal";
+import { BarangImportModal } from "../components/DaftarBarang/BarangImportModal";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
 
 const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
@@ -54,6 +55,7 @@ function DaftarBarang() {
 
   // CRUD modal state
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editingBarang, setEditingBarang] = useState<Barang | null>(null);
   const [deletingBarang, setDeletingBarang] = useState<Barang | null>(null);
   const [crudLoading, setCrudLoading] = useState(false);
@@ -170,16 +172,17 @@ function DaftarBarang() {
       if (e.key === "Escape") {
         setSelectedBarang(null);
         setShowCreate(false);
+        setShowImport(false);
         setEditingBarang(null);
         setDeletingBarang(null);
         setShowBulkEdit(false);
       }
     };
-    if (selectedBarang || showCreate || editingBarang || deletingBarang || showBulkEdit) {
+    if (selectedBarang || showCreate || showImport || editingBarang || deletingBarang || showBulkEdit) {
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedBarang, showCreate, editingBarang, deletingBarang, showBulkEdit]);
+  }, [selectedBarang, showCreate, showImport, editingBarang, deletingBarang, showBulkEdit]);
 
   const variantOptions = useMemo(
     () =>
@@ -535,6 +538,7 @@ function DaftarBarang() {
         onExportCSV={() => handleExport("csv")}
         onExportJSON={() => handleExport("json")}
         onCreate={openCreate}
+        onImport={() => setShowImport(true)}
       />
 
       <FilterSection
@@ -714,6 +718,13 @@ function DaftarBarang() {
           onClose={() => setSelectedBarang(null)}
         />
       )}
+
+      <BarangImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        variantOptions={variantOptions}
+        onImported={() => void fetchBarang(1)}
+      />
 
       {/* CREATE MODAL — bottom sheet on mobile */}
       {showCreate && (

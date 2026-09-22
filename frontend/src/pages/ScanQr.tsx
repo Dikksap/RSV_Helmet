@@ -337,16 +337,36 @@ function ScanQr() {
       <main className="flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
 
         {/* Left Panel: Input & Aksi */}
-        <section className="w-full min-w-0 border-r border-slate-200 bg-white p-5 sm:p-8 lg:w-2/5 lg:flex-none lg:overflow-y-auto xl:w-1/3">
+        <section className="w-full min-w-0 border-r border-slate-200 bg-white p-3 sm:p-8 lg:w-2/5 lg:flex-none lg:overflow-y-auto xl:w-1/3">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
             <h2 className="text-lg font-bold text-slate-800">Area Scan</h2>
-            <span className="rounded-md bg-slate-800 px-3 py-1.5 text-base font-bold text-white">
-              {scannedItemsCount} ITEM
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-bold text-white">
+                {STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status}
+              </span>
+              <span className="rounded-md bg-slate-800 px-3 py-1.5 text-base font-bold text-white">
+                {scannedItemsCount} ITEM
+              </span>
+            </div>
           </div>
 
-          <div className="space-y-7">
-            <form onSubmit={handleSubmit}>
+          <div className="space-y-5">
+            {/* Mobile: counter murni. Form tetap di DOM (hidden) agar scanner hardware auto-capture + Enter tetap jalan. */}
+            <div className="grid grid-cols-3 gap-2 sm:hidden">
+              <div className="rounded-lg bg-slate-800 p-3 text-center text-white">
+                <p className="text-3xl font-black tabular-nums">{scannedItemsCount}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Total</p>
+              </div>
+              <div className="rounded-lg bg-emerald-600 p-3 text-center text-white">
+                <p className="text-3xl font-black tabular-nums">{scannedItemsCount - loadingCount}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">Valid</p>
+              </div>
+              <div className="rounded-lg bg-sky-600 p-3 text-center text-white">
+                <p className="text-3xl font-black tabular-nums">{loadingCount}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-sky-100">Antre</p>
+              </div>
+            </div>
+            <form onSubmit={handleSubmit} className="hidden sm:block">
               <label className="mb-2 block text-sm font-semibold text-slate-700">1. Scan QR / Kode Barang</label>
               <input
                 ref={inputRef}
@@ -355,7 +375,9 @@ function ScanQr() {
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Arahkan scanner ke sini..."
                 autoComplete="off"
-                className="w-full rounded-md border-2 border-slate-800 bg-white px-4 py-4 text-center text-2xl font-black uppercase tracking-widest text-slate-900 shadow-sm placeholder:font-medium placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-300 focus:border-sky-500 focus:outline-none focus:ring-4 focus:ring-sky-500/20"
+                autoFocus
+                enterKeyHint="done"
+                className="w-full rounded-lg border-2 border-slate-800 bg-white px-4 py-5 text-center text-3xl font-black uppercase tracking-widest text-slate-900 shadow-sm placeholder:font-medium placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-300 focus:border-sky-500 focus:outline-none focus:ring-4 focus:ring-sky-500/20"
               />
               <button type="submit" className="mt-3 w-full rounded-md bg-slate-800 py-3.5 text-base font-bold text-white transition-colors hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-400">
                 TAMBAH ITEM (ENTER)
@@ -375,22 +397,20 @@ function ScanQr() {
               </div>
             )}
 
-            <div>
-              <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-700">2. Aksi & Konfigurasi Batch</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Status Tujuan</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as StatusBarang)}
-                    className={inputClass}
-                  >
-                    {STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
+            <div className="hidden sm:block">
+              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">2. Status Tujuan</h3>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as StatusBarang)}
+                className={inputClass}
+              >
+                {STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <summary className="cursor-pointer text-sm font-bold text-slate-600">Catatan & opsi lain</summary>
+                <div className="mt-3">
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Catatan (Opsional)</label>
                   <input
                     type="text"
@@ -399,46 +419,46 @@ function ScanQr() {
                     placeholder="Contoh: Shift 1 - Lolos QC"
                     className={inputClass}
                   />
+                  <div className="mt-3 flex gap-3">
+                    <input ref={bulkInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleBulkUpload} />
+                    <button
+                      type="button"
+                      onClick={() => bulkInputRef.current?.click()}
+                      className="flex-1 rounded-md border-2 border-slate-300 bg-white py-3 text-sm font-bold text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    >
+                      UPLOAD CSV
+                    </button>
+                    {scannedItemsCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setScannedItems([]); setSuccessMsg(""); }}
+                        className="flex-1 rounded-md border-2 border-red-300 bg-white py-3 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
+                      >
+                        RESET TABEL
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </details>
             </div>
           </div>
 
           {/* Action Area: sticky agar selalu terjangkau */}
-          <div className="sticky bottom-0 mt-8 border-t border-slate-200 bg-white pt-4 pb-1">
+          <div className="sticky bottom-0 -mx-3 mt-6 border-t border-slate-200 bg-white/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
             <button
               type="button"
               onClick={handleBulkSubmit}
               disabled={isBulkSubmitting || scannedItemsCount === 0}
-              className="flex w-full transform items-center justify-center gap-2 rounded-md bg-sky-500 px-6 py-4 text-lg font-bold text-white shadow-lg transition active:scale-[0.98] hover:bg-sky-600 focus:outline-none focus:ring-4 focus:ring-sky-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+              className="flex w-full transform items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-4 text-xl font-black tracking-wide text-white shadow-lg transition active:scale-[0.98] hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
             >
               {isBulkSubmitting ? "MEMPROSES DATA..." : `SIMPAN SEMUA DATA (${scannedItemsCount - loadingCount})`}
             </button>
-            <div className="mt-3 flex gap-3">
-              <input ref={bulkInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleBulkUpload} />
-              <button
-                type="button"
-                onClick={() => bulkInputRef.current?.click()}
-                className="flex-1 rounded-md border-2 border-slate-300 bg-white py-3 text-sm font-bold text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                UPLOAD CSV
-              </button>
-              {scannedItemsCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => { setScannedItems([]); setSuccessMsg(""); }}
-                  className="flex-1 rounded-md border-2 border-red-300 bg-white py-3 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
-                >
-                  RESET TABEL
-                </button>
-              )}
-            </div>
           </div>
         </section>
 
         {/* Right Panel: Daftar Scan */}
         <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-transparent lg:border-l lg:border-t-0 lg:flex-1">
-          <div className="flex flex-col p-5 sm:p-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          <div className="flex flex-col p-3 sm:p-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Daftar Scan Terbaru</h2>
               <span className="rounded bg-white px-2 py-1 text-xs font-bold text-slate-600 shadow-sm">{scannedItemsCount} Baris{loadingCount > 0 ? ` (${loadingCount} antre)` : ""}</span>
@@ -479,17 +499,17 @@ function ScanQr() {
                         <th className="w-12 px-4 py-3 text-left font-bold">No</th>
                         <th className="px-4 py-3 text-left font-bold">Kode Barang</th>
                         <th className="px-4 py-3 text-left font-bold">Varian</th>
-                        <th className="w-24 px-4 py-3 text-right font-bold">Waktu</th>
+                        <th className="hidden w-24 px-4 py-3 text-right font-bold sm:table-cell">Waktu</th>
                         <th className="w-16 px-4 py-3 text-center font-bold">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y-2 divide-slate-200">
                       {scannedItems.map((item, index) => (
                         <tr key={item.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                          <td className="px-4 py-3 text-base font-black text-sky-700">{index + 1}</td>
-                          <td className="px-4 py-3 font-mono text-lg font-black tracking-wide text-slate-900">{item.kode}</td>
-                          <td className="px-4 py-3 text-base font-bold leading-snug text-slate-700">{item.variant}</td>
-                          <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-700">{item.waktu}</td>
+                          <td className="px-2 py-3 text-base font-black text-sky-700 sm:px-4">{index + 1}</td>
+                          <td className="px-2 py-3 font-mono text-base font-black tracking-wide text-slate-900 sm:px-4 sm:text-lg">{item.kode}</td>
+                          <td className="max-w-[40vw] truncate px-2 py-3 text-sm font-bold leading-snug text-slate-700 sm:max-w-none sm:px-4 sm:text-base">{item.variant}</td>
+                          <td className="hidden px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-700 sm:table-cell">{item.waktu}</td>
                           <td className="px-4 py-3 text-center text-lg font-black">
                             {item.loading ? (
                               <span className="inline-block animate-spin text-sky-600" title="Memvalidasi...">⏳</span>
