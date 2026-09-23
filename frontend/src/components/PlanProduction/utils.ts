@@ -4,12 +4,13 @@ import type {
   StatusProductionOrder,
 } from "../../api/productionOrders";
 
-export type Tab = "orders" | "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower";
+export type Tab = "orders" | "master" | "jadwal" | "spk" | "ringkasan" | "kapasitas" | "manpower";
 
 export const TABS: { key: Tab; label: string }[] = [
   { key: "orders", label: "Daftar Orders" },
   { key: "master", label: "Master Produksi" },
   { key: "jadwal", label: "Jadwal" },
+  { key: "spk", label: "SPK" },
   { key: "ringkasan", label: "Ringkasan" },
   { key: "kapasitas", label: "Kapasitas Produksi" },
   { key: "manpower", label: "Man Power" },
@@ -23,6 +24,15 @@ export const STATUS_STYLE: Record<StatusProductionOrder, string> = {
 };
 
 export const fmt = (n: number): string => n.toLocaleString("id-ID");
+
+// 1 dus = 8 pcs (global, display only — backend tetap pcs).
+export const PCS_PER_DUS = 8;
+
+export const fmtDus = (pcs: number): string =>
+  (pcs / PCS_PER_DUS).toLocaleString("id-ID", { maximumFractionDigits: 1 });
+
+export const fmtPcsDus = (pcs: number): string =>
+  `${fmt(pcs)} pcs (${fmtDus(pcs)} dus)`;
 
 export const fmtPct = (n: number): string =>
   `${n.toFixed(2).replace(".", ",")}%`;

@@ -509,3 +509,22 @@ export async function deleteBarang(id: number): Promise<{ message: string; id: n
   if (!response.ok) await parseCrudError(response, `Gagal menghapus barang: ${response.status}`);
   return response.json() as Promise<{ message: string; id: number }>;
 }
+
+export interface RiwayatBarangItem {
+  id: number;
+  barangId: number;
+  status: StatusBarang;
+  tanggal: string;
+  keterangan: string | null;
+}
+
+export interface RiwayatBarangResponse {
+  data: RiwayatBarangItem[];
+  summary: { kodeBarang: string; currentStatus: StatusBarang; total: number };
+}
+
+export async function getRiwayatBarang(id: number): Promise<RiwayatBarangResponse> {
+  const response = await fetch(`${apiUrl}/barang/${id}/riwayat`);
+  if (!response.ok) await parseCrudError(response, `Gagal mengambil riwayat barang: ${response.status}`);
+  return response.json() as Promise<RiwayatBarangResponse>;
+}

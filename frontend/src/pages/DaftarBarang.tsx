@@ -15,6 +15,7 @@ import { FilterSection } from "../components/DaftarBarang/FilterSection";
 import { BarangTable } from "../components/DaftarBarang/BarangTable";
 import { Pagination } from "../components/DaftarBarang/Pagination";
 import { HangtagModal } from "../components/DaftarBarang/HangtagModal";
+import { RiwayatModal } from "../components/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../components/DaftarBarang/BarangImportModal";
 import { useLiveSocketContext } from "../lib/LiveSocketContext";
 
@@ -43,6 +44,7 @@ function DaftarBarang() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalBarang, setTotalBarang] = useState(0);
   const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
+  const [riwayatBarang, setRiwayatBarang] = useState<Barang | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -171,6 +173,7 @@ function DaftarBarang() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelectedBarang(null);
+        setRiwayatBarang(null);
         setShowCreate(false);
         setShowImport(false);
         setEditingBarang(null);
@@ -178,11 +181,11 @@ function DaftarBarang() {
         setShowBulkEdit(false);
       }
     };
-    if (selectedBarang || showCreate || showImport || editingBarang || deletingBarang || showBulkEdit) {
+    if (selectedBarang || riwayatBarang || showCreate || showImport || editingBarang || deletingBarang || showBulkEdit) {
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedBarang, showCreate, showImport, editingBarang, deletingBarang, showBulkEdit]);
+  }, [selectedBarang, riwayatBarang, showCreate, showImport, editingBarang, deletingBarang, showBulkEdit]);
 
   const variantOptions = useMemo(
     () =>
@@ -678,6 +681,7 @@ function DaftarBarang() {
                 onRowClick={setSelectedBarang}
                 onEdit={openEdit}
                 onDelete={setDeletingBarang}
+                onRiwayat={setRiwayatBarang}
                 formatDate={formatDate}
                 formatRelativeTime={formatRelativeTime}
               />
@@ -716,7 +720,12 @@ function DaftarBarang() {
           barang={selectedBarang}
           products={products}
           onClose={() => setSelectedBarang(null)}
+          onRiwayat={() => { setRiwayatBarang(selectedBarang); setSelectedBarang(null); }}
         />
+      )}
+
+      {riwayatBarang && (
+        <RiwayatModal barangId={riwayatBarang.id} kodeBarang={riwayatBarang.kodeBarang} onClose={() => setRiwayatBarang(null)} />
       )}
 
       <BarangImportModal

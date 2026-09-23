@@ -4,7 +4,7 @@ import {
   getProductionSchedule,
   type ScheduleRow,
 } from "../../api/productionOrders";
-import { fmtCap, fmtLong, recomputeRingkasan, summarizeSchedule } from "./utils";
+import { fmtCap, fmtLong, fmtPcsDus, recomputeRingkasan, summarizeSchedule } from "./utils";
 import { requiredDaily } from "./capacityCalc";
 import KpiStrip from "./KpiStrip";
 import SummaryCharts from "./SummaryCharts";
@@ -131,9 +131,9 @@ export default function SummaryTab({ orderId }: Props) {
 
   const kpis = meta
     ? [
-        { label: "Target", value: `${totalQty.toLocaleString("id-ID")} pcs`, tone: "navy" as const },
-        { label: "Terjadwal", value: `${meta.dialokasikan.toLocaleString("id-ID")} pcs`, tone: "green" as const },
-        { label: "Sisa", value: `${meta.sisa.toLocaleString("id-ID")} pcs`, tone: meta.sisa > 0 ? ("red" as const) : ("muted" as const) },
+        { label: "Target", value: fmtPcsDus(totalQty), tone: "navy" as const },
+        { label: "Terjadwal", value: fmtPcsDus(meta.dialokasikan), tone: "green" as const },
+        { label: "Sisa", value: fmtPcsDus(meta.sisa), tone: meta.sisa > 0 ? ("red" as const) : ("muted" as const) },
         { label: "Hari produksi", value: `${meta.hariProduksi} hari`, tone: "navy" as const },
       ]
     : [];

@@ -14,9 +14,10 @@ type HangtagModalProps = {
   barang: Barang;
   products?: Product[];
   onClose: () => void;
+  onRiwayat?: () => void;
 };
 
-export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
+export function HangtagModal({ barang, products, onClose, onRiwayat }: HangtagModalProps) {
   const [copied, setCopied] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -152,6 +153,9 @@ export function HangtagModal({ barang, products, onClose }: HangtagModalProps) {
           {barang.kodeBarang}
         </h2>
         <div className="mt-2 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          {onRiwayat && (
+            <button type="button" onClick={onRiwayat} className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-3 text-sm font-medium text-sky-700 hover:bg-sky-100">Riwayat</button>
+          )}
           <button
             type="button"
             onClick={handleCopy}

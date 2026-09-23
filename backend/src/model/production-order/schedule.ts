@@ -12,6 +12,9 @@
 // - Jadwal diekor sampai akhir bulan (param akhirBulan YYYY-MM-DD):
 //   hari tanpa produksi setelah selesai = "Penyesuaian" (cadangan bila
 //   realisasi meleset / ada hutang produksi), tanggal terakhir = "QC & Packing".
+// - Alokasi per hari dibulatkan ke kelipatan PCS_PER_DUS (1 dus = 8 pcs).
+
+export const PCS_PER_DUS = 8;
 
 export interface ScheduleItem {
   variantId: number;
@@ -54,6 +57,18 @@ export interface ScheduleMeta {
 }
 
 const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+// ponytail: magic numbers extracted — satu sumber kebenaran, tanpa class berlebih
+const WORKING_HOURS = { WEEKDAY: 7, SATURDAY: 3.5, SUNDAY: 0 } as const;
+const MAX_GUARD_DAYS = 730; // ~2 tahun, lawan data buntu
+const MAX_STALL_DAYS = 30; // hari tanpa progress → stop
+const TAIL_BUFFER_DAYS = 93; // ekor Penyesuaian max, lawan input ngawur
+
+function getWorkingHours(dow: number): number {
+  if (dow === 0) return WORKING_HOURS.SUNDAY;
+  if (dow === 6) return WORKING_HOURS.SATURDAY;
+  return WORKING_HOURS.WEEKDAY;
+}
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -132,12 +147,12 @@ export function buildSchedule(
   // Akhir bebas: jalan sampai semua tahap mencapai demand + alokasi habis.
   // Guard 730 hari + stall 30 hari lawan data buntu (cap 0 / demand tak tercapai).
   const d = new Date(Math.min(...starts.map((x) => x.getTime())));
-  for (let guard = 0; guard < 730; guard++) {
+  for (let guard = 0; guard < MAX_GUARD_DAYS; guard++) {
     const cur = new Date(d);
     const tanggal = dayKey(cur);
     const dow = cur.getDay();
     const isSunday = dow === 0;
-    const jam = isSunday ? 0 : dow === 6 ? 3.5 : 7;
+    const jam = getWorkingHours(dow);
     const isFixed = !isSunday && (prep.has(tanggal) || qcPack.has(tanggal));
 
     const t: Record<StageKey, number> = { persiapan: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, qc: 0 };
@@ -203,6 +218,7 @@ export function buildSchedule(
             .sort((a, b) => a.sizeUrutan - b.sizeUrutan);
           for (const g of group) {
             if (budget <= 0) break;
+            // Alokasi penuh (terima sisa < 1 dus).
             const take = Math.min(budget, g.sisa);
             g.sisa -= take;
             budget -= take;
@@ -225,26 +241,26 @@ export function buildSchedule(
     const stagesDone = caps.every((c) => c.cum >= c.demand);
     const allocDone = queue.every((q) => q.sisa <= 0);
     d.setDate(d.getDate() + 1);
-    if ((stagesDone && allocDone) || stall >= 30) break;
+    if ((stagesDone && allocDone) || stall >= MAX_STALL_DAYS) break;
   }
 
   const sisa = queue.reduce((n, i) => n + i.sisa, 0);
   const dialokasikan = total - sisa;
 
   // Ekor sampai akhir bulan: tanpa produksi = Penyesuaian, hari terakhir QC & Packing.
+  // Jangan sampai bulan berikutnya — sisa produksi masuk meta.sisa.
   if (akhirBulan && /^\d{4}-\d{2}-\d{2}$/.test(akhirBulan) && rows.length > 0) {
-    let akhir = akhirBulan;
-    const lastRow = rows[rows.length - 1];
-    if (lastRow.tanggal > akhir) {
-      // Produksi meluber lewat bulan: ekor sampai akhir bulan berjalannya.
-      const [y, m] = lastRow.tanggal.split("-").map(Number);
-      akhir = dayKey(new Date(y, m, 0));
+    // Potong rows yang melampaui akhir bulan.
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].tanggal > akhirBulan) rows.splice(i, 1);
+      else break;
     }
-    if (lastRow.tanggal === akhir && lastRow.jumlah === 0 && lastRow.item !== "LIBUR") {
+    const akhir = akhirBulan;
+    const lastRow = rows[rows.length - 1];
+    if (lastRow?.tanggal === akhir && lastRow.jumlah === 0 && lastRow.item !== "LIBUR") {
       lastRow.item = "QC & Packing";
     }
-    // ponytail: batas 93 hari lawan input tanggal ngawur.
-    for (let n = 0; n < 93; n++) {
+    for (let n = 0; n < TAIL_BUFFER_DAYS; n++) {
       if (dayKey(d) > akhir) break;
       const tanggal = dayKey(d);
       const dow = d.getDay();
@@ -254,7 +270,7 @@ export function buildSchedule(
         tanggal,
         hari: HARI[dow],
         size: "-",
-        jam: isSunday ? 0 : dow === 6 ? 3.5 : 7,
+        jam: getWorkingHours(dow),
         persiapan: 0,
         decalSolid: 0,
         decalMotif: 0,

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getProductionSchedule, type ScheduleRow } from "../../api/productionOrders";
+import { PCS_PER_DUS, fmtDus, fmtPcsDus } from "./utils";
 import KpiStrip from "./KpiStrip";
 
 interface Props {
@@ -18,7 +19,7 @@ const HEADERS = [
   "Perakitan",
   "QC",
   "Item",
-  "Jumlah",
+  "Jumlah (pcs · dus)",
   "Status",
 ] as const;
 
@@ -32,14 +33,14 @@ function toCsv(rows: ScheduleRow[]): string {
     "Tanggal", "Hari", "Size", "Jam",
     "Persiapan", "Decal Solid", "Decal Motif",
     "Top Coat", "Perakitan", "QC",
-    "Item", "Jumlah",
+    "Item", "Jumlah", "Jumlah_Dus",
   ];
   const cell = (v: string | number) => {
     const s = String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const line = (r: ScheduleRow) =>
-    [fmtDate(r.tanggal), r.hari, r.size, r.jam, r.persiapan, r.decalSolid, r.decalMotif, r.topCoat, r.perakitan, r.qc, r.item, r.jumlah]
+    [fmtDate(r.tanggal), r.hari, r.size, r.jam, r.persiapan, r.decalSolid, r.decalMotif, r.topCoat, r.perakitan, r.qc, r.item, r.jumlah, r.jumlah / PCS_PER_DUS]
       .map(cell)
       .join(",");
   return [csvHeaders.join(","), ...rows.map(line)].join("\n");
@@ -97,8 +98,8 @@ export default function ScheduleTab({ orderId }: Props) {
   const kpis = meta
     ? [
         { label: "Hari produksi", value: `${meta.hariProduksi} hari`, tone: "navy" as const },
-        { label: "Dialokasikan", value: `${meta.dialokasikan.toLocaleString("id-ID")} pcs`, tone: "green" as const },
-        { label: "Sisa", value: `${meta.sisa.toLocaleString("id-ID")} pcs`, tone: meta.sisa > 0 ? ("red" as const) : ("muted" as const) },
+        { label: "Dialokasikan", value: fmtPcsDus(meta.dialokasikan), tone: "green" as const },
+        { label: "Sisa", value: fmtPcsDus(meta.sisa), tone: meta.sisa > 0 ? ("red" as const) : ("muted" as const) },
       ]
     : [];
 
@@ -121,7 +122,7 @@ export default function ScheduleTab({ orderId }: Props) {
             : head.item;
       const list = items.filter((r) => r.jumlah > 0);
       const rincian = list
-        .map((r) => `${r.item} ${r.size} ${r.jumlah.toLocaleString("id-ID")}`)
+        .map((r) => `${r.item} ${r.size} ${r.jumlah.toLocaleString("id-ID")} pcs (${fmtDus(r.jumlah)} dus)`)
         .join(" · ");
       return { tanggal, hari: head.hari, jam: head.jam, head, items, list, total, status, rincian };
     });
@@ -207,7 +208,10 @@ export default function ScheduleTab({ orderId }: Props) {
                               {(expanded[d.tanggal] ? d.list : d.list.slice(0, 3)).map((r, i) => (
                                 <li key={`${r.item}-${r.size}-${i}`} className="flex justify-between gap-2 whitespace-nowrap text-[13px]">
                                   <span className="truncate">{r.item} <span className="text-[#6B7280]">{r.size}</span></span>
-                                  <span className="shrink-0 tabular-nums text-[#1E3A5F]">{r.jumlah.toLocaleString("id-ID")}</span>
+                                  <span className="shrink-0 text-right tabular-nums">
+                                    <span className="block text-[#1E3A5F]">{r.jumlah.toLocaleString("id-ID")} pcs</span>
+                                    <span className="block text-[11px] font-normal text-[#6B7280]">{fmtDus(r.jumlah)} dus</span>
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -223,8 +227,9 @@ export default function ScheduleTab({ orderId }: Props) {
                           </>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-bold tabular-nums text-[#1E3A5F]">
-                        {d.total.toLocaleString("id-ID")}
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        <span className="block font-bold text-[#1E3A5F]">{d.total.toLocaleString("id-ID")} pcs</span>
+                        <span className="block text-[11px] font-normal text-[#6B7280]">{fmtDus(d.total)} dus</span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5">
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${badgeOf(d.status)}`}>

@@ -106,7 +106,7 @@ describe("ekor akhir bulan", () => {
   });
   it("produksi meluber: ekor sampai akhir bulan berjalannya", () => {
     const { rows } = buildSchedule(ITEMS, CAPS, PREP, [], "2026-10-05");
-    expect(rows[rows.length - 1]).toMatchObject({ tanggal: "2026-10-31", item: "QC & Packing" });
+    expect(rows[rows.length - 1]).toMatchObject({ tanggal: "2026-10-05", item: "Solid A", jumlah: 88 });
   });
 });
 

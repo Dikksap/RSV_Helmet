@@ -14,6 +14,7 @@ import MasterTab from "../components/PlanProduction/MasterTab";
 import CapacityTab from "../components/PlanProduction/CapacityTab";
 import ScheduleTab from "../components/PlanProduction/ScheduleTab";
 import SummaryTab from "../components/PlanProduction/SummaryTab";
+import SpkTab from "../components/PlanProduction/SpkTab";
 import { TABS, fmt, STATUS_STYLE, type Tab } from "../components/PlanProduction/utils";
 
 export default function PlanProduction() {
@@ -304,6 +305,8 @@ export default function PlanProduction() {
       )}
 
       {tab === "jadwal" && <ScheduleTab orderId={selectedId} />}
+
+      {tab === "spk" && <SpkTab orderId={selectedId} />}
 
       {tab === "ringkasan" && <SummaryTab orderId={selectedId} />}
 

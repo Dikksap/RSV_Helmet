@@ -24,6 +24,7 @@ import ScanQr from "./pages/ScanQr.tsx";
 import StatistikBarang from "./pages/StatistikBarang.tsx";
 import VariantProduk from "./pages/VariantProduk.tsx";
 import Login from "./pages/Login.tsx";
+import DevWatermark from "./components/DevWatermark.tsx";
 
 const routes = (
   <Routes>
@@ -59,6 +60,7 @@ const isElectronPackaged = window.location.protocol === "file:";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <DevWatermark />
     {isElectronPackaged ? (
       <HashRouter>{routes}</HashRouter>
     ) : (

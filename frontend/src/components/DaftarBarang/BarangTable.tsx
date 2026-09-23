@@ -12,6 +12,7 @@ type BarangTableProps = {
   onRowClick: (item: Barang) => void;
   onEdit?: (item: Barang) => void;
   onDelete?: (item: Barang) => void;
+  onRiwayat?: (item: Barang) => void;
   formatDate: (date: string) => string;
   formatRelativeTime: (date: string, nowMs: number) => string;
 };
@@ -27,6 +28,7 @@ export function BarangTable({
   onRowClick,
   onEdit,
   onDelete,
+  onRiwayat,
   formatDate,
   formatRelativeTime,
 }: BarangTableProps) {
@@ -93,8 +95,11 @@ export function BarangTable({
                     {item.batch ? `BC${String(item.batch.nomorBatch).padStart(3, "0")}` : "No Batch"}
                     <span className="ml-2 font-sans font-normal text-[#6B7280]">• {formatDate(item.createdAt)}</span>
                   </span>
-                  {(onEdit || onDelete) && (
+                  {(onEdit || onDelete || onRiwayat) && (
                     <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {onRiwayat && (
+                        <button type="button" onClick={() => onRiwayat(item)} aria-label={`Riwayat ${item.kodeBarang}`} className="flex min-h-[36px] min-w-[44px] items-center justify-center rounded-lg border border-sky-200 bg-sky-50 px-2.5 text-xs font-medium text-sky-700 hover:bg-sky-100">Riwayat</button>
+                      )}
                       {onEdit && (
                         <button
                           type="button"
@@ -150,7 +155,7 @@ export function BarangTable({
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Dibuat</th>
                 <th className="px-4 py-3">Waktu</th>
-                {(onEdit || onDelete) && <th className="px-4 py-3 text-right">Aksi</th>}
+                    {(onEdit || onDelete || onRiwayat) && <th className="px-4 py-3 text-right">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[15px]">
@@ -195,9 +200,12 @@ export function BarangTable({
                     <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[#6B7280]">
                       <span title={formatDate(item.createdAt)}>{formatRelativeTime(item.createdAt, now)}</span>
                     </td>
-                    {(onEdit || onDelete) && (
+                    {(onEdit || onDelete || onRiwayat) && (
                       <td className="px-4 py-2.5">
                         <div className="flex justify-end gap-1.5">
+                          {onRiwayat && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); onRiwayat(item); }} className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">Riwayat</button>
+                          )}
                           {onEdit && (
                             <button
                               type="button"

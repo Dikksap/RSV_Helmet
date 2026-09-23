@@ -11,7 +11,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
-import { fmtLong } from "./utils";
+import { fmtLong, fmtDus, fmtPcsDus } from "./utils";
 
 ChartJS.register(
   CategoryScale,
@@ -114,11 +114,11 @@ export default function SummaryCharts({ ringkasan, gaps, ranges, curve, targetQt
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <section className={card}>
         <h4 className={titleCls}>Komposisi Item</h4>
-        <p className={subCls}>Porsi tiap item dari total {targetQty.toLocaleString("id-ID")} pcs · arahkan kursor untuk angka</p>
+        <p className={subCls}>Porsi tiap item dari total {fmtPcsDus(targetQty)} · arahkan kursor untuk angka</p>
         <div className="relative h-56 w-full">
           <Doughnut
             data={{
-              labels: ringkasan.map((r) => `${r.item} — ${r.total.toLocaleString("id-ID")} pcs (${r.persentase.toLocaleString("id-ID")}%)`),
+              labels: ringkasan.map((r) => `${r.item} — ${r.total.toLocaleString("id-ID")} pcs (${fmtDus(r.total)} dus, ${r.persentase.toLocaleString("id-ID")}%)`),
               datasets: [
                 {
                   data: ringkasan.map((r) => r.total),
@@ -139,7 +139,7 @@ export default function SummaryCharts({ ringkasan, gaps, ranges, curve, targetQt
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <div className="text-center">
               <p className="text-2xl font-bold tabular-nums text-[#1E3A5F]">{targetQty.toLocaleString("id-ID")}</p>
-              <p className="text-xs text-[#6B7280]">pcs total</p>
+              <p className="text-xs text-[#6B7280]">pcs total ({fmtDus(targetQty)} dus)</p>
             </div>
           </div>
         </div>
