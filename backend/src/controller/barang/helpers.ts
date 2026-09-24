@@ -1,7 +1,5 @@
-import {
-  VALID_STATUSES,
-  type StatusBarang,
-} from "../../model/barang/barang.js";
+import prisma from "../../lib/prisma.js";
+import type { StatusBarang } from "../../model/barang/barang.status.js";
 
 export function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -18,9 +16,18 @@ export function errorStatus(message: string): number {
   return 500;
 }
 
-export function isValidStatus(status: unknown): status is StatusBarang {
-  return (
-    typeof status === "string" &&
-    VALID_STATUSES.includes(status as StatusBarang)
-  );
+export async function isValidStatus(status: unknown): Promise<boolean> {
+  if (typeof status !== "string" || !status.trim()) return false;
+  const kode = status.trim().toUpperCase();
+  const row = await prisma.statusBarang.findUnique({ where: { kode } });
+  return !!row && row.isActive;
+}
+
+export async function getValidStatusList(): Promise<string> {
+  const rows = await prisma.statusBarang.findMany({
+    where: { isActive: true },
+    select: { kode: true },
+    orderBy: { urutan: "asc" },
+  });
+  return rows.map((r) => r.kode).join(", ");
 }

@@ -1,17 +1,12 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { clearBarangCache } from "../../lib/barangCache.js";
 
-export type StatusBarang = "REGISTER" | "FINISHGOOD" | "RETUR" | "OUT" | "BAD";
+// StatusBarang sekarang dinamis (tabel StatusBarang), tipe = string
+export type StatusBarang = string;
 
-export const VALID_STATUSES: StatusBarang[] = [
-  "REGISTER",
-  "FINISHGOOD",
-  "RETUR",
-  "OUT",
-  "BAD",
-];
-
-export const VALID_TRANSITIONS: Record<StatusBarang, StatusBarang[]> = {
+// Hardcode transisi untuk 5 status awal. Status dinamis baru dianggap
+// terbuka (allow any) agar langsung bisa dipakai tanpa config transisi.
+export const VALID_TRANSITIONS: Record<string, string[]> = {
   REGISTER: ["FINISHGOOD", "OUT", "RETUR", "BAD"],
   FINISHGOOD: ["OUT", "RETUR", "BAD"],
   RETUR: ["FINISHGOOD", "OUT", "BAD"],
@@ -19,17 +14,29 @@ export const VALID_TRANSITIONS: Record<StatusBarang, StatusBarang[]> = {
   BAD: ["FINISHGOOD"],
 };
 
-function validateTransition(
-  current: StatusBarang,
-  next: StatusBarang,
-): boolean {
+export async function getValidStatusKodes(): Promise<string[]> {
+  const rows = await prisma.statusBarang.findMany({
+    where: { isActive: true },
+    select: { kode: true },
+    orderBy: { urutan: "asc" },
+  });
+  return rows.map((r) => r.kode);
+}
+
+function validateTransition(current: string, next: string): boolean {
   if (current === next) return true;
-  return VALID_TRANSITIONS[current]?.includes(next) ?? false;
+  const isCurrentHardcoded = current in VALID_TRANSITIONS;
+  const isNextHardcoded = next in VALID_TRANSITIONS;
+  if (isCurrentHardcoded && isNextHardcoded) {
+    return VALID_TRANSITIONS[current]?.includes(next) ?? false;
+  }
+  // Salah satu dinamis -> izinkan transisi (status valid sudah dicek)
+  return true;
 }
 
 export async function updateBarangStatus(
   barangId: number,
-  newStatus: StatusBarang,
+  newStatus: string,
   keterangan?: string,
 ): Promise<NonNullable<Awaited<ReturnType<typeof prisma.barang.findUnique>>>> {
   const barang = await prisma.barang.findUnique({ where: { id: barangId } });
@@ -38,10 +45,14 @@ export async function updateBarangStatus(
     throw new Error("Barang tidak ditemukan");
   }
 
-  if (!validateTransition(barang.status as StatusBarang, newStatus)) {
-    throw new Error(
-      `Transisi status dari ${barang.status} ke ${newStatus} tidak valid`,
-    );
+  // Validasi status ada & aktif
+  const statusRow = await prisma.statusBarang.findUnique({ where: { kode: newStatus } });
+  if (!statusRow || !statusRow.isActive) {
+    throw new Error(`Status '${newStatus}' tidak valid atau tidak aktif`);
+  }
+
+  if (!validateTransition(barang.status, newStatus)) {
+    throw new Error(`Transisi status dari ${barang.status} ke ${newStatus} tidak valid`);
   }
 
   const updated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
@@ -85,7 +96,7 @@ export async function updateBarangStatus(
 }
 
 export async function bulkUpdateBarangStatus(
-  items: { id: number; status: StatusBarang; keterangan?: string }[],
+  items: { id: number; status: string; keterangan?: string }[],
 ): Promise<{
   success: Awaited<ReturnType<typeof updateBarangStatus>>[];
   failed: { id: number; error: string }[];
@@ -95,11 +106,7 @@ export async function bulkUpdateBarangStatus(
 
   for (const item of items) {
     try {
-      const updated = await updateBarangStatus(
-        item.id,
-        item.status,
-        item.keterangan,
-      );
+      const updated = await updateBarangStatus(item.id, item.status, item.keterangan);
       success.push(updated);
     } catch (error) {
       failed.push({

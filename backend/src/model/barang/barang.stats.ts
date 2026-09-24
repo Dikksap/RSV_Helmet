@@ -6,7 +6,7 @@ import {
   getBarangCache,
   setBarangCache,
 } from "../../lib/barangCache.js";
-import type { StatusBarang } from "./barang.status.js";
+
 
 export type FinishgoodPerBulanRow = {
   bulan: string;
@@ -38,10 +38,10 @@ type BatchDetails = { id: number; nomorBatch: number };
 
 export async function getStatusSummary(): Promise<{
   total: number;
-  perStatus: Record<StatusBarang, number>;
+  perStatus: Record<string, number>;
 }> {
   const cacheKey = barangStatsKey("status-summary", {});
-  const cached = await getBarangCache<{ total: number; perStatus: Record<StatusBarang, number> }>(cacheKey);
+  const cached = await getBarangCache<{ total: number; perStatus: Record<string, number> }>(cacheKey);
   if (cached) return cached;
 
   const groups = await prisma.barang.groupBy({
@@ -50,17 +50,13 @@ export async function getStatusSummary(): Promise<{
     orderBy: { status: "asc" },
   });
 
-  const perStatus: Record<StatusBarang, number> = {
-    REGISTER: 0,
-    FINISHGOOD: 0,
-    RETUR: 0,
-    OUT: 0,
-    BAD: 0,
-  };
+  const statusRows = await prisma.statusBarang.findMany({ select: { kode: true }, orderBy: { urutan: "asc" } });
+  const perStatus: Record<string, number> = {};
+  for (const s of statusRows) perStatus[s.kode] = 0;
 
   let total = 0;
   for (const group of groups) {
-    const status = group.status as StatusBarang;
+    const status = group.status;
     const count = (group._count as { _all: number })._all ?? 0;
     perStatus[status] = count;
     total += count;
@@ -76,7 +72,7 @@ export async function getBarangStats(filter: {
   batchId?: number;
 }): Promise<{
   total: number;
-  perStatus: Record<StatusBarang, number>;
+  perStatus: Record<string, number>;
   perVariant: { variantId: number; nama: string; total: number }[];
   perBatch: { batchId: number; nomorBatch: string; total: number }[];
 }> {
@@ -98,7 +94,7 @@ async function getBarangStatsUncached(filter: {
   batchId?: number;
 }): Promise<{
   total: number;
-  perStatus: Record<StatusBarang, number>;
+  perStatus: Record<string, number>;
   perVariant: { variantId: number; nama: string; total: number }[];
   perBatch: { batchId: number; nomorBatch: string; total: number }[];
 }> {
@@ -135,17 +131,12 @@ async function getBarangStatsUncached(filter: {
       prisma.barang.count({ where }),
     ])) as [StatusGroup[], VariantGroup[], BatchGroup[], number];
 
-  const perStatus: Record<StatusBarang, number> = {
-    REGISTER: 0,
-    FINISHGOOD: 0,
-    RETUR: 0,
-    OUT: 0,
-    BAD: 0,
-  };
+  const statusRows2 = await prisma.statusBarang.findMany({ select: { kode: true }, orderBy: { urutan: "asc" } });
+  const perStatus: Record<string, number> = {};
+  for (const s of statusRows2) perStatus[s.kode] = 0;
 
   for (const group of statusGroups) {
-    perStatus[group.status as StatusBarang] =
-      (group._count as { _all: number })._all ?? 0;
+    perStatus[group.status] = (group._count as { _all: number })._all ?? 0;
   }
 
   const variantIds = variantGroups.map((group) => group.variantId);

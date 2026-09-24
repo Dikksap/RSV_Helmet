@@ -83,14 +83,14 @@ export function HangtagModal({ barang, products, onClose, onRiwayat }: HangtagMo
       const hangtagHtml = getHangtagMarkup();
       if (isInElectron()) {
         const result = await printHangtagSilently({
-          hangtagHtml,
+          hangtagHtmls: [hangtagHtml],
           size: "100x75mm",
         });
         if (result.status === "error") {
           setActionMsg(`Gagal print: ${result.message}`);
         }
       } else {
-        const html = buildHangtagPrintHtml({ hangtagHtml, size: "100x75mm" });
+        const html = buildHangtagPrintHtml({ hangtagHtmls: [hangtagHtml], size: "100x75mm" });
         const w = window.open("", "_blank", "width=800,height=600");
         if (!w) throw new Error("Popup diblokir browser. Izinkan popup untuk print.");
         w.document.write(html);

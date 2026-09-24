@@ -2,7 +2,6 @@ import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { clearBarangCache } from "../../lib/barangCache.js";
 import { barangInclude } from "./barang.js";
 import {
-  VALID_STATUSES,
   VALID_TRANSITIONS,
   type StatusBarang,
 } from "./barang.status.js";
@@ -49,10 +48,12 @@ export async function createBarang(input: CreateBarangInput) {
     throw new Error("Field 'variantId' wajib diisi dan berupa angka");
   }
 
-  if (status && !VALID_STATUSES.includes(status as StatusBarang)) {
-    throw new Error(
-      "Field 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
-    );
+  if (status) {
+    const kode = String(status).trim().toUpperCase();
+    const row = await prisma.statusBarang.findUnique({ where: { kode } });
+    if (!row || !row.isActive) {
+      throw new Error(`Status '${status}' tidak valid atau tidak aktif`);
+    }
   }
 
   const variant = await prisma.productVariant.findUnique({
@@ -80,7 +81,7 @@ export async function createBarang(input: CreateBarangInput) {
     if (exists) throw new Error("Kode barang sudah ada");
 
     const finalTanggal = tanggal ?? new Date();
-    const finalStatus = (status as StatusBarang) ?? "REGISTER";
+    const finalStatus = status ? String(status).trim().toUpperCase() : "REGISTER";
 
     const created = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
       const barang = await tx.barang.create({
@@ -118,7 +119,7 @@ export async function createBarang(input: CreateBarangInput) {
 
   // Auto-generate kodeBarang (ikut counter + batch allocation)
   const finalTanggal = tanggal ?? new Date();
-  const finalStatus = (status as StatusBarang) ?? "REGISTER";
+  const finalStatus = status ? String(status).trim().toUpperCase() : "REGISTER";
   const dateOnly = new Date(finalTanggal);
   dateOnly.setHours(0, 0, 0, 0);
 
@@ -312,13 +313,13 @@ export async function updateBarang(id: number, input: UpdateBarangInput) {
   }
 
   if (input.status !== undefined) {
-    if (!VALID_STATUSES.includes(input.status as StatusBarang)) {
-      throw new Error(
-        "Field 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
-      );
+    const kode = String(input.status).trim().toUpperCase();
+    const row = await prisma.statusBarang.findUnique({ where: { kode } });
+    if (!row || !row.isActive) {
+      throw new Error(`Status '${input.status}' tidak valid atau tidak aktif`);
     }
-    newStatus = input.status as StatusBarang;
-    const current = existing.status as StatusBarang;
+    newStatus = kode;
+    const current = existing.status;
     const allowed = current === newStatus || VALID_TRANSITIONS[current]?.includes(newStatus);
     if (!allowed) {
       throw new Error(`Transisi status dari ${current} ke ${newStatus} tidak valid`);

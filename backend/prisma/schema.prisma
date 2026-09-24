@@ -115,31 +115,38 @@ model ProductionBatch {
 }
 
 // =============================================
-// Barang
+// Status Barang (master dinamis — CRUD via /api/status-barang)
 // =============================================
 
-enum StatusBarang {
-  REGISTER
-  FINISHGOOD
-  RETUR
-  OUT
-  BAD
+model StatusBarang {
+  id        Int      @id @default(autoincrement())
+  kode      String   @unique
+  nama      String
+  warna     String?
+  urutan    Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  barang  Barang[]        @relation("BarangStatus")
+  riwayat RiwayatBarang[] @relation("RiwayatStatus")
 }
 
 model Barang {
-  id         Int          @id @default(autoincrement())
-  kodeBarang String       @unique
+  id         Int      @id @default(autoincrement())
+  kodeBarang String   @unique
   variantId  Int
   batchId    Int?
   tanggal    DateTime?
-  status     StatusBarang @default(REGISTER)
+  status     String   @default("REGISTER")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  variant ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  batch   ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  riwayat RiwayatBarang[]
+  variant   ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  batch     ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  statusRef StatusBarang     @relation("BarangStatus", fields: [status], references: [kode])
+  riwayat   RiwayatBarang[]
 
   @@index([variantId])
   @@index([batchId])
@@ -147,13 +154,14 @@ model Barang {
 }
 
 model RiwayatBarang {
-  id         Int          @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   barangId   Int
-  status     StatusBarang
-  tanggal    DateTime     @default(now())
+  status     String
+  tanggal    DateTime @default(now())
   keterangan String?
 
-  barang Barang @relation(fields: [barangId], references: [id], onDelete: Restrict)
+  barang    Barang       @relation(fields: [barangId], references: [id], onDelete: Restrict)
+  statusRef StatusBarang @relation("RiwayatStatus", fields: [status], references: [kode])
 
   @@index([barangId])
   @@index([tanggal])

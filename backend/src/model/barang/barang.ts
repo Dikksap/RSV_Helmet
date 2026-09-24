@@ -9,7 +9,6 @@ import {
 } from "../../lib/barangCache.js";
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
-  VALID_STATUSES,
   VALID_TRANSITIONS,
   bulkUpdateBarangStatus,
   updateBarangStatus,
@@ -32,7 +31,6 @@ import {
 export {
   generateBarangBulk,
   getGenerateInfo,
-  VALID_STATUSES,
   VALID_TRANSITIONS,
   bulkUpdateBarangStatus,
   updateBarangStatus,
@@ -296,9 +294,14 @@ export async function bulkScanBarang(
         continue;
       }
 
-      if (
-        !VALID_TRANSITIONS[barang.status as StatusBarang]?.includes(newStatus)
-      ) {
+      const isCurrentHardcoded = barang.status in VALID_TRANSITIONS;
+      const isNextHardcoded = newStatus in VALID_TRANSITIONS;
+      const allowed =
+        barang.status === newStatus ||
+        (isCurrentHardcoded && isNextHardcoded
+          ? VALID_TRANSITIONS[barang.status]?.includes(newStatus)
+          : true);
+      if (!allowed) {
         failed.push({
           kodeBarang: kode,
           error: `Transisi status dari ${barang.status} ke ${newStatus} tidak valid`,

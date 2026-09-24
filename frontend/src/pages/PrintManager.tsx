@@ -76,7 +76,7 @@ function PrintManager() {
     setIsPrinting(true);
     try {
       const result = await printHangtagSilently({
-        hangtagHtml: hangtagMarkup,
+        hangtagHtmls: [hangtagMarkup],
         size: testSize,
         customMm,
       });

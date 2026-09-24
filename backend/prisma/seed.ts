@@ -34,6 +34,23 @@ async function main() {
     console.log(`✓ User "${user.name}" (${user.email})`);
   }
 
+  // ── StatusBarang (master dinamis) ──────────────────────────────────────
+  const statusSeed = [
+    { kode: "REGISTER", nama: "Register", warna: "#6B7280", urutan: 1 },
+    { kode: "FINISHGOOD", nama: "Finish Good", warna: "#10B981", urutan: 2 },
+    { kode: "RETUR", nama: "Retur", warna: "#F59E0B", urutan: 3 },
+    { kode: "OUT", nama: "Keluar", warna: "#3B82F6", urutan: 4 },
+    { kode: "BAD", nama: "Bad", warna: "#EF4444", urutan: 5 },
+  ];
+  for (const s of statusSeed) {
+    await prisma.statusBarang.upsert({
+      where: { kode: s.kode },
+      update: { nama: s.nama, warna: s.warna, urutan: s.urutan },
+      create: s,
+    });
+  }
+  console.log(`✓ ${statusSeed.length} StatusBarang selesai`);
+
   // ── Product ────────────────────────────────────────────────────────────
   const product = await prisma.product.upsert({
     where: { id: 1 },

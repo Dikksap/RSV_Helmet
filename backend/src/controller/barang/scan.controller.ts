@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { bulkScanBarang, scanBarang } from "../../model/barang/barang.js";
 import { broadcast } from "../../websocket/socket.js";
-import { errorMessage, errorStatus, isValidStatus } from "./helpers.js";
+import { errorMessage, errorStatus, isValidStatus, getValidStatusList } from "./helpers.js";
 
 export async function scanBarangHandler(req: Request, res: Response) {
   try {
@@ -32,10 +32,10 @@ export async function bulkScanBarangHandler(req: Request, res: Response) {
       });
     }
 
-    if (!isValidStatus(status)) {
+    if (!(await isValidStatus(status))) {
+      const list = await getValidStatusList();
       return res.status(400).json({
-        message:
-          "Field 'status' wajib diisi dan harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+        message: `Field 'status' wajib diisi dan harus salah satu dari: ${list}`,
       });
     }
 

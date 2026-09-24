@@ -1,7 +1,9 @@
+/* eslint-disable react-refresh/only-export-components -- types + helpers, not a component */
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell } from "@fortawesome/free-solid-svg-icons";
 
 export type NotifItem = {
+  id: number;
   type: string;
   message: string;
   data: string;

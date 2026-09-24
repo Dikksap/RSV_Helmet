@@ -168,7 +168,7 @@ export function loadDefaultPrinter(): string {
 }
 
 export interface HangtagPrintRequest {
-  hangtagHtml: string;
+  hangtagHtmls: string[];
   size: LabelSize;
   customMm?: CustomLabelMm;
   printerName?: string;
@@ -182,17 +182,21 @@ export function buildHangtagPrintHtml(request: HangtagPrintRequest): string {
   const widthMm = microns.width / MICRONS_PER_MM;
   const heightMm = microns.height / MICRONS_PER_MM;
   const scale = Math.min(widthMm / 100, heightMm / 75);
+  const fit = (html: string) =>
+    `<div class="print-sheet"><div class="hangtag-fit" style="width: ${(100 * scale).toFixed(4)}mm; height: ${(75 * scale).toFixed(4)}mm;"><div class="hangtag-fit-inner" style="transform: scale(${scale});">${html}</div></div></div>`;
+  const sheets = request.hangtagHtmls.map(fit).join("");
 
   return [
     "<!doctype html>",
     '<html><head><meta charset="utf-8" /><style>',
     `@page { size: ${page}; page-orientation: portrait; margin: 0; }`,
     "* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }",
-    `html, body { margin: 0; padding: 0; width: ${width}; height: ${heightMm}mm; overflow: hidden; background: #ffffff; }`,
-    ".print-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }",
+    "html, body { margin: 0; padding: 0; width: 100%; background: #ffffff; }",
+    `.print-sheet { width: ${width}; height: ${heightMm}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; break-after: page; page-break-after: always; }`,
+    ".print-sheet:last-child { break-after: auto; page-break-after: auto; }",
     hangtagCss,
     "</style></head>",
-    `<body><div class="print-stage"><div class="hangtag-fit" style="width: ${(100 * scale).toFixed(4)}mm; height: ${(75 * scale).toFixed(4)}mm;"><div class="hangtag-fit-inner" style="transform: scale(${scale});">${request.hangtagHtml}</div></div></div></body></html>`,
+    `<body>${sheets}</body></html>`,
   ].join("");
 }
 

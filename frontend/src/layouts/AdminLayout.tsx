@@ -1,16 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faChevronLeft,
   faChevronDown,
-  faBell,
   faBars,
   faXmark,
   faArrowRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
-import { clearAuth, getToken, isAdmin, logout } from "../api/auth";
-import { useLiveSocketContext } from "../lib/LiveSocketContext";
+import { clearAuth, getToken, getUser, isAdmin, logout } from "../api/auth";
 import {
   NAV_MAIN,
   BARANG_PRODUKSI,
@@ -19,8 +17,7 @@ import {
   ADMIN_MOBILE_NAV,
   AdminMobileNavLink,
 } from "./admin/navigation";
-import { NotifDetail, summarizeNotif } from "./admin/notification";
-import type { NotifItem } from "./admin/notification";
+import { NotificationCenter } from "./admin/NotificationCenter";
 import logoUrl from "../assets/logo.png";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -31,6 +28,13 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       : "text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]",
   ].join(" ");
 
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "AD";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -39,29 +43,24 @@ function AdminLayout() {
   const [hoverOpen, setHoverOpen] = useState(false);
   // Efektif ciut hanya bila di-pin ciut DAN tidak sedang di-hover.
   const collapsed = isCollapsed && !hoverOpen;
-  const [barangProduksiOpen, setBarangProduksiOpen] = useState(
-    () =>
-      location.pathname.startsWith("/admin/barang") ||
-      location.pathname.startsWith("/admin/barang/statistik") ||
-      location.pathname.startsWith("/admin/plan-production") ||
-      location.pathname.startsWith("/admin/realisasi-produksi"),
-  );
-  const [notifCount, setNotifCount] = useState(0);
-  const [notifList, setNotifList] = useState<NotifItem[]>([]);
-  const [showNotif, setShowNotif] = useState(false);
-  const [liveToasts, setLiveToasts] = useState<
-    { id: number; type: string; message: string; leaving?: boolean }[]
-  >([]);
-  const [notifHeight, setNotifHeight] = useState(208);
-  const [isResizing, setIsResizing] = useState(false);
-  const resizeStartY = useRef<number>(0);
-  const resizeStartH = useRef<number>(208);
-  const [selectedNotif, setSelectedNotif] = useState<NotifItem | null>(null);
-  const notifRef = useRef<HTMLDivElement>(null);
-  const notifButtonRef = useRef<HTMLButtonElement>(null);
-  const recentToastRef = useRef<Map<string, number>>(new Map());
 
-  const { subscribe } = useLiveSocketContext();
+  const inBarangProduksiGroup = BARANG_PRODUKSI.children.some(
+    (c) => location.pathname === c.to || location.pathname.startsWith(c.to + "/"),
+  );
+  const [barangProduksiOpen, setBarangProduksiOpen] = useState(() => inBarangProduksiGroup);
+
+  useEffect(() => {
+    if (inBarangProduksiGroup) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync group open state with route
+      setBarangProduksiOpen(true);
+    }
+  }, [inBarangProduksiGroup]);
+
+  const user = getUser();
+  const userName = user?.name ?? "Admin RSV";
+  const userEmail = user?.email ?? "";
+  const userRoleLabel = user?.role === "admin" ? "Administrator" : (user?.role ?? "Administrator");
+  const userInitials = user?.name ? initialsFromName(user.name) : "AD";
 
   useEffect(() => {
     if (!isAdmin()) {
@@ -69,158 +68,6 @@ function AdminLayout() {
       return;
     }
   }, [navigate]);
-
-  const dismissToast = (id: number) => {
-    setLiveToasts((prev) => {
-      if (!prev.some((t) => t.id === id && !t.leaving)) return prev;
-      return prev.map((t) => (t.id === id ? { ...t, leaving: true } : t));
-    });
-    window.setTimeout(
-      () => setLiveToasts((prev) => prev.filter((t) => t.id !== id)),
-      240,
-    );
-  };
-
-  useEffect(() => {
-    const pushToast = (type: string, message: string) => {
-      const key = `${type}::${message}`;
-      const now = Date.now();
-      const last = recentToastRef.current.get(key);
-      if (last && now - last < 3000) return;
-      recentToastRef.current.set(key, now);
-      const id = Date.now() + Math.floor(Math.random() * 1000);
-      const toast = { id, type, message: message || type };
-      setLiveToasts((prev) => [...prev, toast].slice(-5));
-      window.setTimeout(() => dismissToast(id), 4000);
-    };
-    const unsub = subscribe((payload) => {
-      const full =
-        payload.data !== null && payload.data !== undefined
-          ? JSON.stringify(payload.data, null, 2)
-          : "";
-      const notif = {
-        type: payload.type,
-        message: payload.message,
-        data: summarizeNotif(full),
-        fullData: full,
-        time: new Date().toLocaleTimeString("id-ID", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-      };
-      setNotifCount((prev) => prev + 1);
-      setNotifList((prev) => [notif, ...prev.slice(0, 19)]);
-      pushToast(payload.type, payload.message || payload.type);
-    });
-    const onAppToast = (e: Event) => {
-      const ce = e as CustomEvent<{ type?: string; message?: string }>;
-      const type = ce.detail?.type || "info";
-      const message = ce.detail?.message || "";
-      if (!message) return;
-      pushToast(type, message);
-      setNotifCount((prev) => prev + 1);
-      setNotifList((prev) => [
-        {
-          type,
-          message,
-          data: "",
-          fullData: "",
-          time: new Date().toLocaleTimeString("id-ID", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          }),
-        },
-        ...prev.slice(0, 19),
-      ]);
-    };
-    window.addEventListener(
-      "app:toast" as unknown as string,
-      onAppToast as EventListener,
-    );
-    return () => {
-      unsub();
-      window.removeEventListener(
-        "app:toast" as unknown as string,
-        onAppToast as EventListener,
-      );
-    };
-  }, [subscribe]);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        notifRef.current &&
-        !notifRef.current.contains(e.target as Node) &&
-        notifButtonRef.current &&
-        !notifButtonRef.current.contains(e.target as Node)
-      ) {
-        setShowNotif(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (!selectedNotif) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedNotif(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selectedNotif]);
-
-  useEffect(() => {
-    if (!isResizing) return;
-    const onMove = (e: MouseEvent) => {
-      const delta = e.clientY - resizeStartY.current;
-      const next = Math.min(560, Math.max(160, resizeStartH.current + delta));
-      setNotifHeight(next);
-    };
-    const onUp = () => setIsResizing(false);
-    const onTouchMove = (e: TouchEvent) => {
-      const delta = e.touches[0].clientY - resizeStartY.current;
-      const next = Math.min(560, Math.max(160, resizeStartH.current + delta));
-      setNotifHeight(next);
-    };
-    const onTouchEnd = () => setIsResizing(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("touchmove", onTouchMove);
-    window.addEventListener("touchend", onTouchEnd);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [isResizing]);
-
-  const startResize = (e: React.MouseEvent | React.TouchEvent) => {
-    const y =
-      "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    resizeStartY.current = y;
-    resizeStartH.current = notifHeight;
-    setIsResizing(true);
-  };
-
-  const clearNotif = () => {
-    setNotifCount(0);
-    setNotifList([]);
-    setShowNotif(false);
-    localStorage.removeItem("rsv_notif_count");
-    localStorage.removeItem("rsv_notif_list");
-  };
-
-  useEffect(() => {
-    localStorage.setItem("rsv_notif_count", String(notifCount));
-  }, [notifCount]);
-
-  useEffect(() => {
-    localStorage.setItem("rsv_notif_list", JSON.stringify(notifList));
-  }, [notifList]);
 
   const handleLogout = async () => {
     const token = getToken();
@@ -241,86 +88,11 @@ function AdminLayout() {
     }
   };
 
+  // Avoid flashing the full admin layout for non-admin before redirect
+  if (!isAdmin()) return null;
+
   return (
     <div className="app-admin flex min-h-screen w-full bg-[#F5F7FA] font-sans text-[#1F2937] antialiased">
-      {/* Toast Notifications */}
-      {liveToasts.length > 0 && (
-        <div
-          className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[min(92vw,380px)] flex-col gap-2 sm:bottom-6 sm:right-6"
-          role="region"
-          aria-label="Notifikasi"
-        >
-          {liveToasts.length > 3 && (
-            <button
-              type="button"
-              onClick={() => {
-                setLiveToasts([]);
-                setShowNotif(true);
-              }}
-              className="live-toast-enter pointer-events-auto self-end rounded-full border border-[#D1D5DB] bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-[#1E3A5F] shadow-xl backdrop-blur transition-colors duration-200 hover:border-[#00A8E8]"
-            >
-              +{liveToasts.length - 3} lainnya — lihat semua
-            </button>
-          )}
-          {[...liveToasts]
-            .slice(-3)
-            .reverse()
-            .map((t) => {
-              const isError = /error|gagal|hapus|deleted|bad|retur/i.test(
-                `${t.type} ${t.message}`,
-              );
-              return (
-                <div
-                  key={t.id}
-                  role="status"
-                  className={`pointer-events-auto relative w-full overflow-hidden rounded-xl border bg-white/95 px-4 py-3 text-sm shadow-2xl backdrop-blur transition-all duration-200 ${
-                    t.leaving ? "live-toast-exit" : "live-toast-enter"
-                  } ${isError ? "border-[#EF4444]/30" : "border-slate-200"}`}
-                >
-                  <div className="flex w-full items-start gap-3">
-                    <span
-                      aria-hidden="true"
-                      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold text-white ${
-                        isError ? "bg-[#EF4444]" : "bg-[#10B981]"
-                      }`}
-                    >
-                      {isError ? "!" : "✓"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={`truncate text-[11px] font-semibold uppercase tracking-wide ${
-                          isError ? "text-[#EF4444]" : "text-[#6B7280]"
-                        }`}
-                      >
-                        {t.type}
-                      </p>
-                      <p className="line-clamp-2 text-sm font-medium text-[#1F2937]">
-                        {t.message}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="Tutup notifikasi"
-                      onClick={() => dismissToast(t.id)}
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#F5F7FA] text-[#6B7280] transition-colors duration-200 hover:bg-slate-200 hover:text-[#1F2937]"
-                    >
-                      <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {!t.leaving && (
-                    <span
-                      className={`live-toast-progress absolute bottom-0 left-0 h-0.5 ${
-                        isError ? "bg-[#EF4444]" : "bg-[#10B981]"
-                      }`}
-                      aria-hidden="true"
-                    />
-                  )}
-                </div>
-              );
-            })}
-        </div>
-      )}
-
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
@@ -360,6 +132,7 @@ function AdminLayout() {
               </div>
             </div>
             <button
+              type="button"
               onClick={closeSidebar}
               className="rounded-lg p-1 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1F2937] lg:hidden"
               aria-label="Tutup sidebar"
@@ -450,7 +223,7 @@ function AdminLayout() {
                           [
                             navLinkClass({ isActive }),
                             "py-2 text-sm",
-                            isCollapsed
+                            collapsed
                               ? "lg:justify-center lg:px-0 lg:pl-0"
                               : "pl-11",
                           ].join(" ")
@@ -485,7 +258,7 @@ function AdminLayout() {
                 to={item.to}
                 end={item.end}
                 onClick={closeSidebar}
-                title={`${item.label} (segera hadir)`}
+                title={item.label}
                 className={({ isActive }) =>
                   [navLinkClass({ isActive }), collapsed ? "lg:justify-center lg:px-0" : ""].join(" ")
                 }
@@ -497,13 +270,6 @@ function AdminLayout() {
                 />
                 <span className={collapsed ? "lg:hidden" : ""}>
                   {item.label}
-                </span>
-                <span
-                  className={`ml-auto rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-[#6B7280] ${
-                    collapsed ? "lg:hidden" : ""
-                  }`}
-                >
-                  Soon
                 </span>
               </NavLink>
             ))}
@@ -550,7 +316,7 @@ function AdminLayout() {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1E3A5F] text-sm font-bold text-white">
-                  AD
+                  {userInitials}
                 </div>
                 <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#10B981]"></span>
               </div>
@@ -558,14 +324,15 @@ function AdminLayout() {
                 className={`overflow-hidden ${collapsed ? "lg:hidden" : ""}`}
               >
                 <h4 className="truncate text-sm font-semibold text-[#1F2937]">
-                  Admin RSV
+                  {userName}
                 </h4>
                 <p className="truncate text-xs text-[#6B7280]">
-                  Super Administrator
+                  {userRoleLabel}
                 </p>
               </div>
             </div>
             <button
+              type="button"
               onClick={handleLogout}
               title="Keluar"
               aria-label="Keluar"
@@ -586,6 +353,7 @@ function AdminLayout() {
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur md:h-[72px] md:px-12">
           <div className="flex flex-1 items-center gap-4 max-w-xl">
             <button
+              type="button"
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Buka sidebar"
               className="rounded-lg p-2 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1E3A5F] lg:hidden"
@@ -593,6 +361,7 @@ function AdminLayout() {
               <FontAwesomeIcon icon={faBars} className="h-6 w-6" />
             </button>
             <button
+              type="button"
               onClick={() => setIsCollapsed((v) => !v)}
               title={isCollapsed ? "Tampilkan sidebar" : "Sembunyikan sidebar"}
               aria-label={
@@ -619,114 +388,18 @@ function AdminLayout() {
 
           <div className="flex items-center gap-3">
             <div className="hidden flex-col text-right sm:flex">
-              <span className="text-sm font-semibold text-[#1F2937]">Admin RSV</span>
-              <span className="text-xs text-[#6B7280]">
-                admin@rsvhelmet.com
-              </span>
-            </div>
-
-            {/* Notification Bell */}
-            <div className="relative">
-              <button
-                ref={notifButtonRef}
-                type="button"
-                onClick={() => setShowNotif((v) => !v)}
-                className="relative rounded-lg p-2 text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1E3A5F] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
-                aria-label="Notifikasi"
-                aria-expanded={showNotif}
-              >
-                <FontAwesomeIcon icon={faBell} className="h-6 w-6" />
-                {notifCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#EF4444] text-[10px] font-bold text-white ring-2 ring-white">
-                    {notifCount > 9 ? "9+" : notifCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Notification Dropdown */}
-              {showNotif && (
-                <div
-                  ref={notifRef}
-                  className="absolute right-0 top-full mt-2 flex w-80 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.10)]"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                    <span className="text-sm font-semibold text-[#1F2937]">
-                      Notifikasi
-                    </span>
-                    {notifCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={clearNotif}
-                        className="rounded text-[13px] font-medium text-[#0088C0] transition-colors duration-200 hover:text-[#00A8E8] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
-                      >
-                        Bersihkan Semua
-                      </button>
-                    )}
-                  </div>
-                  <div
-                    className="overflow-y-auto"
-                    style={{ height: notifHeight }}
-                  >
-                    {notifList.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center px-4 py-8">
-                        <FontAwesomeIcon
-                          icon={faBell}
-                          className="h-8 w-8 text-[#D1D5DB]"
-                        />
-                        <p className="mt-2 text-xs text-[#6B7280]">
-                          Tidak ada notifikasi
-                        </p>
-                      </div>
-                    ) : (
-                      notifList.map((item, i) => {
-                        const preview =
-                          summarizeNotif(item.fullData) || item.data;
-                        return (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => setSelectedNotif(item)}
-                            className="flex w-full flex-col gap-1 border-b border-slate-100 px-4 py-3 text-left text-xs transition-colors duration-200 hover:bg-[#F5F7FA]"
-                          >
-                            <div className="flex w-full items-center justify-between">
-                              <span className="truncate font-semibold text-[#1E3A5F]">
-                                {item.type}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-[#6B7280]">
-                                {item.time}
-                              </span>
-                            </div>
-                            <span className="line-clamp-2 text-sm text-[#1F2937]">
-                              {item.message}
-                            </span>
-                            {preview && (
-                              <span className="truncate font-mono text-[10px] text-[#6B7280]">
-                                {preview}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                  <div
-                    onMouseDown={startResize}
-                    onTouchStart={startResize}
-                    className={`flex h-6 cursor-ns-resize select-none items-center justify-center border-t border-slate-200 bg-white transition-colors duration-200 ${
-                      isResizing
-                        ? "bg-[#00A8E8]/10"
-                        : "hover:bg-[#F5F7FA]"
-                    }`}
-                    title="Drag untuk ubah tinggi"
-                  >
-                    <span className="h-1 w-10 rounded-full bg-slate-300" />
-                  </div>
-                </div>
+              <span className="text-sm font-semibold text-[#1F2937]">{userName}</span>
+              {userEmail && (
+                <span className="text-xs text-[#6B7280]">
+                  {userEmail}
+                </span>
               )}
             </div>
 
+            <NotificationCenter />
+
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1E3A5F] text-sm font-bold text-white">
-              AD
+              {userInitials}
             </div>
           </div>
         </header>
@@ -803,54 +476,6 @@ function AdminLayout() {
           </div>
         </div>
       </nav>
-
-      {/* Notification Detail Modal */}
-      {selectedNotif && (
-        <div
-          className="fixed inset-0 z-[70] grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
-          role="presentation"
-          onClick={() => setSelectedNotif(null)}
-        >
-          <div
-            className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setSelectedNotif(null)}
-              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-[#6B7280] transition-colors duration-200 hover:bg-[#F5F7FA] hover:text-[#1F2937]"
-              aria-label="Tutup"
-            >
-              <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
-            </button>
-            <div className="border-b border-slate-200 px-6 py-4 pr-12">
-              <p className="text-xs font-semibold uppercase tracking-widest text-[#1E3A5F]">
-                {selectedNotif.type}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-[#1F2937]">
-                {selectedNotif.message}
-              </p>
-              <p className="mt-1 text-xs text-[#6B7280]">
-                {selectedNotif.time}
-              </p>
-            </div>
-            <div className="overflow-auto p-6">
-              <NotifDetail fullData={selectedNotif.fullData} />
-            </div>
-            <div className="flex justify-end border-t border-slate-200 bg-[#F5F7FA] px-6 py-3">
-              <button
-                type="button"
-                onClick={() => setSelectedNotif(null)}
-                className="rounded-lg bg-[#00A8E8] px-4 py-2 text-[15px] font-medium text-white transition-colors duration-200 hover:bg-[#0088C0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

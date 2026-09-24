@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
 import { QRCodeSVG } from "qrcode.react";
-// `?inline` -> data URL base64. Wajib agar <img> tetap tampil di dokumen
+// `?inline` -> data URL. Wajib agar <img> tetap tampil di dokumen
 // print terisolasi (Electron silent print pakai data:text/html, URL relatif
 // seperti /assets/... tidak bisa resolve di sana dan gambar hilang).
-import helmetArtUrl from "../../assets/gambar_helm.png?inline";
+// SVG (10 KB) bukan PNG (257 KB) — payload silent print N label ikut menyusut.
+import helmetArtUrl from "../../assets/gambar_helm.svg?inline";
 import kickerArtUrl from "../../assets/windbreaker_font.svg?inline";
 import "./hangtag.css";
 

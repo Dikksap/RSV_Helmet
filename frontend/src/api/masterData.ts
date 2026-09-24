@@ -22,9 +22,25 @@ export interface MasterSize {
   updatedAt: string;
 }
 
+export interface MasterStatusBarang {
+  id: number;
+  kode: string;
+  nama: string;
+  warna: string | null;
+  urutan: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem("rsv_auth_token");
   const res = await fetch(`${apiUrl}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers ?? {}),
+    },
     ...options,
   });
   if (!res.ok) {
@@ -70,3 +86,13 @@ export const updateSize = (id: number, body: { nama?: string; urutan?: number })
   request<MasterSize>(`/sizes/${id}`, { method: "PUT", body: JSON.stringify(body) });
 export const deleteSize = (id: number) =>
   request<{ message: string }>(`/sizes/${id}`, { method: "DELETE" });
+
+// ---- StatusBarang: GET /api/status-barang, POST {kode,nama,warna?,urutan?,isActive?}, PUT, DELETE ----
+export const getStatusBarangs = () => request<MasterStatusBarang[]>("/status-barang");
+export const getStatusBarang = (id: number) => request<MasterStatusBarang>(`/status-barang/${id}`);
+export const createStatusBarang = (body: { kode: string; nama: string; warna?: string | null; urutan?: number; isActive?: boolean }) =>
+  request<MasterStatusBarang>("/status-barang", { method: "POST", body: JSON.stringify(body) });
+export const updateStatusBarang = (id: number, body: { kode?: string; nama?: string; warna?: string | null; urutan?: number; isActive?: boolean }) =>
+  request<MasterStatusBarang>(`/status-barang/${id}`, { method: "PUT", body: JSON.stringify(body) });
+export const deleteStatusBarang = (id: number) =>
+  request<{ message: string }>(`/status-barang/${id}`, { method: "DELETE" });

@@ -9,6 +9,7 @@ import { getProducts, type Product } from "../api/products";
 import {
   fetchPrinters,
   isInElectron,
+  resolveLabelMm,
   resolveLabelPage,
   loadDefaultPrinter,
   printHangtagSilently,
@@ -28,6 +29,10 @@ const activeBtn =
 const idleBtn =
   "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100";
 
+// ponytail: 50 label/job — window Electron + IPC per job, bukan per label.
+// Naikkan bila driver printer terbukti tahan job lebih besar.
+const PRINT_CHUNK = 50;
+
 function CetakLabel() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
@@ -38,7 +43,9 @@ function CetakLabel() {
   const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [infoFetchedFor, setInfoFetchedFor] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [printSize, setPrintSize] = useState<PrintSize>("100x75mm");
   const [customMm, setCustomMm] = useState<CustomLabelMm>({ width: 80, height: 80 });
   const [copies, setCopies] = useState(1);
@@ -55,6 +62,9 @@ function CetakLabel() {
 
   const contentRef = useRef<HTMLDivElement>(null);
   const selectedPrintPage = resolveLabelPage(printSize, customMm);
+  const labelMm = resolveLabelMm(printSize, customMm);
+  const effectiveCopies = Math.max(1, Math.min(500, Math.floor(copies) || 1));
+  const busy = isGenerating || isPrinting;
 
   const printFn = useReactToPrint({
     contentRef,
@@ -71,21 +81,41 @@ function CetakLabel() {
     `,
     onPrintError: (errorLocation, printError) => {
       console.error(`Print error during ${errorLocation}:`, printError);
-      setError(`Gagal print: ${printError.message}`);
+      setToast({ type: "error", msg: `Gagal print: ${printError.message}` });
     },
     onAfterPrint: () => setGeneratedCodes([]),
   });
 
-  useEffect(() => {
+  const loadProducts = () => {
+    setIsLoading(true);
     getProducts()
       .then((list) => {
         setProducts(list);
         if (list.length > 0) setProductId(String(list[0].id));
       })
       .catch(() =>
-        setError("Produk belum dapat dimuat. Pastikan server API aktif."),
+        setToast({ type: "error", msg: "Produk belum dapat dimuat. Pastikan server API aktif." }),
       )
       .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    getProducts()
+      .then((list) => {
+        if (cancelled) return;
+        setProducts(list);
+        if (list.length > 0) setProductId(String(list[0].id));
+      })
+      .catch(() => {
+        if (!cancelled) setToast({ type: "error", msg: "Produk belum dapat dimuat. Pastikan server API aktif." });
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -101,6 +131,12 @@ function CetakLabel() {
       })
       .catch(() => setPrinters([]));
   }, []);
+
+  useEffect(() => {
+    if (toast?.type !== "success") return;
+    const id = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   const selectedProduct = products.find(
     (product) => product.id === Number(productId),
@@ -132,6 +168,7 @@ function CetakLabel() {
   const selectedColorName = colors.find((color) => String(color.id) === colorId)?.nama;
   const selectedSizeName = sizes.find((size) => String(size.id) === sizeId)?.nama;
   const selectedVariant = colorVariants.find((variant) => variant.sizeId === Number(sizeId));
+  const isInfoLoading = selectedVariant != null && infoFetchedFor !== selectedVariant.id;
 
   // Auto-pilih pertama saat opsi berubah agar alur produksi cepat.
   useEffect(() => {
@@ -157,9 +194,22 @@ function CetakLabel() {
 
   useEffect(() => {
     if (!selectedVariant) return;
-    getGenerateInfo(selectedVariant.id)
-      .then(setGenerateInfo)
-      .catch((requestError: Error) => setError(requestError.message));
+    let cancelled = false;
+    const vid = selectedVariant.id;
+    getGenerateInfo(vid)
+      .then((info) => {
+        if (cancelled) return;
+        setGenerateInfo(info);
+        setInfoFetchedFor(vid);
+      })
+      .catch((requestError: Error) => {
+        if (cancelled) return;
+        setToast({ type: "error", msg: requestError.message });
+        setInfoFetchedFor(vid);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedVariant]);
 
   const handleProductSelect = (id: string) => {
@@ -171,44 +221,81 @@ function CetakLabel() {
     setGeneratedCodes([]);
   };
 
+  const collectHangtagHtmls = async (want: number): Promise<string[] | null> => {
+    for (let i = 0; i < 40; i++) {
+      const nodes = contentRef.current?.querySelectorAll(".hangtag");
+      if (nodes && nodes.length === want) {
+        return Array.from(nodes, (n) => (n as HTMLElement).outerHTML);
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    return null;
+  };
+
+  const printCodes = async (codes: string[]) => {
+    if (codes.length === 0) return;
+    if (!isInElectron()) {
+      setGeneratedCodes(codes);
+      window.setTimeout(() => printFn(), 150);
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      setGeneratedCodes(codes);
+      const htmls = await collectHangtagHtmls(codes.length);
+      if (!htmls) {
+        setGeneratedCodes([]);
+        setToast({ type: "error", msg: "Label belum siap untuk dicetak." });
+        beep(false);
+        return;
+      }
+      let sent = 0;
+      for (let i = 0; i < htmls.length; i += PRINT_CHUNK) {
+        const chunk = htmls.slice(i, i + PRINT_CHUNK);
+        const result = await printHangtagSilently({
+          hangtagHtmls: chunk,
+          size: printSize,
+          customMm,
+          printerName: selectedPrinter || undefined,
+          copies: 1,
+        });
+        if (result.status === "error") {
+          setGeneratedCodes(codes.slice(sent));
+          setToast({
+            type: "error",
+            msg: `${sent}/${codes.length} label terkirim — sisanya menunggu di antrean. Printer: ${result.message}`,
+          });
+          beep(false);
+          return;
+        }
+        sent += chunk.length;
+      }
+      setGeneratedCodes([]);
+      setToast({ type: "success", msg: `${codes.length} label terkirim ke ${selectedPrinter || "printer default"}.` });
+      beep(true);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!selectedVariant) return;
-    const jumlah = Math.max(1, Math.min(500, Math.floor(copies) || 1));
+    const jumlah = effectiveCopies;
     setIsGenerating(true);
-    setError(null);
+    setToast(null);
     setGeneratedCodes([]);
     try {
       const response = await generateBarang(selectedVariant.id, jumlah);
       const codes = response.batches.flatMap((b) => b.barang.map((x) => x.kodeBarang));
       if (codes.length === 0) throw new Error("Gagal generate barang");
 
-      setGeneratedCodes(codes);
       setGenerateInfo(await getGenerateInfo(selectedVariant.id));
-
-      if (isInElectron()) {
-        await new Promise((resolve) => window.setTimeout(resolve, 150));
-        const nodes = contentRef.current?.querySelectorAll(".hangtag") ?? [];
-        if (nodes.length === 0) throw new Error("Label belum siap untuk dicetak");
-
-        for (const node of Array.from(nodes)) {
-          const result = await printHangtagSilently({
-            hangtagHtml: (node as HTMLElement).outerHTML,
-            size: printSize,
-            customMm,
-            printerName: selectedPrinter || undefined,
-            copies: 1,
-          });
-          if (result.status === "error") throw new Error(result.message);
-        }
-        setGeneratedCodes([]);
-      } else {
-        window.setTimeout(() => printFn(), 100);
-      }
+      await printCodes(codes);
     } catch (requestError) {
-      const status = requestError instanceof Error
+      const msg = requestError instanceof Error
         ? `${requestError.message}${selectedVariant ? ` untuk varian ${selectedVariant.kodeVariant}` : ""}`
         : "Gagal generate barang";
-      setError(status);
+      setToast({ type: "error", msg });
     } finally {
       setIsGenerating(false);
     }
@@ -219,26 +306,31 @@ function CetakLabel() {
     setCopies(1);
   };
 
-  // Enter / Spasi = cetak instan (kecuali fokus di input/select/textarea)
+  // Enter / Spasi = cetak instan (fokus di elemen interaktif tidak dibajak)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (/INPUT|SELECT|TEXTAREA/.test(t.tagName)) return;
+      if (/INPUT|SELECT|TEXTAREA|BUTTON|A|SUMMARY/.test(t.tagName)) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        if (selectedVariant && !isGenerating) void handleGenerate();
+        if (selectedVariant && !busy) void handleGenerate();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVariant, isGenerating, copies, printSize, customMm, selectedPrinter]);
+  }, [selectedVariant, busy, effectiveCopies, printSize, customMm, selectedPrinter]);
 
   const formatDate = (date: string) => new Date(date).toLocaleDateString("id-ID");
 
   const previewCode = generateInfo && selectedVariant
     ? `${generateInfo.batch.kodeBatch}-${generateInfo.kodeVariant}-${generateInfo.tanggal.replaceAll("-", "").slice(2)}-${String(generateInfo.nextNumber).padStart(4, "0")}`
     : null;
+
+  const handleTestPrint = () => {
+    if (!previewCode) return;
+    void printCodes([previewCode]);
+  };
 
   const qrValue = generatedCodes[0] ?? previewCode ?? "-";
   const qrCount = generatedCodes.length > 1 ? ` (+${generatedCodes.length - 1} kode lain)` : "";
@@ -255,12 +347,12 @@ function CetakLabel() {
 
   const btnBase = "rounded-xl px-3 py-3 text-xs transition-all active:scale-95 focus:outline-none";
   const checkIcon = (
-    <svg className="h-4 w-4 shrink-0 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+    <svg className="h-4 w-4 shrink-0 text-blue-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
       <path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd" />
     </svg>
   );
   const whiteCheckIcon = (
-    <svg className="h-3.5 w-3.5 shrink-0 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+    <svg className="h-3.5 w-3.5 shrink-0 text-emerald-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
       <path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd" />
     </svg>
   );
@@ -277,17 +369,25 @@ function CetakLabel() {
 
 return (
   <div className="flex flex-1 flex-col bg-white font-[Inter,sans-serif] text-slate-800">
-    {/* Error Toast */}
-    {error && (
+    {/* Toast */}
+    {toast && (
       <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4">
-        <div className="pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-xl border border-red-500/30 bg-red-600 p-4 text-sm text-white shadow-2xl">
+        <div
+          role={toast.type === "error" ? "alert" : "status"}
+          aria-live={toast.type === "error" ? "assertive" : "polite"}
+          className={`pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-xl border p-4 text-sm text-white shadow-2xl ${toast.type === "error" ? "border-red-700 bg-red-600" : "border-emerald-700 bg-emerald-600"}`}
+        >
           <div className="flex items-center gap-3">
-            <svg className="h-5 w-5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path clipRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" fillRule="evenodd" />
+            <svg className="h-5 w-5 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              {toast.type === "error" ? (
+                <path clipRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" fillRule="evenodd" />
+              ) : (
+                <path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd" />
+              )}
             </svg>
-            <span className="font-semibold">{error}</span>
+            <span className="font-semibold">{toast.msg}</span>
           </div>
-          <button type="button" onClick={() => setError(null)} className="shrink-0 rounded-lg bg-red-700 px-3 py-1.5 font-bold transition-colors hover:bg-red-800">
+          <button type="button" onClick={() => setToast(null)} className="shrink-0 rounded-lg bg-white/15 px-3 py-1.5 font-bold transition-colors hover:bg-white/25">
             Tutup
           </button>
         </div>
@@ -300,15 +400,12 @@ return (
         <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono tabular-nums text-slate-700 shadow-sm">
           {now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} • {now.toLocaleTimeString("id-ID")}
         </span>
-        <span className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700 shadow-sm sm:flex">
-          <span className="h-2 w-2 rounded-full bg-blue-500" />Shift 1 (Budi S.) • Line 04
-        </span>
         <span className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-bold text-emerald-800 shadow-sm">
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
           </span>
-          {isInElectron() ? (selectedPrinter || "Printer Siap (Online)") : "ZD230 • Browser Mode"}
+          {isInElectron() ? (selectedPrinter || "Printer default OS") : "Mode browser — printer dipilih saat dialog"}
         </span>
       </div>
 
@@ -325,15 +422,20 @@ return (
                 </div>
                 <p className="mt-1 text-xs text-slate-500">Ikuti 3 langkah cepat di bawah sebelum mencetak ke mesin thermal.</p>
               </div>
-              <span className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 font-mono text-xs font-bold text-white shadow-sm">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />MODE OPERATOR CEPAT
-              </span>
             </div>
 
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
                 <p className="mt-3 text-sm font-medium text-slate-500">Memuat data produk...</p>
+              </div>
+            ) : products.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 py-14 text-center">
+                <p className="text-sm font-bold text-slate-700">Belum ada produk</p>
+                <p className="mt-1 max-w-sm text-xs text-slate-500">Kalau server baru menyala, coba muat ulang. Kalau benar-benar kosong, buat produk &amp; varian dulu di Admin → Variant Produk.</p>
+                <button type="button" onClick={loadProducts} className="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100">
+                  Muat ulang
+                </button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -342,7 +444,7 @@ return (
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">1</span>
-                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Pilih Model Helm &amp; Style</label>
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Pilih Model Helm &amp; Style</span>
                     </div>
                     <span className="rounded-md border border-blue-200 bg-blue-100/80 px-2.5 py-0.5 text-xs font-bold text-blue-700">
                       Model: {selectedProduct?.nama ?? "-"}
@@ -352,7 +454,7 @@ return (
                     {products.map((p) => {
                       const on = String(p.id) === productId;
                       return (
-                        <button key={p.id} type="button" onClick={() => handleProductSelect(String(p.id))}
+                        <button key={p.id} type="button" onClick={() => handleProductSelect(String(p.id))} aria-pressed={on}
                           className={`${btnBase} flex flex-col justify-between p-3 text-left ${on ? activeBtn : idleBtn}`}>
                           <div className="mb-1 flex w-full items-center justify-between">
                             <span className="text-xs font-black tracking-tight">{p.nama.toUpperCase()}</span>
@@ -369,7 +471,7 @@ return (
                       {styles.map((s) => {
                         const on = String(s.id) === styleId;
                         return (
-                          <button key={s.id} type="button"
+                          <button key={s.id} type="button" aria-pressed={on}
                             onClick={() => { setStyleId(String(s.id)); setColorId(""); setSizeId(""); setGenerateInfo(null); setGeneratedCodes([]); }}
                             className={`${btnBase} flex items-center justify-center gap-1.5 px-4 py-2 text-center text-xs ${on ? "bg-slate-900 font-bold text-white shadow-sm" : "border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
                             {on && whiteCheckIcon}{s.nama}
@@ -385,7 +487,7 @@ return (
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">2</span>
-                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Pilih Varian Warna &amp; Ukuran</label>
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Pilih Varian Warna &amp; Ukuran</span>
                     </div>
                     <span className="rounded-md border border-blue-200 bg-blue-100/80 px-2.5 py-0.5 text-xs font-bold text-blue-700">
                       {selectedColorName ?? "-"} • Size {selectedSizeName ?? "-"}
@@ -398,7 +500,7 @@ return (
                         {colors.map((c) => {
                           const on = String(c.id) === colorId;
                           return (
-                            <button key={c.id} type="button"
+                            <button key={c.id} type="button" aria-pressed={on}
                               onClick={() => { setColorId(String(c.id)); setSizeId(""); setGenerateInfo(null); setGeneratedCodes([]); }}
                               className={`${btnBase} flex items-center justify-between p-3 text-left text-xs ${on ? "border-2 border-slate-900 bg-slate-900 font-bold text-white shadow-sm" : "border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-100"}`}>
                               <span className="truncate">{c.nama}</span>{on && checkIcon}
@@ -413,7 +515,7 @@ return (
                         {sizes.map((s) => {
                           const on = String(s.id) === sizeId;
                           return (
-                            <button key={s.id} type="button" onClick={() => { setSizeId(String(s.id)); setGeneratedCodes([]); }}
+                            <button key={s.id} type="button" aria-pressed={on} onClick={() => { setSizeId(String(s.id)); setGenerateInfo(null); setGeneratedCodes([]); }}
                               className={`${btnBase} py-3.5 text-center text-lg ${on ? "border-2 border-slate-900 bg-slate-900 font-black text-white shadow-sm" : "border border-slate-300 bg-white font-bold text-slate-700 hover:bg-slate-100"}`}>
                               {s.nama}
                             </button>
@@ -429,14 +531,15 @@ return (
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">3</span>
-                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Jumlah Cetak &amp; Preset Cepat</label>
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Jumlah Cetak &amp; Preset Cepat</span>
                     </div>
-                    <span className="font-mono text-xs font-bold text-slate-600">Target: {isInElectron() ? (selectedPrinter || "Default OS") : "Zebra ZD230"}</span>
+                    <span className="font-mono text-xs font-bold text-slate-600">Target: {isInElectron() ? (selectedPrinter || "Printer default OS") : "Dialog cetak browser"}</span>
                   </div>
                   <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                     <div className="flex items-center overflow-hidden rounded-xl border-2 border-slate-300 bg-white shadow-sm">
                       <button type="button" onClick={() => setCopies((c) => Math.max(1, c - 1))} className="flex h-12 w-12 items-center justify-center text-lg font-bold text-slate-700 transition-colors hover:bg-slate-100">−</button>
-                      <input value={copies} min={1} max={500} type="number" onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                      <input value={copies} min={1} max={500} type="number" onChange={(e) => setCopies(Math.max(0, Number(e.target.value) || 0))}
+                        onBlur={() => setCopies(effectiveCopies)}
                         className="h-12 w-16 border-0 text-center font-mono text-base font-extrabold text-slate-900 focus:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                       <button type="button" onClick={() => setCopies((c) => Math.min(500, c + 1))} className="flex h-12 w-12 items-center justify-center text-lg font-bold text-slate-700 transition-colors hover:bg-slate-100">+</button>
                     </div>
@@ -459,6 +562,9 @@ return (
                       <option value="33x15mm">33 × 15 mm (Kecil)</option>
                       <option value="58x58mm">58 × 58 mm (Thermal)</option>
                       <option value="100x100mm">100 × 100 mm</option>
+                      <option value="100x140mm">100 × 140 mm</option>
+                      <option value="100x200mm">100 × 200 mm</option>
+                      <option value="4x6inch">4 × 6 inch</option>
                       <option value="custom">Custom...</option>
                     </select>
                     {isInElectron() ? (
@@ -470,7 +576,7 @@ return (
                         ))}
                       </select>
                     ) : (
-                      <span className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-500 sm:col-span-2">ZDesigner (Browser Mode)</span>
+                      <span className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-500 sm:col-span-2">Printer dipilih lewat dialog browser</span>
                     )}
                   </div>
                   {printSize === "custom" && (
@@ -491,12 +597,11 @@ return (
           {/* Footer Konfigurasi */}
           <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-500 sm:px-5">
             <span className="flex items-center gap-1.5 font-medium">
-              <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                 <path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd" />
               </svg>
-              Sensor label kalibrasi otomatis • Ukuran standar 100×75mm
+              Ukuran label: {labelMm.width} × {labelMm.height} mm{printSize === "custom" ? " (custom)" : ""}
             </span>
-            <span className="font-mono text-[11px] text-slate-400">Driver v3.4.1 OK</span>
           </div>
         </section>
 
@@ -511,14 +616,14 @@ return (
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
                 </span>
               </div>
-              <span className="rounded bg-slate-100 px-2.5 py-1 font-mono text-[11px] font-bold text-slate-500">100×75 mm • 203 DPI</span>
+              <span className="rounded bg-slate-100 px-2.5 py-1 font-mono text-[11px] font-bold text-slate-500">{labelMm.width}×{labelMm.height} mm</span>
             </div>
 
             <div className="flex items-center justify-center overflow-hidden rounded-xl border border-slate-200 p-4 sm:p-6"
               style={{ backgroundColor: "#f1f5f9", backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)", backgroundSize: "16px 16px" }}>
               {!selectedVariant ? (
                 <div className="flex flex-col items-center py-12">
-                  <svg className="h-10 w-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-10 w-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   <p className="mt-3 text-center text-sm font-medium text-slate-500">Pilih spesifikasi produk untuk melihat preview.</p>
@@ -547,7 +652,7 @@ return (
             <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white text-xs">
               <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="font-medium text-slate-500">Batch &amp; Tanggal</span>
-                <span className="font-mono font-bold text-slate-900">{generateInfo ? `${generateInfo.batch.kodeBatch} • ${formatDate(generateInfo.tanggal)}` : "-"}</span>
+                <span className="font-mono font-bold text-slate-900">{isInfoLoading ? "memuat…" : generateInfo ? `${generateInfo.batch.kodeBatch} • ${formatDate(generateInfo.tanggal)}` : "-"}</span>
               </div>
               <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="font-medium text-slate-500">Spesifikasi</span>
@@ -557,20 +662,25 @@ return (
                 <span className="font-medium text-slate-500">QR Code Payload</span>
                 <span className="ml-4 truncate font-mono font-bold text-blue-600" title={`${qrValue}${qrCount}`}>{qrValue}{qrCount}</span>
               </div>
+              {selectedVariant && !barcodeValue && (
+                <p className="bg-amber-50 px-3.5 py-2 font-semibold leading-snug text-amber-800">
+                  Kombinasi style/warna/size ini belum punya kode manufaktur di sistem — label dicetak tanpa barcode garis (QR tetap aktif).
+                </p>
+              )}
             </div>
           </div>
 
           <div className="space-y-3">
-            <button type="button" disabled={!selectedVariant || isGenerating || !generateInfo} onClick={handleGenerate} title="Cetak label thermal sekarang (Tekan Enter)"
+            <button type="button" disabled={!selectedVariant || busy || !generateInfo || isInfoLoading} onClick={handleGenerate} title="Cetak label thermal sekarang (Tekan Enter)"
               className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-2xl bg-[#0090ff] px-6 py-4 text-base font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-600 active:scale-[0.99] active:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none">
-              {isGenerating ? (
+              {busy || isInfoLoading ? (
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               ) : (
-                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
                 </svg>
               )}
-              <span className="tracking-wide uppercase">{isGenerating ? "MENCETAK..." : `CETAK LABEL (${copies} PCS)`}</span>
+              <span className="tracking-wide uppercase">{isInfoLoading ? "Memuat info batch…" : isGenerating ? "MENCETAK..." : isPrinting ? "MENGIRIM KE PRINTER..." : `CETAK LABEL (${effectiveCopies} PCS)`}</span>
             </button>
             <div className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-slate-500">
               <kbd className="rounded border border-slate-300 bg-slate-100 px-2 py-0.5 font-mono text-[10px] text-slate-700">Enter</kbd>
@@ -579,7 +689,8 @@ return (
               <span>untuk cetak instan</span>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1">
-              <button type="button" onClick={() => printFn()} disabled={!selectedVariant}
+              <button type="button" onClick={handleTestPrint} disabled={!previewCode || busy}
+                title="Cetak 1 label preview untuk cek hasil & posisi sensor"
                 className="rounded-xl border border-slate-300 bg-slate-50 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50">
                 Test Print (1 Lembar)
               </button>
@@ -587,6 +698,12 @@ return (
                 className="rounded-xl border border-slate-300 bg-slate-50 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600">
                 Reset Pilihan
               </button>
+              {generatedCodes.length > 0 && !busy && (
+                <button type="button" onClick={() => void printCodes(generatedCodes)}
+                  className="col-span-2 rounded-xl border-2 border-amber-300 bg-amber-50 py-2.5 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-100">
+                  Cetak ulang sisa antrean ({generatedCodes.length})
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -608,6 +725,35 @@ return (
     />
   </div>
 );
+}
+
+function beep(ok: boolean) {
+  try {
+    const Ctx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    void ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = ok ? 880 : 220;
+    osc.type = ok ? "sine" : "square";
+    gain.gain.value = 0.08;
+    osc.start();
+    osc.stop(ctx.currentTime + (ok ? 0.12 : 0.25));
+    osc.onended = () => void ctx.close();
+  } catch {
+    /* suara opsional */
+  }
+  try {
+    navigator.vibrate?.(ok ? 30 : [80, 40, 80]);
+  } catch {
+    /* abaikan */
+  }
 }
 
 export default CetakLabel;

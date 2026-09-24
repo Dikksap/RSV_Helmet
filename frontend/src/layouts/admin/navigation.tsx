@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- constants file, not a component */
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBook,
@@ -69,7 +70,6 @@ export const NAV_MANAGEMENT = [
   { to: "/", label: "Halaman Utama", icon: faHouse, end: false },
 ];
 
-// Placeholder integrasi — belum diimplementasikan.
 export const NAV_INTEGRASI = {
   label: "Integrasi",
   icon: faPlug,

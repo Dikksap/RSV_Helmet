@@ -4,8 +4,8 @@ import {
   updateBarangStatus,
 } from "../../model/barang/barang.js";
 import { broadcast } from "../../websocket/socket.js";
-import { errorMessage, errorStatus, isValidStatus } from "./helpers.js";
-import type { StatusBarang } from "../../model/barang/barang.js";
+import { errorMessage, errorStatus, isValidStatus, getValidStatusList } from "./helpers.js";
+import type { StatusBarang } from "../../model/barang/barang.status.js";
 
 export async function updateStatusBarangHandler(req: Request, res: Response) {
   try {
@@ -16,10 +16,10 @@ export async function updateStatusBarangHandler(req: Request, res: Response) {
       return res.status(400).json({ message: "Parameter 'id' tidak valid" });
     }
 
-    if (!isValidStatus(status)) {
+    if (!(await isValidStatus(status))) {
+      const list = await getValidStatusList();
       return res.status(400).json({
-        message:
-          "Field 'status' wajib diisi dan harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+        message: `Field 'status' wajib diisi dan harus salah satu dari: ${list}`,
       });
     }
 
@@ -60,10 +60,10 @@ export async function bulkStatusBarangHandler(req: Request, res: Response) {
           message: "Setiap item harus memiliki 'id' berupa angka",
         });
       }
-      if (!isValidStatus(item.status)) {
+      if (!(await isValidStatus(item.status))) {
+        const list = await getValidStatusList();
         return res.status(400).json({
-          message:
-            "Setiap item.status harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+          message: `Setiap item.status harus salah satu dari: ${list}`,
         });
       }
     }
