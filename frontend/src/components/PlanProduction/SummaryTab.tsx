@@ -81,10 +81,12 @@ export default function SummaryTab({ orderId }: Props) {
     const byKw = (kw: string) =>
       allocation.filter((a) => a.item.toUpperCase().includes(kw)).reduce((n, a) => n + a.total, 0);
     return new Map([
-      ["persiapan", totalQty],
+      ["buffing", totalQty],
+      ["baseCoat", totalQty],
       ["decalSolid", byKw("SOLID")],
       ["decalMotif", byKw("MOTIF")],
       ["topCoat", totalQty],
+      ["perakitan", totalQty],
       ["qc", totalQty],
     ]);
   }, [allocation, totalQty]);

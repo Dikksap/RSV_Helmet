@@ -167,7 +167,7 @@
 }
 
 .hangtag-chip[aria-checked="true"] .hangtag-chip-dot {
-  background: var(--ht-paper);
+  background: orange;
 }
 
 .hangtag-chip-dot::after {

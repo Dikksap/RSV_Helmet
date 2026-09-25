@@ -55,7 +55,7 @@ export default function RealisasiProduksi(){
       const rencana=new Map<number,number>();
       for(const r of orderData.schedule.rows){ if(r.tanggal!==tanggal || r.variantId<=0 || r.jumlah<=0) continue; rencana.set(r.variantId,(rencana.get(r.variantId)??0)+r.jumlah); }
       const head=orderData.schedule.rows.find(r=>r.tanggal===tanggal);
-      setRencanaTahap({ persiapan:head?.persiapan??0, decalSolid:head?.decalSolid??0, decalMotif:head?.decalMotif??0, topCoat:head?.topCoat??0, perakitan:head?.perakitan??0, qc:head?.qc??0 });
+      setRencanaTahap({ buffing:head?.buffing??0, baseCoat:head?.baseCoat??0, decalSolid:head?.decalSolid??0, decalMotif:head?.decalMotif??0, topCoat:head?.topCoat??0, perakitan:head?.perakitan??0, qc:head?.qc??0 });
       const saved=new Map<number,RealisasiRow>(data.realisasi.map((x:RealisasiRow)=>[x.variantId,x]));
       const fg=new Map<number,number>(data.finishgood.map((x:RealisasiRow)=>[x.variantId,x.qty]));
       const savedTahap=new Map((data.tahapan??[]).map(x=>[x.stage,x.qty]));

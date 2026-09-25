@@ -12,7 +12,8 @@ const HEADERS = [
   "Tanggal",
   "Hari",
   "Jam",
-  "Persiapan",
+  "Buffing",
+  "Base Coat",
   "Decal Solid",
   "Decal Motif",
   "Top Coat",
@@ -31,7 +32,7 @@ const fmtDate = (iso: string) => {
 function toCsv(rows: ScheduleRow[]): string {
   const csvHeaders = [
     "Tanggal", "Hari", "Size", "Jam",
-    "Persiapan", "Decal Solid", "Decal Motif",
+    "Buffing", "Base Coat", "Decal Solid", "Decal Motif",
     "Top Coat", "Perakitan", "QC",
     "Item", "Jumlah", "Jumlah_Dus",
   ];
@@ -40,7 +41,7 @@ function toCsv(rows: ScheduleRow[]): string {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const line = (r: ScheduleRow) =>
-    [fmtDate(r.tanggal), r.hari, r.size, r.jam, r.persiapan, r.decalSolid, r.decalMotif, r.topCoat, r.perakitan, r.qc, r.item, r.jumlah, r.jumlah / PCS_PER_DUS]
+    [fmtDate(r.tanggal), r.hari, r.size, r.jam, r.buffing, r.baseCoat, r.decalSolid, r.decalMotif, r.topCoat, r.perakitan, r.qc, r.item, r.jumlah, r.jumlah / PCS_PER_DUS]
       .map(cell)
       .join(",");
   return [csvHeaders.join(","), ...rows.map(line)].join("\n");
@@ -190,7 +191,8 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-[#6B7280]">{d.hari}</td>
                       <td className="px-3 py-2.5 tabular-nums text-[#6B7280]">{d.jam}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-[#1F2937]">{d.head.persiapan.toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-[#1F2937]">{d.head.buffing.toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-[#1F2937]">{d.head.baseCoat.toLocaleString("id-ID")}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-[#1F2937]">{d.head.decalSolid.toLocaleString("id-ID")}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-[#1F2937]">{d.head.decalMotif.toLocaleString("id-ID")}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-[#1F2937]">{d.head.topCoat.toLocaleString("id-ID")}</td>

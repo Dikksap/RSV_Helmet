@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import {
+  getProductionCapacities,
   getProductionOrderSummary,
   getProductionSchedule,
+  type ProductionCapacity,
   type ProductionOrderSummary,
   type ScheduleRow,
+  type ScheduleStageTake,
 } from "../../api/productionOrders";
+import { stageKeyOf } from "./utils";
 
 // ponytail: satu kertas A4 per tanggal, tarik rows jadwal otomatis — tanpa html2pdf CDN baru
 interface Props {
@@ -39,8 +43,11 @@ const fmtShort = (iso: string) => {
 
 export default function SpkTab({ orderId }: Props) {
   const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [rincian, setRincian] = useState<ScheduleStageTake[]>([]);
   const [meta, setMeta] = useState<{ prepDays: string[]; qcDays: string[] } | null>(null);
   const [detail, setDetail] = useState<ProductionOrderSummary | null>(null);
+  const [capacities, setCapacities] = useState<ProductionCapacity[]>([]);
+  const [selectedStage, setSelectedStage] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,11 +84,13 @@ export default function SpkTab({ orderId }: Props) {
   useEffect(() => {
     if (orderId === null) return;
     setLoading(true);
-    Promise.all([getProductionSchedule(orderId), getProductionOrderSummary(orderId)])
-      .then(([sch, det]) => {
+    Promise.all([getProductionSchedule(orderId), getProductionOrderSummary(orderId), getProductionCapacities(orderId)])
+      .then(([sch, det, caps]) => {
         setRows(sch.rows);
+        setRincian(sch.rincian ?? []);
         setMeta({ prepDays: (sch.meta as any).prepDays ?? [], qcDays: (sch.meta as any).qcDays ?? [] });
         setDetail(det);
+        setCapacities(caps);
         setError(null);
         // default tanggal: hari produksi pertama dengan jumlah>0
         const prodDates = [...new Set(sch.rows.filter((r) => r.jumlah > 0).map((r) => r.tanggal))].sort();
@@ -117,13 +126,71 @@ export default function SpkTab({ orderId }: Props) {
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [rows]);
 
+  // Mode tahap: key kolom jadwal + baris kapasitas.
+  // Decal solid + motif gabung satu opsi "DECAL" (satu SPK).
+  const stageOpts = useMemo(() => {
+    const opts: string[] = [];
+    let decalAdded = false;
+    for (const c of capacities) {
+      const k = stageKeyOf(c.stage);
+      if (k === "decalSolid" || k === "decalMotif") {
+        if (!decalAdded) {
+          opts.push("DECAL");
+          decalAdded = true;
+        }
+      } else if (k) {
+        opts.push(c.stage);
+      }
+    }
+    return opts;
+  }, [capacities]);
+  const singleKey = selectedStage && selectedStage !== "DECAL" ? stageKeyOf(selectedStage) : null;
+  // useMemo: array baru tiap render me-reset input Hasil/Reject via effect di bawah.
+  const stageKeys = useMemo(
+    () => (selectedStage === "DECAL" ? ["decalSolid", "decalMotif"] : singleKey ? [singleKey] : null),
+    [selectedStage, singleKey],
+  );
+  // SPK Decal: tabel agregat per jenis, tanpa item/size.
+  const isDecal = selectedStage === "DECAL";
+
   // when tanggal changes, rebuild editable from schedule
   useEffect(() => {
     if (!selectedTanggal) {
       setEditable([]);
       return;
     }
-    const filtered = rows.filter((r) => r.tanggal === selectedTanggal && r.jumlah > 0);
+    if (selectedStage === "DECAL") {
+      // SPK Decal: agregat per jenis dari kolom hari itu, tanpa item/size.
+      // Hanya baris yang targetnya > 0.
+      const head = rows.find((r) => r.tanggal === selectedTanggal);
+      const defs = [
+        { model: "Decal Solid", target: head?.decalSolid ?? 0 },
+        { model: "Decal Motif", target: head?.decalMotif ?? 0 },
+      ].filter((d) => d.target > 0);
+      if (defs.length === 0) {
+        setEditable([{ key: `empty-${selectedTanggal}`, model: "", size: "", warna: "", target: 0, hasil: "", reject: "", ket: "", variantId: 0 }]);
+        return;
+      }
+      setEditable(
+        defs.map((d, idx) => ({
+          key: `decal-${selectedTanggal}-${idx}`,
+          model: d.model,
+          size: "-",
+          warna: "-",
+          target: d.target,
+          hasil: "",
+          reject: "",
+          ket: "",
+          variantId: 0,
+        })),
+      );
+      return;
+    }
+    // Mode tahap: rincian item tahap itu hari itu. Mode alokasi: kolom Jumlah.
+    const source: { variantId: number; size: string; item: string; jumlah: number }[] = stageKeys
+      ? rincian.filter((t) => t.tanggal === selectedTanggal && stageKeys.includes(t.stage))
+      : rows.filter((r) => r.tanggal === selectedTanggal && r.jumlah > 0);
+    const filtered = source;
     if (filtered.length === 0) {
       // hari tanpa produksi: satu baris kosong editable
       setEditable([{ key: `empty-${selectedTanggal}`, model: "", size: "", warna: "", target: 0, hasil: "", reject: "", ket: "", variantId: 0 }]);
@@ -146,7 +213,7 @@ export default function SpkTab({ orderId }: Props) {
       };
     });
     setEditable(mapped);
-  }, [selectedTanggal, rows, variantMap]);
+  }, [selectedTanggal, rows, rincian, variantMap, stageKeys, selectedStage]);
 
   const totals = useMemo(() => {
     let t = 0, h = 0, rej = 0;
@@ -187,11 +254,35 @@ export default function SpkTab({ orderId }: Props) {
             <button type="button" onClick={() => printFn()} className="rounded-lg bg-[#1E3A5F] px-4 py-2 text-sm font-medium text-white hover:bg-[#16294a]">Print / Save PDF</button>
           </div>
         </div>
-        <p className="mt-1 text-xs text-[#6B7280]">Pilih tanggal → Target otomatis dari <span className="font-mono">GET /production-orders/:id/schedule</span> (kolom Jumlah). Hasil/Reject isi manual atau dari Realisasi.</p>
+        <p className="mt-1 text-xs text-[#6B7280]">Pilih tanggal + tahap → Target otomatis dari <span className="font-mono">GET /production-orders/:id/schedule</span> (Alokasi = kolom Jumlah, tahap = rincian item tahap itu hari itu). Hasil/Reject isi manual.</p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
           {/* left form */}
           <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase text-[#6B7280]">Tahap / Divisi</label>
+              <select
+                value={selectedStage}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedStage(v);
+                  if (v) setLini(v);
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Alokasi (per item)</option>
+                {stageOpts.map((s) => (
+                  <option key={s} value={s}>{s === "DECAL" ? "Decal" : s}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-[#6B7280]">
+                {selectedStage
+                  ? isDecal
+                    ? "SPK Decal: target agregat Solid/Motif, tanpa item/size."
+                    : "SPK divisi: rincian item tahap itu, Lini terisi otomatis."
+                  : "SPK alokasi: rincian item/size ikut Top Coat."}
+              </p>
+            </div>
             <div>
               <label className="block text-xs font-semibold uppercase text-[#6B7280]">Tanggal produksi</label>
               <select value={selectedTanggal} onChange={(e) => setSelectedTanggal(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -224,12 +315,16 @@ export default function SpkTab({ orderId }: Props) {
               <div className="max-h-[42vh] space-y-2 overflow-y-auto pr-1">
                 {editable.map((r, idx) => (
                   <div key={r.key} className="rounded border border-slate-200 bg-white p-2">
-                    <div className="mb-1 flex items-center justify-between text-xs"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1E3A5F] text-[10px] font-bold text-white">{idx+1}</span><span className="text-[#6B7280]">#{r.variantId || "-"}</span></div>
-                    <input value={r.model} onChange={(e)=>updateRow(idx,"model",e.target.value)} placeholder="Model — Style" className="mb-1 w-full rounded border border-slate-300 px-2 py-1 text-xs" />
-                    <div className="grid grid-cols-2 gap-1">
-                      <input value={r.size} onChange={(e)=>updateRow(idx,"size",e.target.value)} placeholder="Size" className="rounded border border-slate-300 px-2 py-1 text-xs" />
-                      <input value={r.warna} onChange={(e)=>updateRow(idx,"warna",e.target.value)} placeholder="Warna" className="rounded border border-slate-300 px-2 py-1 text-xs" />
-                    </div>
+                    <div className="mb-1 flex items-center justify-between text-xs"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1E3A5F] text-[10px] font-bold text-white">{idx+1}</span>{isDecal ? <span className="font-semibold text-[#1E3A5F]">{r.model || "—"}</span> : <span className="text-[#6B7280]">#{r.variantId || "-"}</span>}</div>
+                    {!isDecal && (
+                      <>
+                        <input value={r.model} onChange={(e)=>updateRow(idx,"model",e.target.value)} placeholder="Model — Style" className="mb-1 w-full rounded border border-slate-300 px-2 py-1 text-xs" />
+                        <div className="grid grid-cols-2 gap-1">
+                          <input value={r.size} onChange={(e)=>updateRow(idx,"size",e.target.value)} placeholder="Size" className="rounded border border-slate-300 px-2 py-1 text-xs" />
+                          <input value={r.warna} onChange={(e)=>updateRow(idx,"warna",e.target.value)} placeholder="Warna" className="rounded border border-slate-300 px-2 py-1 text-xs" />
+                        </div>
+                      </>
+                    )}
                     <div className="mt-1 grid grid-cols-3 gap-1">
                       <label className="text-[10px] text-[#6B7280]">Target<input type="number" value={r.target} onChange={(e)=>updateRow(idx,"target",e.target.value)} className="mt-0.5 w-full rounded border border-slate-300 px-1 py-1 text-xs" /></label>
                       <label className="text-[10px] text-[#6B7280]">Hasil<input type="number" value={r.hasil} onChange={(e)=>updateRow(idx,"hasil",e.target.value)} className="mt-0.5 w-full rounded border border-slate-300 px-1 py-1 text-xs" /></label>
@@ -239,10 +334,12 @@ export default function SpkTab({ orderId }: Props) {
                   </div>
                 ))}
               </div>
-              <div className="mt-2 flex gap-2">
-                <button type="button" onClick={addRow} disabled={editable.length>=10} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-40">+ Tambah</button>
-                <button type="button" onClick={removeLast} disabled={editable.length<=1} className="rounded bg-red-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Hapus</button>
-              </div>
+              {!isDecal && (
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={addRow} disabled={editable.length>=10} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-40">+ Tambah</button>
+                  <button type="button" onClick={removeLast} disabled={editable.length<=1} className="rounded bg-red-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Hapus</button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-2">
@@ -292,9 +389,15 @@ export default function SpkTab({ orderId }: Props) {
                 <thead>
                   <tr className="bg-[#f0f0f0] text-center font-bold uppercase">
                     <th className="border border-black px-1 py-1" style={{ width: "4%" }}>No</th>
-                    <th className="border border-black px-1 py-1" style={{ width: "24%" }}>Model / Tipe Helm</th>
-                    <th className="border border-black px-1 py-1" style={{ width: "8%" }}>Size</th>
-                    <th className="border border-black px-1 py-1" style={{ width: "18%" }}>Warna</th>
+                    {isDecal ? (
+                      <th className="border border-black px-1 py-1" style={{ width: "50%" }}>Proses</th>
+                    ) : (
+                      <>
+                        <th className="border border-black px-1 py-1" style={{ width: "24%" }}>Model / Tipe Helm</th>
+                        <th className="border border-black px-1 py-1" style={{ width: "8%" }}>Size</th>
+                        <th className="border border-black px-1 py-1" style={{ width: "18%" }}>Warna</th>
+                      </>
+                    )}
                     <th className="border border-black px-1 py-1" style={{ width: "9%" }}>Target</th>
                     <th className="border border-black px-1 py-1" style={{ width: "9%" }}>Hasil (OK)</th>
                     <th className="border border-black px-1 py-1" style={{ width: "9%" }}>Reject (NG)</th>
@@ -306,8 +409,12 @@ export default function SpkTab({ orderId }: Props) {
                     <tr key={r.key}>
                       <td className="border border-black px-1 py-1 text-center">{idx + 1}</td>
                       <td className="border border-black px-1 py-1 text-left">{r.model || "-"}</td>
-                      <td className="border border-black px-1 py-1 text-center">{r.size || "-"}</td>
-                      <td className="border border-black px-1 py-1 text-center">{r.warna || "-"}</td>
+                      {!isDecal && (
+                        <>
+                          <td className="border border-black px-1 py-1 text-center">{r.size || "-"}</td>
+                          <td className="border border-black px-1 py-1 text-center">{r.warna || "-"}</td>
+                        </>
+                      )}
                       <td className="border border-black px-1 py-1 text-center">{r.target ? r.target.toLocaleString("id-ID") : ""}</td>
                       <td className="border border-black px-1 py-1 text-center">{r.hasil || ""}</td>
                       <td className="border border-black px-1 py-1 text-center">{r.reject || ""}</td>
@@ -315,12 +422,12 @@ export default function SpkTab({ orderId }: Props) {
                     </tr>
                   ))}
                   {editable.length === 0 && (
-                    <tr><td colSpan={8} className="border border-black px-1 py-4 text-center text-[#6B7280]">Tidak ada target untuk tanggal ini (LIBUR / Persiapan / Penyesuaian)</td></tr>
+                    <tr><td colSpan={isDecal ? 6 : 8} className="border border-black px-1 py-4 text-center text-[#6B7280]">Tidak ada target untuk tanggal ini (LIBUR / Persiapan / Penyesuaian)</td></tr>
                   )}
                 </tbody>
                 <tfoot>
                   <tr className="bg-[#f0f0f0] font-bold">
-                    <td colSpan={4} className="border border-black px-1 py-1 text-right">TOTAL</td>
+                    <td colSpan={isDecal ? 2 : 4} className="border border-black px-1 py-1 text-right">TOTAL</td>
                     <td className="border border-black px-1 py-1 text-center">{totals.t.toLocaleString("id-ID")}</td>
                     <td className="border border-black px-1 py-1 text-center">{totals.h ? totals.h.toLocaleString("id-ID") : "0"}</td>
                     <td className="border border-black px-1 py-1 text-center">{totals.rej ? totals.rej.toLocaleString("id-ID") : "0"}</td>

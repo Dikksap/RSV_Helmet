@@ -153,7 +153,8 @@ export interface ScheduleRow {
   hari: string;
   size: string;
   jam: number;
-  persiapan: number;
+  buffing: number;
+  baseCoat: number;
   decalSolid: number;
   decalMotif: number;
   topCoat: number;
@@ -164,9 +165,19 @@ export interface ScheduleRow {
   variantId: number;
 }
 
+export interface ScheduleStageTake {
+  tanggal: string;
+  stage: "buffing" | "baseCoat" | "decalSolid" | "decalMotif" | "topCoat" | "perakitan" | "qc";
+  variantId: number;
+  size: string;
+  item: string;
+  jumlah: number;
+}
+
 export interface ProductionSchedule {
   order: { id: number; nomor: string; periode: string; totalQty: number };
   rows: ScheduleRow[];
+  rincian: ScheduleStageTake[];
   meta: {
     dialokasikan: number;
     sisa: number;
@@ -201,7 +212,8 @@ export interface RealisasiData {
 }
 
 export const REALISASI_STAGE_LABEL: Record<string, string> = {
-  persiapan: "Persiapan",
+  buffing: "Buffing",
+  baseCoat: "Base Coat",
   decalSolid: "Decal Solid",
   decalMotif: "Decal Motif",
   topCoat: "Top Coat",

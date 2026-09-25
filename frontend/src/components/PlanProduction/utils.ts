@@ -77,15 +77,24 @@ export interface StageSummary {
   kapS: number;
 }
 
-type ScheduleNumField = "persiapan" | "decalSolid" | "decalMotif" | "topCoat" | "qc";
+type ScheduleNumField = "buffing" | "baseCoat" | "decalSolid" | "decalMotif" | "topCoat" | "perakitan" | "qc";
 
 const STAGE_FIELDS: { key: string; label: string; field: ScheduleNumField }[] = [
-  { key: "persiapan", label: "PERSIAPAN", field: "persiapan" },
+  { key: "buffing", label: "BUFFING", field: "buffing" },
+  { key: "baseCoat", label: "BASE COAT", field: "baseCoat" },
   { key: "decalSolid", label: "DECAL SOLID", field: "decalSolid" },
   { key: "decalMotif", label: "DECAL MOTIF", field: "decalMotif" },
-  { key: "topCoat", label: "TOP COAT + PERAKITAN", field: "topCoat" },
+  { key: "topCoat", label: "TOP COAT", field: "topCoat" },
+  { key: "perakitan", label: "PERAKITAN", field: "perakitan" },
   { key: "qc", label: "QC", field: "qc" },
 ];
+
+// Nama stage kapasitas ("BASE COAT") → key kolom ScheduleRow ("baseCoat").
+// Cocok label penuh dulu, lalu kata pertama (ikut pola SummaryTab.noteOf).
+export function stageKeyOf(capStage: string): string | null {
+  const s = capStage.toUpperCase();
+  return STAGE_FIELDS.find((f) => f.label === s || s.startsWith(f.label.split(" ")[0]))?.key ?? null;
+}
 
 function mode(vals: number[]): number {
   if (vals.length === 0) return 0;

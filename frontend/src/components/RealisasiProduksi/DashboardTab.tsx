@@ -17,8 +17,8 @@ interface Props {
 }
 
 const DIVISI_DEFS: { label: string; key: string; rakDenom: number | null }[] = [
-  { label: "Buffing", key: "persiapan", rakDenom: 72 },
-  { label: "Base Coat", key: "persiapan", rakDenom: 72 },
+  { label: "Buffing", key: "buffing", rakDenom: 72 },
+  { label: "Base Coat", key: "baseCoat", rakDenom: 72 },
   { label: "Decal Solid", key: "decalSolid", rakDenom: null },
   { label: "Decal Motif", key: "decalMotif", rakDenom: null },
   { label: "Top Coat", key: "topCoat", rakDenom: 72 },
