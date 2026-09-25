@@ -144,6 +144,89 @@ BAD        -> terminal
 - Gunakan `npm run db:push` hanya untuk sinkronisasi schema yang memang tidak memerlukan histori migration.
 - Gunakan `npm run db:seed` untuk seed data.
 - Periksa `prisma.config.ts` dan `.env` sebelum mendiagnosis masalah koneksi.
+- Untuk membatalkan perubahan schema atau pulih dari `git reset` pada migration, ikuti **Schema Change & Git Reset** di bawah.
+
+## Schema Change & Git Reset
+
+Satu perubahan schema menghasilkan tiga artefak di dua tempat, dan hanya satu yang di-undo oleh git:
+
+| Artefak | Lokasi | Di-undo `git reset`? |
+| --- | --- | --- |
+| `migration.sql` | `prisma/migrations/` (git) | Ya |
+| Efek SQL (tabel/kolom/index) | MariaDB, volume `mariadb_data` | Tidak |
+| Baris ledger | tabel `_prisma_migrations` | Tidak |
+
+`git reset` pada `prisma/migrations/` setelah migration sempat applied meninggalkan efek SQL tanpa file sumber. Prisma membalas dengan `P3015`, atau menuntut `migrate reset` yang menghapus seluruh database.
+
+### Membatalkan perubahan schema
+
+```text
+Edit schema.prisma
+├─ BELUM jalan db:migrate
+│    git restore prisma/schema.prisma   -> aman, DB tidak tersentuh
+│
+└─ SUDAH jalan db:migrate
+     ├─ data dev boleh hilang (hasil seed)
+     │    migrate reset + re-seed       -> wipe sadar
+     │
+     └─ data harus dipertahankan
+          JANGAN git reset file migration. Kembalikan isi schema.prisma
+          saja, biarkan db:migrate membuat migration drop baru, lalu commit
+          schema + migration.
+```
+
+Pembatalan selalu maju ke depan lewat migration baru, tidak pernah menghapus histori. Khusus jalur development dengan data seed, `migrate reset` lebih tepat daripada menumpuk migration add lalu drop.
+
+### Reset + re-seed
+
+`prisma migrate reset` di Prisma 7 **tidak** menjalankan seed otomatis; flag `--seed`/`--skip-seed` juga sudah tidak ada. Setelah reset, database hanya berisi schema plus data yang di-`INSERT` di dalam `migration.sql` (misalnya 5 baris `StatusBarang` dan batch `nomorBatch=1`), dengan `User`, `Product`, `ProductVariant`, dan `Barang` kosong. Seed harus dijalankan manual, dua langkah:
+
+```bash
+docker exec -it backend-api-1 npx prisma migrate reset --force
+npm run db:seed                                                           # master, batch, variant, barang
+docker exec -it backend-api-1 npx tsx prisma/seed-production-order.ts     # ProductionOrder
+```
+
+Urutan wajib: `seed.ts` dulu, `seed-production-order.ts` belakangan. Yang kedua bersifat upsert jadi aman diulang, membaca `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` (bukan `DATABASE_URL`), dan harus jalan di dalam container agar host `db` resolve.
+
+### Tiga arti "reset"
+
+- `git reset`: undo file di working tree atau index.
+- `prisma migrate reset`: drop seluruh database lalu apply ulang semua migration.
+- `prisma migrate resolve`: tambal baris ledger `_prisma_migrations` tanpa menyentuh data.
+
+### Cek sinkronisasi
+
+```bash
+docker exec -it backend-api-1 npx prisma migrate status
+docker exec -it backend-api-1 npx prisma migrate diff \
+  --from-schema prisma/schema.prisma --to-config-datasource --exit-code
+```
+
+Exit `0` = sinkron, `2` = ada drift, `1` = error. Jalankan sebelum commit schema supaya drift ketahuan dini, bukan saat Prisma sudah menuntut reset.
+
+### Catatan Prisma 7.9.1
+
+- `migrate dev` sudah tidak punya `--accept-data-loss`; flag itu dihapus.
+- `migrate dev` wajib interaktif (TTY). Di CI atau shell non-TTY, buat migration dengan `migrate dev --create-only` di terminal lalu terapkan lewat `migrate deploy`.
+- `--from-schema-datamodel` berganti nama menjadi `--from-schema`. `--shadow-database-url` dihapus; diff `--from-migrations` kini butuh `datasource.shadowDatabaseUrl` di `prisma.config.ts`.
+- MariaDB membuat index backing foreign key otomatis dengan nama `<Tabel>_<kolom>_fkey`. Migration berisi `ALTER TABLE ... ADD CONSTRAINT` tanpa index eksplisit menghasilkan index `_fkey` di database yang tidak tercatat di `schema.prisma`. Selisih ini terdeteksi sebagai drift dan muncul kembali setiap reset karena replay migration yang sama.
+
+Index backing FK **tidak bisa dihapus** selama foreign key-nya ada — MariaDB menolak, dan arah diff Prisma justru `CREATE INDEX` (database sudah benar, `schema.prisma` yang kurang deklarasi), bukan `DROP`. Jadi satu-satunya penyelesaian adalah mendeklarasikannya eksplisit dengan `map` memakai nama yang sudah dihasilkan MariaDB, bukan mencoba membuangnya. Sudah diterapkan pada dua index:
+
+```prisma
+// RiwayatBarang
+@@index([status], map: "RiwayatBarang_status_fkey")
+
+// ProductionRealization
+@@index([variantId], map: "ProductionRealization_variantId_fkey")
+```
+
+Dengan `map` yang cocok, diff menjadi kosong dan tidak ada migration baru yang terbentuk, karena replay migration tetap menghasilkan nama index yang sama.
+
+### Commit
+
+`schema.prisma` dan direktori migration baru wajib masuk commit yang sama, segera setelah `db:migrate`. Migration yang sudah applied tapi belum di-commit adalah sumber kecelakaan utama: perubahan kode bisa di-revert, efek database tidak.
 
 ## Commands
 
@@ -284,6 +367,7 @@ Setelah mengedit: jalankan validasi relevan, periksa diff untuk secret/generated
 - Jangan `git reset`, `git checkout`, `git clean`, force-overwrite, menghapus perubahan pengguna, atau commit tanpa instruksi eksplisit.
 - Jangan edit `generated/prisma` atau migration lama secara manual.
 - Jangan reset database atau menjalankan operasi destructive tanpa persetujuan eksplisit.
+- Jangan membatalkan migration yang sudah applied dengan `git reset` pada `prisma/migrations/`, dan jangan commit `schema.prisma` tanpa migration pendampingnya. Lihat **Schema Change & Git Reset**.
 - Jangan membuat API, status, transition, event WebSocket, MQTT topic, RFID flow, atau business rule yang tidak ditemukan.
 - Jangan mengubah source code lain hanya untuk menyelesaikan dokumentasi ini.
 
