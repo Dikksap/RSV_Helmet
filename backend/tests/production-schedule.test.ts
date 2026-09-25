@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { buildSchedule, defaultAnchors, endOfPeriode } from "../src/model/production-order/schedule.js";
 
 const CAPS = [
-  { stage: "PERSIAPAN (BUFFING + BASECOAT)", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-20" },
+  { stage: "BUFFING", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-20" },
+  { stage: "BASE COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-20" },
   { stage: "DECAL SOLID", kapasitasWeekday: 144, kapasitasSabtu: 72, mulai: "2026-10-02", selesai: "2026-10-21" },
   { stage: "DECAL MOTIF", kapasitasWeekday: 80, kapasitasSabtu: 40, mulai: "2026-10-02", selesai: "2026-10-30" },
-  { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-05", selesai: "2026-10-28" },
+  { stage: "TOP COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-05", selesai: "2026-10-28" },
+  { stage: "PERAKITAN", kapasitasWeekday: 200, kapasitasSabtu: 100, mulai: "2026-10-05", selesai: "2026-10-28" },
   { stage: "QC", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-06", selesai: "2026-10-29" },
 ];
 
@@ -21,17 +23,17 @@ describe("buildSchedule", () => {
   it("hari persiapan + LIBUR Minggu sesuai contoh", () => {
     const { rows } = buildSchedule(ITEMS, CAPS, PREP, []);
     const byDate = (t: string) => rows.filter((r) => r.tanggal === t);
-    expect(byDate("2026-10-01")[0]).toMatchObject({ persiapan: 288, decalSolid: 0, item: "Persiapan", jumlah: 0, jam: 7 });
+    expect(byDate("2026-10-01")[0]).toMatchObject({ buffing: 288, baseCoat: 288, decalSolid: 0, item: "Persiapan", jumlah: 0, jam: 7 });
     // Demand fixture: total 350, solid 300, motif 0 → fallback total.
-    expect(byDate("2026-10-02")[0]).toMatchObject({ persiapan: 62, decalSolid: 144, decalMotif: 80, item: "Persiapan + Decal" });
-    expect(byDate("2026-10-03")[0]).toMatchObject({ persiapan: 0, decalSolid: 72, decalMotif: 40, jam: 3.5 });
-    expect(byDate("2026-10-04")[0]).toMatchObject({ item: "LIBUR", jam: 0, persiapan: 0, jumlah: 0 });
+    expect(byDate("2026-10-02")[0]).toMatchObject({ buffing: 62, baseCoat: 62, decalSolid: 144, decalMotif: 80, item: "Persiapan + Decal" });
+    expect(byDate("2026-10-03")[0]).toMatchObject({ buffing: 0, baseCoat: 0, decalSolid: 72, decalMotif: 40, jam: 3.5 });
+    expect(byDate("2026-10-04")[0]).toMatchObject({ item: "LIBUR", jam: 0, buffing: 0, baseCoat: 0, jumlah: 0 });
   });
 
   it("alokasi ikut TopCoat, urut priority lalu sizeUrutan", () => {
     const { rows, meta } = buildSchedule(ITEMS, CAPS, PREP, []);
     const day5 = rows.filter((r) => r.tanggal === "2026-10-05");
-    expect(day5[0]).toMatchObject({ topCoat: 288, perakitan: 288 });
+    expect(day5[0]).toMatchObject({ topCoat: 288, perakitan: 200 });
     // Solid A LG (urutan 1) dulu 200, lalu MD 88 dari 288
     expect(day5.map((r) => [r.size, r.jumlah])).toEqual([["LG", 200], ["MD", 88]]);
     expect(day5[0].item).toBe("Solid A");
@@ -48,8 +50,8 @@ describe("buildSchedule", () => {
 describe("demand master + akhir bebas", () => {
   it("jalan lewat window sampai demand tercapai", () => {
     const caps = [
-      { stage: "PERSIAPAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-02" },
-      { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-02" },
+      { stage: "BUFFING", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-02" },
+      { stage: "TOP COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-02" },
     ];
     const items = [{ variantId: 1, qty: 1000, priority: 1, style: "S", color: "C", size: "MD", sizeUrutan: 1 }];
     const { rows, meta } = buildSchedule(items, caps, [], []);
@@ -63,7 +65,7 @@ describe("demand master + akhir bebas", () => {
     const caps = [
       { stage: "DECAL SOLID", kapasitasWeekday: 1000, kapasitasSabtu: 500, mulai: "2026-10-01", selesai: "2026-10-01" },
       { stage: "DECAL MOTIF", kapasitasWeekday: 1000, kapasitasSabtu: 500, mulai: "2026-10-01", selesai: "2026-10-01" },
-      { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 10000, kapasitasSabtu: 5000, mulai: "2026-10-01", selesai: "2026-10-01" },
+      { stage: "TOP COAT", kapasitasWeekday: 10000, kapasitasSabtu: 5000, mulai: "2026-10-01", selesai: "2026-10-01" },
     ];
     const items = [
       { variantId: 1, qty: 100, priority: 1, style: "Solid", color: "A", size: "MD", sizeUrutan: 1 },
@@ -74,13 +76,40 @@ describe("demand master + akhir bebas", () => {
     expect(rows.reduce((n, r) => n + r.decalMotif, 0)).toBe(50);
   });
 
-  it("topcoat tidak diakru di hari fixed", () => {
+  it("topcoat + perakitan tidak diakru di hari fixed", () => {
     const caps = [
-      { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-10" },
+      { stage: "TOP COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-10" },
+      { stage: "PERAKITAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-10" },
     ];
     const items = [{ variantId: 1, qty: 5000, priority: 1, style: "S", color: "C", size: "MD", sizeUrutan: 1 }];
     const { rows } = buildSchedule(items, caps, [], ["2026-10-02"]);
-    expect(rows.find((r) => r.tanggal === "2026-10-02")).toMatchObject({ item: "QC & Packing", topCoat: 0 });
+    expect(rows.find((r) => r.tanggal === "2026-10-02")).toMatchObject({ item: "QC & Packing", topCoat: 0, perakitan: 0 });
+  });
+
+  it("rincian per-item per tahap untuk SPK divisi", () => {
+    const caps = [
+      { stage: "BUFFING", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-31" },
+      { stage: "BASE COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-31" },
+      { stage: "DECAL SOLID", kapasitasWeekday: 200, kapasitasSabtu: 100, mulai: "2026-10-01", selesai: "2026-10-31" },
+      { stage: "DECAL MOTIF", kapasitasWeekday: 150, kapasitasSabtu: 75, mulai: "2026-10-01", selesai: "2026-10-31" },
+      { stage: "TOP COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-31" },
+      { stage: "PERAKITAN", kapasitasWeekday: 100, kapasitasSabtu: 50, mulai: "2026-10-01", selesai: "2026-10-31" },
+      { stage: "QC", kapasitasWeekday: 500, kapasitasSabtu: 250, mulai: "2026-10-01", selesai: "2026-10-31" },
+    ];
+    const items = [{ variantId: 1, qty: 1000, priority: 1, style: "Solid", color: "C", size: "MD", sizeUrutan: 1 }];
+    const { rincian } = buildSchedule(items, caps, [], []);
+    const sum = (st: string) => rincian.filter((r) => r.stage === st).reduce((n, r) => n + r.jumlah, 0);
+    // Tiap tahap menghabiskan demand-nya lewat antreannya sendiri
+    // (decal solid ikut demand style, sisanya total order).
+    for (const st of ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"]) {
+      expect(sum(st)).toBe(1000);
+    }
+    // Hari pertama ikut rate masing-masing, item/size ikut urutan alokasi.
+    const day1 = (st: string) => rincian.filter((r) => r.stage === st && r.tanggal === "2026-10-01");
+    expect(day1("buffing")).toEqual([{ tanggal: "2026-10-01", stage: "buffing", variantId: 1, size: "MD", item: "Solid C", jumlah: 288 }]);
+    expect(day1("perakitan")).toEqual([{ tanggal: "2026-10-01", stage: "perakitan", variantId: 1, size: "MD", item: "Solid C", jumlah: 100 }]);
+    expect(day1("decalSolid")).toEqual([{ tanggal: "2026-10-01", stage: "decalSolid", variantId: 1, size: "MD", item: "Solid C", jumlah: 200 }]);
+    expect(day1("decalMotif")).toEqual([{ tanggal: "2026-10-01", stage: "decalMotif", variantId: 1, size: "MD", item: "Solid C", jumlah: 150 }]);
   });
 });
 
@@ -120,7 +149,7 @@ describe("endOfPeriode", () => {
 
 describe("mulaiProduksi order", () => {
   const caps = [
-    { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 100, kapasitasSabtu: 50, mulai: "2026-10-01", selesai: "2026-10-31" },
+    { stage: "TOP COAT", kapasitasWeekday: 100, kapasitasSabtu: 50, mulai: "2026-10-01", selesai: "2026-10-31" },
   ];
   const items = [
     { variantId: 1, qty: 100, priority: 1, style: "S", color: "A", size: "MD", sizeUrutan: 1 },

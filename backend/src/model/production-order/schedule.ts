@@ -5,10 +5,10 @@
 //   style Solid, decal motif = sum item style Motif, sisanya = total order.
 //   Tanggal akhir bebas: jalan sampai kumulatif = target.
 // - Target harian = cap mentah; kumulatif dicap pas target.
-// - Alokasi Jumlah harian ikut tahap TOP COAT (kolom TopCoat = Perakitan).
+// - Alokasi Jumlah harian ikut tahap TOP COAT (kolom TopCoat).
 // - Item diurut priority asc, size diurut urutan asc.
 // - Hari fixed persiapan & QC+packing: tanpa alokasi (Jumlah 0); budget
-//   TOP COAT juga tidak diakru di hari itu agar tidak hangus.
+//   TOP COAT / PERAKITAN juga tidak diakru di hari itu agar tidak hangus.
 // - Jadwal diekor sampai akhir bulan (param akhirBulan YYYY-MM-DD):
 //   hari tanpa produksi setelah selesai = "Penyesuaian" (cadangan bila
 //   realisasi meleset / ada hutang produksi), tanggal terakhir = "QC & Packing".
@@ -39,7 +39,8 @@ export interface ScheduleRow {
   hari: string;
   size: string;
   jam: number;
-  persiapan: number;
+  buffing: number;
+  baseCoat: number;
   decalSolid: number;
   decalMotif: number;
   topCoat: number;
@@ -54,6 +55,17 @@ export interface ScheduleMeta {
   dialokasikan: number;
   sisa: number;
   hariProduksi: number;
+}
+
+// Rincian item per tahap per hari (untuk SPK divisi). Tiap tahap punya
+// antreannya sendiri sehingga salip-menyalip antar tahap wajar.
+export interface ScheduleStageTake {
+  tanggal: string;
+  stage: "buffing" | "baseCoat" | "decalSolid" | "decalMotif" | "topCoat" | "perakitan" | "qc";
+  variantId: number;
+  size: string;
+  item: string;
+  jumlah: number;
 }
 
 const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
@@ -74,20 +86,49 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+type TakeQueue = { sisa: number; label: string; size: string; sizeUrutan: number; variantId: number }[];
+
+// Bagi budget harian ke item urut priority → sizeUrutan. Alokasi penuh
+// (terima sisa < 1 dus). Dipakai alokasi utama (topCoat) + rincian tahap.
+function allocateTakes(
+  budget: number,
+  queue: TakeQueue,
+): { variantId: number; size: string; item: string; jumlah: number }[] {
+  const takes: { variantId: number; size: string; item: string; jumlah: number }[] = [];
+  // ponytail: scan O(n) per hari, n kecil (puluhan baris).
+  while (budget > 0) {
+    const first = queue.find((q) => q.sisa > 0);
+    if (!first) break;
+    const group = queue
+      .filter((q) => q.label === first.label && q.sisa > 0)
+      .sort((a, b) => a.sizeUrutan - b.sizeUrutan);
+    for (const g of group) {
+      if (budget <= 0) break;
+      const take = Math.min(budget, g.sisa);
+      g.sisa -= take;
+      budget -= take;
+      takes.push({ variantId: g.variantId, size: g.size, item: first.label, jumlah: take });
+    }
+  }
+  return takes;
+}
+
 function toDate(v: Date | string | null): Date | null {
   if (!v) return null;
   const d = v instanceof Date ? v : new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-type StageKey = "persiapan" | "decalSolid" | "decalMotif" | "topCoat" | "qc";
+type StageKey = "buffing" | "baseCoat" | "decalSolid" | "decalMotif" | "topCoat" | "perakitan" | "qc";
 
 function stageKey(stage: string): StageKey | null {
   const s = stage.toUpperCase();
-  if (s.includes("PERSIAPAN")) return "persiapan";
+  if (s.includes("BUFFING")) return "buffing";
+  if (s.includes("BASE COAT") || s.includes("BASECOAT")) return "baseCoat";
   if (s.includes("DECAL SOLID")) return "decalSolid";
   if (s.includes("DECAL MOTIF")) return "decalMotif";
-  if (s.includes("TOP COAT") || s.includes("PERAKITAN")) return "topCoat";
+  if (s.includes("TOP COAT")) return "topCoat";
+  if (s.includes("PERAKITAN")) return "perakitan";
   if (s.includes("QC") || s.includes("PACKING")) return "qc";
   return null;
 }
@@ -99,7 +140,7 @@ export function buildSchedule(
   qcDays: string[],
   akhirBulan: string | null = null,
   mulaiProduksi: Date | string | null = null,
-): { rows: ScheduleRow[]; meta: ScheduleMeta } {
+): { rows: ScheduleRow[]; meta: ScheduleMeta; rincian: ScheduleStageTake[] } {
   const total = items.reduce((n, i) => n + i.qty, 0);
   const styleSum = (kw: string) =>
     items.filter((i) => i.style.toUpperCase().includes(kw)).reduce((n, i) => n + i.qty, 0);
@@ -125,7 +166,7 @@ export function buildSchedule(
 
   const starts = caps.map((c) => c.mulai).filter((d): d is Date => d !== null);
   if (starts.length === 0 || items.length === 0) {
-    return { rows: [], meta: { dialokasikan: 0, sisa: total, hariProduksi: 0 } };
+    return { rows: [], meta: { dialokasikan: 0, sisa: total, hariProduksi: 0 }, rincian: [] };
   }
 
   const prep = new Set(prepDays);
@@ -135,12 +176,19 @@ export function buildSchedule(
     .sort((a, b) => a.priority - b.priority || a.variantId - b.variantId)
     .map((i) => ({ ...i, sisa: i.qty, label: `${i.style} ${i.color}` }));
 
+  // Antrean sendiri per tahap berincian: tiap tahap jalan secepat kapasitasnya,
+  // salip-menyalip antar tahap wajar (realita lini paralel).
+  const stageQueues: { key: ScheduleStageTake["stage"]; q: TakeQueue }[] = (
+    ["buffing", "baseCoat", "decalSolid", "decalMotif", "perakitan", "qc"] as const
+  ).map((key) => ({ key, q: queue.map((i) => ({ ...i })) }));
+
   // Alokasi item serentak dibuka pada tanggal mulai produksi order.
   const mulaiGlobal = toDate(mulaiProduksi);
   const allocationOpen = (cur: Date) =>
     mulaiGlobal === null || stripTime(cur) >= stripTime(mulaiGlobal);
 
   const rows: ScheduleRow[] = [];
+  const rincian: ScheduleStageTake[] = [];
   let hariProduksi = 0;
   let stall = 0;
 
@@ -155,12 +203,12 @@ export function buildSchedule(
     const jam = getWorkingHours(dow);
     const isFixed = !isSunday && (prep.has(tanggal) || qcPack.has(tanggal));
 
-    const t: Record<StageKey, number> = { persiapan: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, qc: 0 };
+    const t: Record<StageKey, number> = { buffing: 0, baseCoat: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, perakitan: 0, qc: 0 };
     if (!isSunday) {
       for (const c of caps) {
         if (!c.key || !c.mulai || stripTime(cur) < stripTime(c.mulai)) continue;
-        // TOP COAT tidak diakru di hari fixed agar budgetnya tidak hangus.
-        if (c.key === "topCoat" && isFixed) continue;
+        // TOP COAT / PERAKITAN tidak diakru di hari fixed agar budgetnya tidak hangus.
+        if ((c.key === "topCoat" || c.key === "perakitan") && isFixed) continue;
         const rate = dow === 6 ? c.s : c.w;
         const due = Math.min(rate, c.demand - c.cum);
         t[c.key] = Math.max(0, due);
@@ -171,28 +219,42 @@ export function buildSchedule(
       tanggal,
       hari: HARI[dow],
       jam,
-      persiapan: t.persiapan,
+      buffing: t.buffing,
+      baseCoat: t.baseCoat,
       decalSolid: t.decalSolid,
       decalMotif: t.decalMotif,
       topCoat: t.topCoat,
-      perakitan: t.topCoat,
+      perakitan: t.perakitan,
       qc: t.qc,
       variantId: 0,
     };
 
     let allocatedToday = 0;
+    const prepOn = t.buffing > 0 || t.baseCoat > 0;
+    // Rincian tahap jalan di semua hari non-libur (termasuk hari
+    // Persiapan/QC — target agregatnya pun jalan di hari itu).
+    // Gerbang mulaiProduksi sama dengan alokasi utama: sebelum dibuka,
+    // demand jangan dikonsumsi.
+    if (!isSunday && allocationOpen(cur)) {
+      for (const sq of stageQueues) {
+        if (t[sq.key] <= 0) continue;
+        for (const tk of allocateTakes(t[sq.key], sq.q)) {
+          rincian.push({ tanggal, stage: sq.key, ...tk });
+        }
+      }
+    }
     if (isSunday) {
       rows.push({ ...base, size: "-", item: "LIBUR", jumlah: 0 });
     } else if (prep.has(tanggal)) {
       const decalOn = t.decalSolid > 0 || t.decalMotif > 0;
-      rows.push({ ...base, size: "-", item: t.persiapan > 0 && decalOn ? "Persiapan + Decal" : "Persiapan", jumlah: 0 });
+      rows.push({ ...base, size: "-", item: prepOn && decalOn ? "Persiapan + Decal" : "Persiapan", jumlah: 0 });
     } else if (qcPack.has(tanggal)) {
       rows.push({ ...base, size: "-", item: "QC & Packing", jumlah: 0 });
     } else {
       let budget = t.topCoat;
       if (budget <= 0) {
         const active = [
-          t.persiapan > 0 && "Persiapan",
+          prepOn && "Persiapan",
           (t.decalSolid > 0 || t.decalMotif > 0) && "Decal",
           t.qc > 0 && "QC",
         ].filter((x): x is string => !!x);
@@ -205,38 +267,25 @@ export function buildSchedule(
         rows.push({ ...base, size: "-", item: "Menunggu", jumlah: 0 });
       } else {
         hariProduksi++;
-        let emitted = false;
-        // Target hanya di baris pertama hari itu; baris lanjutan = 0 (ikut format sheet).
-        const zero = { persiapan: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, perakitan: 0, qc: 0 };
-        let head = true;
-        // ponytail: scan O(n) per hari, n kecil (puluhan baris).
-        while (budget > 0) {
-          const first = queue.find((q) => q.sisa > 0);
-          if (!first) break;
-          const group = queue
-            .filter((q) => q.label === first.label && q.sisa > 0)
-            .sort((a, b) => a.sizeUrutan - b.sizeUrutan);
-          for (const g of group) {
-            if (budget <= 0) break;
-            // Alokasi penuh (terima sisa < 1 dus).
-            const take = Math.min(budget, g.sisa);
-            g.sisa -= take;
-            budget -= take;
-            allocatedToday += take;
-            rows.push({ ...base, ...(head ? {} : zero), size: g.size, item: first.label, jumlah: take, variantId: g.variantId });
-            head = false;
-            emitted = true;
-          }
-        }
-        if (!emitted) {
+        const takes = allocateTakes(budget, queue);
+        for (const tk of takes) rincian.push({ tanggal, stage: "topCoat", ...tk });
+        allocatedToday = takes.reduce((n, x) => n + x.jumlah, 0);
+        if (takes.length === 0) {
           rows.push({ ...base, size: "-", item: "Selesai", jumlah: 0 });
         } else {
           hariProduksi++;
+          // Target hanya di baris pertama hari itu; baris lanjutan = 0 (ikut format sheet).
+          const zero = { buffing: 0, baseCoat: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, perakitan: 0, qc: 0 };
+          let head = true;
+          for (const tk of takes) {
+            rows.push({ ...base, ...(head ? {} : zero), size: tk.size, item: tk.item, jumlah: tk.jumlah, variantId: tk.variantId });
+            head = false;
+          }
         }
       }
     }
 
-    const dayWork = t.persiapan + t.decalSolid + t.decalMotif + t.topCoat + t.qc + allocatedToday > 0;
+    const dayWork = t.buffing + t.baseCoat + t.decalSolid + t.decalMotif + t.topCoat + t.perakitan + t.qc + allocatedToday > 0;
     stall = dayWork ? 0 : stall + 1;
     const stagesDone = caps.every((c) => c.cum >= c.demand);
     const allocDone = queue.every((q) => q.sisa <= 0);
@@ -271,7 +320,8 @@ export function buildSchedule(
         hari: HARI[dow],
         size: "-",
         jam: getWorkingHours(dow),
-        persiapan: 0,
+        buffing: 0,
+        baseCoat: 0,
         decalSolid: 0,
         decalMotif: 0,
         topCoat: 0,
@@ -285,7 +335,7 @@ export function buildSchedule(
     }
   }
 
-  return { rows, meta: { dialokasikan, sisa, hariProduksi } };
+  return { rows, meta: { dialokasikan, sisa, hariProduksi }, rincian };
 }
 
 function stripTime(d: Date): number {

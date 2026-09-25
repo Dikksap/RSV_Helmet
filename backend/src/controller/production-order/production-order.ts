@@ -192,7 +192,7 @@ export async function getScheduleHandler(req: Request, res: Response) {
     const qcDays = typeof req.query.qc === "string" && req.query.qc ? req.query.qc.split(",") : defaults.qcDays;
     const capacities = await getCapacities(orderId);
     const akhirBulan = endOfPeriode(order.periode);
-    const { rows, meta } = buildSchedule(
+    const { rows, meta, rincian } = buildSchedule(
       order.items.map((it) => ({
         variantId: it.variantId,
         qty: it.qty,
@@ -217,6 +217,7 @@ export async function getScheduleHandler(req: Request, res: Response) {
     res.status(200).json({
       order: { id: order.id, nomor: order.nomor, periode: order.periode, totalQty: order.totalQty },
       rows,
+      rincian,
       meta: { ...meta, prepDays, qcDays, akhirBulan },
     });
   } catch (error) {

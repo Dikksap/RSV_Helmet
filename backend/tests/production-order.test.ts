@@ -19,7 +19,7 @@ vi.mock("../src/model/production-order/production-order.js", () => ({
   saveRealisasi: vi.fn(),
   getRealisasiStages: vi.fn(),
   saveRealisasiStages: vi.fn(),
-  REALISASI_STAGES: ["persiapan", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"],
+  REALISASI_STAGES: ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"],
 }));
 
 import productionOrdersRouter from "../src/routes/production-orders.js";
@@ -197,8 +197,8 @@ describe("GET /api/production-orders/:id/schedule", () => {
     ],
   };
   const caps = [
-    { stage: "PERSIAPAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-05" },
-    { stage: "TOP COAT + PERAKITAN", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-05" },
+    { stage: "BUFFING", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-05" },
+    { stage: "TOP COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-10-05" },
   ];
   it("400 id invalid", async () => {
     const res = await request(app).get("/api/production-orders/abc/schedule");

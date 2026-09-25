@@ -36,10 +36,12 @@ function totalOf(items: { qty: number }[]): number {
 // Dibuat otomatis tiap order baru agar tab Kapasitas langsung ada isi;
 // angka diisi user lewat Edit (mulai dari 0).
 export const DEFAULT_CAPACITY_STAGES = [
-  "PERSIAPAN (BUFFING + BASECOAT)",
+  "BUFFING",
+  "BASE COAT",
   "DECAL SOLID",
   "DECAL MOTIF",
-  "TOP COAT + PERAKITAN",
+  "TOP COAT",
+  "PERAKITAN",
   "QC",
 ];
 
@@ -290,7 +292,7 @@ export async function saveRealisasi(
 }
 
 // Tahap baku realisasi harian (kunci sama dengan kolom ScheduleRow).
-export const REALISASI_STAGES = ["persiapan", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"] as const;
+export const REALISASI_STAGES = ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"] as const;
 
 export type RealisasiStage = (typeof REALISASI_STAGES)[number];
 

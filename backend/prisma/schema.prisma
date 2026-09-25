@@ -264,7 +264,7 @@ model ProductionRealization {
 }
 
 // Realisasi harian per tahap lini (agregat per hari, bukan per variant).
-// stage: persiapan | decalSolid | decalMotif | topCoat | perakitan | qc.
+// stage: buffing | baseCoat | decalSolid | decalMotif | topCoat | perakitan | qc.
 
 model ProductionRealizationStage {
   id        Int      @id @default(autoincrement())
