@@ -165,6 +165,7 @@ model RiwayatBarang {
 
   @@index([barangId])
   @@index([tanggal])
+  @@index([status], map: "RiwayatBarang_status_fkey")
 }
 
 // =============================================
@@ -259,6 +260,7 @@ model ProductionRealization {
 
   @@unique([orderId, variantId, tanggal])
   @@index([orderId, tanggal])
+  @@index([variantId], map: "ProductionRealization_variantId_fkey")
 }
 
 // Realisasi harian per tahap lini (agregat per hari, bukan per variant).
