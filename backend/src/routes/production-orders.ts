@@ -11,6 +11,8 @@ import {
   getCapacitiesHandler,
   replaceCapacitiesHandler,
   getScheduleHandler,
+  saveScheduleTargetHandler,
+  saveScheduleAllocHandler,
   getRealisasiHandler,
   saveRealisasiHandler,
 } from "../controller/production-order/production-order.js";
@@ -28,6 +30,8 @@ router.delete("/:id/items/:itemId", deleteOrderItemHandler);
 router.get("/:id/capacities", getCapacitiesHandler);
 router.put("/:id/capacities", replaceCapacitiesHandler);
 router.get("/:id/schedule", getScheduleHandler);
+router.put("/:id/schedule/targets", saveScheduleTargetHandler);
+router.put("/:id/schedule/allocs", saveScheduleAllocHandler);
 router.get("/:id/realisasi", getRealisasiHandler);
 router.put("/:id/realisasi", saveRealisasiHandler);
 

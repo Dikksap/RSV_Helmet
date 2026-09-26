@@ -19,7 +19,12 @@ vi.mock("../src/model/production-order/production-order.js", () => ({
   saveRealisasi: vi.fn(),
   getRealisasiStages: vi.fn(),
   saveRealisasiStages: vi.fn(),
+  getScheduleTargetEdits: vi.fn(),
+  getScheduleAllocEdits: vi.fn(),
+  saveScheduleTargetEdit: vi.fn(),
+  saveScheduleAllocEdit: vi.fn(),
   REALISASI_STAGES: ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"],
+  SCHEDULE_STAGES: ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"],
 }));
 
 import productionOrdersRouter from "../src/routes/production-orders.js";
@@ -40,6 +45,10 @@ import {
   saveRealisasi,
   getRealisasiStages,
   saveRealisasiStages,
+  getScheduleTargetEdits,
+  getScheduleAllocEdits,
+  saveScheduleTargetEdit,
+  saveScheduleAllocEdit,
 } from "../src/model/production-order/production-order.js";
 
 const mocked = {
@@ -59,6 +68,10 @@ const mocked = {
   saveRealisasi: vi.mocked(saveRealisasi),
   getRealisasiStages: vi.mocked(getRealisasiStages),
   saveRealisasiStages: vi.mocked(saveRealisasiStages),
+  getScheduleTargetEdits: vi.mocked(getScheduleTargetEdits),
+  getScheduleAllocEdits: vi.mocked(getScheduleAllocEdits),
+  saveScheduleTargetEdit: vi.mocked(saveScheduleTargetEdit),
+  saveScheduleAllocEdit: vi.mocked(saveScheduleAllocEdit),
 };
 
 const app = express();
@@ -212,11 +225,98 @@ describe("GET /api/production-orders/:id/schedule", () => {
   it("200 jadwal + meta konsisten", async () => {
     mocked.getOrderById.mockResolvedValue(order as any);
     mocked.getCapacities.mockResolvedValue(caps as any);
+    mocked.getScheduleTargetEdits.mockResolvedValue([]);
+    mocked.getScheduleAllocEdits.mockResolvedValue([]);
     const res = await request(app).get("/api/production-orders/1/schedule");
     expect(res.status).toBe(200);
     expect(res.body.meta.dialokasikan).toBe(10);
     expect(res.body.meta.sisa).toBe(0);
     expect(res.body.rows.length).toBeGreaterThan(0);
+    expect(res.body.overrides).toEqual({ targets: [], allocs: [] });
+  });
+  it("200 terapkan override target + alokasi", async () => {
+    mocked.getOrderById.mockResolvedValue(order as any);
+    mocked.getCapacities.mockResolvedValue(caps as any);
+    mocked.getScheduleTargetEdits.mockResolvedValue([]);
+    mocked.getScheduleAllocEdits.mockResolvedValue([]);
+    const prodDate = [...new Set(
+      (await request(app).get("/api/production-orders/1/schedule")).body.rows
+        .filter((r: any) => r.jumlah > 0).map((r: any) => r.tanggal),
+    )].sort()[0] as string;
+    mocked.getScheduleTargetEdits.mockResolvedValue([{ tanggal: prodDate, stage: "buffing", qty: 5 }]);
+    mocked.getScheduleAllocEdits.mockResolvedValue([{ tanggal: prodDate, variantId: 1, qty: 7 }]);
+    const res = await request(app).get("/api/production-orders/1/schedule");
+    expect(res.status).toBe(200);
+    const head = res.body.rows.find((r: any) => r.tanggal === prodDate);
+    // Auto akan menaruh 10 (kapasitas 288 >= demand 10); 5 hanya mungkin dari pin.
+    expect(head.buffing).toBe(5);
+    const allocs = res.body.rows.filter((r: any) => r.tanggal === prodDate && r.variantId === 1);
+    expect(allocs.reduce((n: number, r: any) => n + r.jumlah, 0)).toBe(7);
+    // Pin memindahkan alokasi, bukan menguranginya: total tetap = master.
+    expect(res.body.meta.dialokasikan).toBe(10);
+    expect(res.body.meta.sisa).toBe(0);
+  });
+});
+
+describe("PUT /api/production-orders/:id/schedule/targets", () => {
+  it("400 stage invalid", async () => {
+    const res = await request(app).put("/api/production-orders/1/schedule/targets").send({ tanggal: "2026-10-06", stage: "x", qty: 1 });
+    expect(res.status).toBe(400);
+    expect(mocked.saveScheduleTargetEdit).not.toHaveBeenCalled();
+  });
+  it("400 qty negatif", async () => {
+    const res = await request(app).put("/api/production-orders/1/schedule/targets").send({ tanggal: "2026-10-06", stage: "buffing", qty: -1 });
+    expect(res.status).toBe(400);
+  });
+  it("200 sukses + null kembali auto", async () => {
+    mocked.saveScheduleTargetEdit.mockResolvedValue([{ tanggal: "2026-10-06", stage: "buffing", qty: 100 }]);
+    const res = await request(app).put("/api/production-orders/1/schedule/targets").send({ tanggal: "2026-10-06", stage: "buffing", qty: 100 });
+    expect(res.status).toBe(200);
+    expect(mocked.saveScheduleTargetEdit).toHaveBeenCalledWith(1, expect.any(Date), "buffing", 100);
+    const res2 = await request(app).put("/api/production-orders/1/schedule/targets").send({ tanggal: "2026-10-06", stage: "buffing", qty: null });
+    expect(res2.status).toBe(200);
+    expect(mocked.saveScheduleTargetEdit).toHaveBeenCalledWith(1, expect.any(Date), "buffing", null);
+  });
+  it("404 order hilang", async () => {
+    mocked.saveScheduleTargetEdit.mockRejectedValue({ code: "P2025" });
+    const res = await request(app).put("/api/production-orders/1/schedule/targets").send({ tanggal: "2026-10-06", stage: "buffing", qty: 1 });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PUT /api/production-orders/:id/schedule/allocs", () => {
+  it("400 variant invalid", async () => {
+    const res = await request(app).put("/api/production-orders/1/schedule/allocs").send({ tanggal: "2026-10-06", variantId: 0, qty: 1 });
+    expect(res.status).toBe(400);
+    expect(mocked.saveScheduleAllocEdit).not.toHaveBeenCalled();
+  });
+  it("200 sukses", async () => {
+    mocked.saveScheduleAllocEdit.mockResolvedValue([{ tanggal: "2026-10-06", variantId: 1, qty: 50 }]);
+    const res = await request(app).put("/api/production-orders/1/schedule/allocs").send({ tanggal: "2026-10-06", variantId: 1, qty: 50 });
+    expect(res.status).toBe(200);
+    expect(mocked.saveScheduleAllocEdit).toHaveBeenCalledWith(1, expect.any(Date), 1, 50, "set");
+  });
+  it("400 mode di luar set/add", async () => {
+    const res = await request(app).put("/api/production-orders/1/schedule/allocs").send({ tanggal: "2026-10-06", variantId: 1, qty: 50, mode: "append" });
+    expect(res.status).toBe(400);
+    expect(mocked.saveScheduleAllocEdit).not.toHaveBeenCalled();
+  });
+  it("200 mode add diteruskan ke model", async () => {
+    mocked.saveScheduleAllocEdit.mockResolvedValue([]);
+    const res = await request(app).put("/api/production-orders/1/schedule/allocs").send({ tanggal: "2026-10-06", variantId: 1, qty: 50, mode: "add" });
+    expect(res.status).toBe(200);
+    expect(mocked.saveScheduleAllocEdit).toHaveBeenCalledWith(1, expect.any(Date), 1, 50, "add");
+  });
+  it("409 total alokasi melebihi qty master", async () => {
+    mocked.saveScheduleAllocEdit.mockRejectedValue({ code: "E409", message: "Total alokasi 120 melebihi qty master 100" });
+    const res = await request(app).put("/api/production-orders/1/schedule/allocs").send({ tanggal: "2026-10-06", variantId: 1, qty: 50 });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("melebihi qty master");
+  });
+  it("404 variant tidak ada di order", async () => {
+    mocked.saveScheduleAllocEdit.mockRejectedValue({ code: "P2003" });
+    const res = await request(app).put("/api/production-orders/1/schedule/allocs").send({ tanggal: "2026-10-06", variantId: 999, qty: 50 });
+    expect(res.status).toBe(404);
   });
 });
 

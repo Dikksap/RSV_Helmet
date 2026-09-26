@@ -13,6 +13,10 @@
 //   hari tanpa produksi setelah selesai = "Penyesuaian" (cadangan bila
 //   realisasi meleset / ada hutang produksi), tanggal terakhir = "QC & Packing".
 // - Alokasi per hari dibulatkan ke kelipatan PCS_PER_DUS (1 dus = 8 pcs).
+// - Distribusi tahap berurutan per grup: Buffing/BaseCoat → h+1 kerja Decal
+//   Solid/Motif → h+1 kerja Top Coat/Perakitan/QC. Effective mulai =
+//   max(mulai manual, anchor grup sebelumnya + 1 hari kerja); Sabtu dihitung,
+//   Minggu dilewati. Pin manual (overrides) tetap menang.
 
 export const PCS_PER_DUS = 8;
 
@@ -57,6 +61,15 @@ export interface ScheduleMeta {
   hariProduksi: number;
 }
 
+// Edit manual yang dimakan saat menyusun jadwal (bukan ditambal belakangan).
+// targets: key = `${tanggal}|${stage}` → target harian tahap itu.
+// allocs: variantId → tanggal → qty; qty ini dipotong dari antrean auto,
+//         sehingga total terjadwal per variant tetap == qty master.
+export interface ScheduleOverrides {
+  targets?: Map<string, number>;
+  allocs?: Map<number, Map<string, number>>;
+}
+
 // Rincian item per tahap per hari (untuk SPK divisi). Tiap tahap punya
 // antreannya sendiri sehingga salip-menyalip antar tahap wajar.
 export interface ScheduleStageTake {
@@ -86,21 +99,35 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// h+1 kerja: Sabtu dihitung, Minggu (getDay 0) dilewati.
+function nextWorkday(from: Date): Date {
+  const d = new Date(from);
+  do {
+    d.setDate(d.getDate() + 1);
+  } while (d.getDay() === 0);
+  return d;
+}
+
 type TakeQueue = { sisa: number; label: string; size: string; sizeUrutan: number; variantId: number }[];
 
 // Bagi budget harian ke item urut priority → sizeUrutan. Alokasi penuh
 // (terima sisa < 1 dus). Dipakai alokasi utama (topCoat) + rincian tahap.
+// `blocked` menutup variant yang dipin di tanggal berjalan: di tanggal pin,
+// angkanya ditentukan pin, bukan auto — supaya tak menumpuk dua kali.
 function allocateTakes(
   budget: number,
   queue: TakeQueue,
+  blocked?: (variantId: number) => boolean,
 ): { variantId: number; size: string; item: string; jumlah: number }[] {
   const takes: { variantId: number; size: string; item: string; jumlah: number }[] = [];
+  const free = (q: { sisa: number; variantId: number }) =>
+    q.sisa > 0 && !blocked?.(q.variantId);
   // ponytail: scan O(n) per hari, n kecil (puluhan baris).
   while (budget > 0) {
-    const first = queue.find((q) => q.sisa > 0);
+    const first = queue.find(free);
     if (!first) break;
     const group = queue
-      .filter((q) => q.label === first.label && q.sisa > 0)
+      .filter((q) => q.label === first.label && free(q))
       .sort((a, b) => a.sizeUrutan - b.sizeUrutan);
     for (const g of group) {
       if (budget <= 0) break;
@@ -133,6 +160,14 @@ function stageKey(stage: string): StageKey | null {
   return null;
 }
 
+// Urutan distribusi tahap: grup berikutnya baru mulai h+1 kerja setelah grup
+// sebelumnya. Anchor grup = min effective mulai anggota grup itu.
+const STAGE_GROUPS: StageKey[][] = [
+  ["buffing", "baseCoat"],
+  ["decalSolid", "decalMotif"],
+  ["topCoat", "perakitan", "qc"],
+];
+
 export function buildSchedule(
   items: ScheduleItem[],
   capacities: ScheduleCapacity[],
@@ -140,6 +175,7 @@ export function buildSchedule(
   qcDays: string[],
   akhirBulan: string | null = null,
   mulaiProduksi: Date | string | null = null,
+  overrides: ScheduleOverrides = {},
 ): { rows: ScheduleRow[]; meta: ScheduleMeta; rincian: ScheduleStageTake[] } {
   const total = items.reduce((n, i) => n + i.qty, 0);
   const styleSum = (kw: string) =>
@@ -164,6 +200,21 @@ export function buildSchedule(
     })
     .filter((c) => c.key !== null);
 
+  // Distribusi h+1 antar grup: mulai manual dihormati, hanya dinaikkan ke floor
+  // bila lebih awal dari anchor grup sebelumnya + 1 hari kerja.
+  let anchorSebelumnya: Date | null = null;
+  for (const group of STAGE_GROUPS) {
+    const members = caps.filter((c) => c.key !== null && group.includes(c.key) && c.mulai !== null);
+    if (members.length === 0) continue;
+    const floor = anchorSebelumnya === null ? null : nextWorkday(anchorSebelumnya);
+    if (floor !== null) {
+      for (const m of members) {
+        if (m.mulai !== null && m.mulai < floor) m.mulai = new Date(floor);
+      }
+    }
+    anchorSebelumnya = new Date(Math.min(...members.map((m) => m.mulai!.getTime())));
+  }
+
   const starts = caps.map((c) => c.mulai).filter((d): d is Date => d !== null);
   if (starts.length === 0 || items.length === 0) {
     return { rows: [], meta: { dialokasikan: 0, sisa: total, hariProduksi: 0 }, rincian: [] };
@@ -172,15 +223,37 @@ export function buildSchedule(
   const prep = new Set(prepDays);
   const qcPack = new Set(qcDays);
 
-  const queue = [...items]
-    .sort((a, b) => a.priority - b.priority || a.variantId - b.variantId)
-    .map((i) => ({ ...i, sisa: i.qty, label: `${i.style} ${i.color}` }));
+  const pinnedQty = (variantId: number): number => {
+    const days = overrides.allocs?.get(variantId);
+    if (!days) return 0;
+    let sum = 0;
+    for (const qty of days.values()) sum += qty;
+    return sum;
+  };
+
+  const sorted = [...items].sort((a, b) => a.priority - b.priority || a.variantId - b.variantId);
+  const labelOf = (i: ScheduleItem) => `${i.style} ${i.color}`;
+
+  // Di tanggal yang dipin, angka variant itu sepenuhnya milik pin — auto
+  // dilarang menaruh qty di sana (kalau tidak, hasilnya numpuk dua kali).
+  const blockedOn = (tanggal: string) => (variantId: number) =>
+    overrides.allocs?.get(variantId)?.has(tanggal) ?? false;
+
+  // Alokasi utama (TopCoat) hanya membagi sisa yang belum dipin manual, sehingga
+  // pin + auto = qty master tanpa kelebihan. Sisa negatif (data pin rusak) di-clamp 0.
+  const queue = sorted.map((i) => ({
+    ...i,
+    sisa: Math.max(0, i.qty - pinnedQty(i.variantId)),
+    label: labelOf(i),
+  }));
 
   // Antrean sendiri per tahap berincian: tiap tahap jalan secepat kapasitasnya,
   // salip-menyalip antar tahap wajar (realita lini paralel).
+  // Rincian tahap memakai qty penuh — unit yang dipin manual tetap harus
+  // melewati buffing/dst, jadi jangan ikut terpotong.
   const stageQueues: { key: ScheduleStageTake["stage"]; q: TakeQueue }[] = (
     ["buffing", "baseCoat", "decalSolid", "decalMotif", "perakitan", "qc"] as const
-  ).map((key) => ({ key, q: queue.map((i) => ({ ...i })) }));
+  ).map((key) => ({ key, q: sorted.map((i) => ({ ...i, sisa: i.qty, label: labelOf(i) })) }));
 
   // Alokasi item serentak dibuka pada tanggal mulai produksi order.
   const mulaiGlobal = toDate(mulaiProduksi);
@@ -189,7 +262,6 @@ export function buildSchedule(
 
   const rows: ScheduleRow[] = [];
   const rincian: ScheduleStageTake[] = [];
-  let hariProduksi = 0;
   let stall = 0;
 
   // Akhir bebas: jalan sampai semua tahap mencapai demand + alokasi habis.
@@ -204,16 +276,36 @@ export function buildSchedule(
     const isFixed = !isSunday && (prep.has(tanggal) || qcPack.has(tanggal));
 
     const t: Record<StageKey, number> = { buffing: 0, baseCoat: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, perakitan: 0, qc: 0 };
-    if (!isSunday) {
-      for (const c of caps) {
-        if (!c.key || !c.mulai || stripTime(cur) < stripTime(c.mulai)) continue;
-        // TOP COAT / PERAKITAN tidak diakru di hari fixed agar budgetnya tidak hangus.
-        if ((c.key === "topCoat" || c.key === "perakitan") && isFixed) continue;
-        const rate = dow === 6 ? c.s : c.w;
-        const due = Math.min(rate, c.demand - c.cum);
-        t[c.key] = Math.max(0, due);
-        c.cum += t[c.key];
-      }
+    // Kapasitas alokasi hari ini (TopCoat) dijaga terpisah dari rencana tahap:
+    // rencana langsung mengurangi sisa demand begitu direncanakan, sementara
+    // alokasi bisa tertinggal (unit dipin di tanggal lain / belum dibuka) —
+    // kalau memakai angka rencana, budget habis untuk unit yang tak jadi jalan.
+    let topCoatCap = 0;
+    for (const c of caps) {
+      if (!c.key) continue;
+      const pin = overrides.targets?.get(`${tanggal}|${c.key}`);
+      // Pin manual menang atas aturan hari (Minggu, hari fixed, sebelum mulai)
+      // — dulu ditambal ke head setelah build sehingga tanggal tanpa baris
+      // hilang diam-diam. Tetap dibatasi sisa demand.
+      // Auto: TOP COAT / PERAKITAN tak diakru di hari fixed agar budget tak hangus.
+      const auto =
+        !isSunday &&
+        c.mulai !== null &&
+        stripTime(cur) >= stripTime(c.mulai) &&
+        !((c.key === "topCoat" || c.key === "perakitan") && isFixed);
+      const rate = dow === 6 ? c.s : c.w;
+      if (c.key === "topCoat") topCoatCap = pin !== undefined ? Math.max(0, pin) : auto ? rate : 0;
+      if (pin === undefined && !auto) continue;
+      const due = Math.min(pin !== undefined ? Math.max(0, pin) : rate, c.demand - c.cum);
+      t[c.key] = Math.max(0, due);
+      c.cum += t[c.key];
+    }
+    // Tahap tanpa baris kapasitas tak pernah tercapai loop di atas; pin-nya
+    // tetap harus tampil agar edit target tak hilang diam-diam.
+    for (const key of Object.keys(t) as StageKey[]) {
+      if (caps.some((c) => c.key === key)) continue;
+      const pin = overrides.targets?.get(`${tanggal}|${key}`);
+      if (pin !== undefined) t[key] = Math.max(0, pin);
     }
     const base = {
       tanggal,
@@ -238,7 +330,7 @@ export function buildSchedule(
     if (!isSunday && allocationOpen(cur)) {
       for (const sq of stageQueues) {
         if (t[sq.key] <= 0) continue;
-        for (const tk of allocateTakes(t[sq.key], sq.q)) {
+        for (const tk of allocateTakes(t[sq.key], sq.q, blockedOn(tanggal))) {
           rincian.push({ tanggal, stage: sq.key, ...tk });
         }
       }
@@ -251,8 +343,8 @@ export function buildSchedule(
     } else if (qcPack.has(tanggal)) {
       rows.push({ ...base, size: "-", item: "QC & Packing", jumlah: 0 });
     } else {
-      let budget = t.topCoat;
-      if (budget <= 0) {
+      const queueSisa = queue.reduce((n, q) => n + q.sisa, 0);
+      if (topCoatCap <= 0 || queueSisa <= 0) {
         const active = [
           prepOn && "Persiapan",
           (t.decalSolid > 0 || t.decalMotif > 0) && "Decal",
@@ -266,14 +358,12 @@ export function buildSchedule(
         }
         rows.push({ ...base, size: "-", item: "Menunggu", jumlah: 0 });
       } else {
-        hariProduksi++;
-        const takes = allocateTakes(budget, queue);
+        const takes = allocateTakes(topCoatCap, queue, blockedOn(tanggal));
         for (const tk of takes) rincian.push({ tanggal, stage: "topCoat", ...tk });
         allocatedToday = takes.reduce((n, x) => n + x.jumlah, 0);
         if (takes.length === 0) {
           rows.push({ ...base, size: "-", item: "Selesai", jumlah: 0 });
         } else {
-          hariProduksi++;
           // Target hanya di baris pertama hari itu; baris lanjutan = 0 (ikut format sheet).
           const zero = { buffing: 0, baseCoat: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, perakitan: 0, qc: 0 };
           let head = true;
@@ -334,6 +424,72 @@ export function buildSchedule(
       d.setDate(d.getDate() + 1);
     }
   }
+
+  // Sisipkan baris pin manual ke tanggal yang bersangkutan — selalu setelah
+  // baris hari itu, agar kelompok tanggal di UI tetap satu row per tanggal.
+  // Tanggal tanpa baris sama sekali mendapat head sintetis; kolom tahapnya
+  // diambil dari pin target supaya edit target di tanggal kosong tidak hilang.
+  if (overrides.allocs && overrides.allocs.size > 0) {
+    const ZERO_STAGE = { buffing: 0, baseCoat: 0, decalSolid: 0, decalMotif: 0, topCoat: 0, perakitan: 0, qc: 0 };
+    const metaOf = new Map(items.map((i) => [i.variantId, i]));
+    for (const [variantId, days] of overrides.allocs) {
+      const meta = metaOf.get(variantId);
+      if (!meta) continue;
+      for (const [tanggal, qty] of days) {
+        if (qty <= 0) continue;
+        const sameDay = rows.find((r) => r.tanggal === tanggal && r.variantId === variantId);
+        if (sameDay) {
+          sameDay.jumlah = qty;
+          continue;
+        }
+        let last = -1;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i].tanggal === tanggal) {
+            last = i;
+            break;
+          }
+        }
+        if (last < 0) {
+          const dd = new Date(`${tanggal}T00:00:00`);
+          const dow = dd.getDay();
+          const stage: Record<StageKey, number> = { ...ZERO_STAGE };
+          for (const key of Object.keys(stage) as StageKey[]) {
+            stage[key] = Math.max(0, overrides.targets?.get(`${tanggal}|${key}`) ?? 0);
+          }
+          rows.push({
+            tanggal,
+            hari: HARI[dow],
+            size: "-",
+            jam: getWorkingHours(dow),
+            ...stage,
+            item: "Produksi",
+            jumlah: 0,
+            variantId: 0,
+          });
+          last = rows.length - 1;
+        }
+        rows.splice(last + 1, 0, {
+          tanggal,
+          hari: rows[last].hari,
+          jam: rows[last].jam,
+          size: meta.size,
+          ...ZERO_STAGE,
+          item: `${meta.style} ${meta.color}`,
+          jumlah: qty,
+          variantId,
+        });
+      }
+    }
+  }
+
+  // Pin tanggal yang jauh di awal bisa disisipkan setelah ekor bulan → urutkan
+  // lagi. Sort stabil, jadi head tanggal tetap lebih dulu daripada baris pinnya.
+  rows.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+
+  // Dihitung dari hasil, bukan disimpan saat loop: cara lama menambah 2× pada
+  // hari produksi, menghitung hari "Selesai" yang tanpa alokasi, dan melewatkan
+  // hari yang hanya berisi baris pin.
+  const hariProduksi = new Set(rows.filter((r) => r.jumlah > 0).map((r) => r.tanggal)).size;
 
   return { rows, meta: { dialokasikan, sisa, hariProduksi }, rincian };
 }

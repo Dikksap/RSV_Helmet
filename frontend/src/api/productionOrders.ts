@@ -185,10 +185,39 @@ export interface ProductionSchedule {
     prepDays: string[];
     qcDays: string[];
   };
+  overrides?: {
+    targets: { tanggal: string; stage: string }[];
+    allocs: { tanggal: string; variantId: number }[];
+  };
 }
+
+export type ScheduleStageKey = "buffing" | "baseCoat" | "decalSolid" | "decalMotif" | "topCoat" | "perakitan" | "qc";
 
 export async function getProductionSchedule(orderId: number): Promise<ProductionSchedule> {
   return request<ProductionSchedule>(`/production-orders/${orderId}/schedule`);
+}
+
+// qty null = hapus edit (kembali ke angka auto).
+export async function saveScheduleTarget(
+  orderId: number,
+  body: { tanggal: string; stage: ScheduleStageKey; qty: number | null },
+): Promise<{ tanggal: string; stage: string; qty: number }[]> {
+  return mutate<{ tanggal: string; stage: string; qty: number }[]>(
+    `/production-orders/${orderId}/schedule/targets`,
+    "PUT",
+    body,
+  );
+}
+
+export async function saveScheduleAlloc(
+  orderId: number,
+  body: { tanggal: string; variantId: number; qty: number | null; mode?: "set" | "add" },
+): Promise<{ tanggal: string; variantId: number; qty: number }[]> {
+  return mutate<{ tanggal: string; variantId: number; qty: number }[]>(
+    `/production-orders/${orderId}/schedule/allocs`,
+    "PUT",
+    body,
+  );
 }
 
 export interface RealisasiRow {

@@ -17,8 +17,20 @@ import {
   getRealisasiStages,
   saveRealisasiStages,
   REALISASI_STAGES,
+  getScheduleTargetEdits,
+  getScheduleAllocEdits,
+  saveScheduleTargetEdit,
+  saveScheduleAllocEdit,
+  SCHEDULE_STAGES,
+  type ScheduleTargetEdit,
+  type ScheduleAllocEdit,
 } from "../../model/production-order/production-order.js";
-import { buildSchedule, defaultAnchors, endOfPeriode } from "../../model/production-order/schedule.js";
+import {
+  buildSchedule,
+  defaultAnchors,
+  endOfPeriode,
+  type ScheduleOverrides,
+} from "../../model/production-order/schedule.js";
 
 const VALID_STATUS = ["DRAFT", "AKTIF", "SELESAI", "BATAL"] as const;
 
@@ -192,6 +204,12 @@ export async function getScheduleHandler(req: Request, res: Response) {
     const qcDays = typeof req.query.qc === "string" && req.query.qc ? req.query.qc.split(",") : defaults.qcDays;
     const capacities = await getCapacities(orderId);
     const akhirBulan = endOfPeriode(order.periode);
+    // Edit manual dikonsumsi oleh buildSchedule, bukan ditambal ke baris jadi:
+    // rincian tahap dan meta ikut konsisten dengan baris yang ditampilkan.
+    const [targetEdits, allocEdits] = await Promise.all([
+      getScheduleTargetEdits(orderId),
+      getScheduleAllocEdits(orderId),
+    ]);
     const { rows, meta, rincian } = buildSchedule(
       order.items.map((it) => ({
         variantId: it.variantId,
@@ -213,16 +231,38 @@ export async function getScheduleHandler(req: Request, res: Response) {
       qcDays,
       akhirBulan,
       order.mulaiProduksi ? new Date(order.mulaiProduksi) : null,
+      toOverrides(targetEdits, allocEdits),
     );
     res.status(200).json({
       order: { id: order.id, nomor: order.nomor, periode: order.periode, totalQty: order.totalQty },
       rows,
       rincian,
       meta: { ...meta, prepDays, qcDays, akhirBulan },
+      overrides: {
+        targets: targetEdits.map((e) => ({ tanggal: e.tanggal, stage: e.stage })),
+        allocs: allocEdits.map((e) => ({ tanggal: e.tanggal, variantId: e.variantId })),
+      },
     });
   } catch (error) {
     res.status(500).json({ message: "Gagal menyusun jadwal produksi", error });
   }
+}
+
+// Edit tersimpan → kunci yang dipakai buildSchedule: `tanggal|stage` per tahap,
+// dan variantId → tanggal → qty per alokasi.
+function toOverrides(
+  targetEdits: ScheduleTargetEdit[],
+  allocEdits: ScheduleAllocEdit[],
+): ScheduleOverrides {
+  const targets = new Map<string, number>();
+  for (const e of targetEdits) targets.set(`${e.tanggal}|${e.stage}`, e.qty);
+  const allocs = new Map<number, Map<string, number>>();
+  for (const e of allocEdits) {
+    const days = allocs.get(e.variantId) ?? new Map<string, number>();
+    days.set(e.tanggal, e.qty);
+    allocs.set(e.variantId, days);
+  }
+  return { targets, allocs };
 }
 
 export async function updateOrderItemHandler(req: Request, res: Response) {
@@ -331,5 +371,46 @@ export async function saveRealisasiHandler(req: Request, res: Response) {
     if (error?.code === "P2025") return res.status(404).json({ message: "Production order tidak ditemukan" });
     if (error?.code === "P2003") return res.status(404).json({ message: "Variant tidak ditemukan" });
     res.status(500).json({ message: "Gagal menyimpan realisasi produksi", error });
+  }
+}
+
+export async function saveScheduleTargetHandler(req: Request, res: Response) {
+  try {
+    const orderId = validId(req.params.id);
+    if (!orderId) return res.status(400).json({ message: "ID harus angka bulat positif" });
+    const tanggal = validDay(req.body?.tanggal);
+    if (!tanggal) return res.status(400).json({ message: "Field 'tanggal' wajib tanggal valid (YYYY-MM-DD)" });
+    const { stage, qty } = req.body ?? {};
+    if (!(SCHEDULE_STAGES as readonly string[]).includes(stage))
+      return res.status(400).json({ message: `Field 'stage' harus salah satu: ${SCHEDULE_STAGES.join(", ")}` });
+    if (qty !== null && (!Number.isInteger(qty) || qty < 0))
+      return res.status(400).json({ message: "Field 'qty' harus bilangan bulat >= 0 atau null" });
+    res.status(200).json(await saveScheduleTargetEdit(orderId, tanggal, stage, qty));
+  } catch (error: any) {
+    if (error?.code === "P2025") return res.status(404).json({ message: "Production order tidak ditemukan" });
+    res.status(500).json({ message: "Gagal menyimpan edit target jadwal", error });
+  }
+}
+
+export async function saveScheduleAllocHandler(req: Request, res: Response) {
+  try {
+    const orderId = validId(req.params.id);
+    if (!orderId) return res.status(400).json({ message: "ID harus angka bulat positif" });
+    const tanggal = validDay(req.body?.tanggal);
+    if (!tanggal) return res.status(400).json({ message: "Field 'tanggal' wajib tanggal valid (YYYY-MM-DD)" });
+    const { variantId, qty, mode } = req.body ?? {};
+    if (!Number.isInteger(variantId) || variantId <= 0)
+      return res.status(400).json({ message: "Field 'variantId' wajib angka bulat positif" });
+    if (qty !== null && (!Number.isInteger(qty) || qty < 0))
+      return res.status(400).json({ message: "Field 'qty' harus bilangan bulat >= 0 atau null" });
+    const allocMode = mode === undefined ? "set" : mode;
+    if (allocMode !== "set" && allocMode !== "add")
+      return res.status(400).json({ message: "Field 'mode' harus salah satu: set, add" });
+    res.status(200).json(await saveScheduleAllocEdit(orderId, tanggal, variantId, qty, allocMode));
+  } catch (error: any) {
+    if (error?.code === "P2025") return res.status(404).json({ message: "Production order tidak ditemukan" });
+    if (error?.code === "P2003") return res.status(404).json({ message: "Variant tidak ditemukan" });
+    if (error?.code === "E409") return res.status(409).json({ message: error.message });
+    res.status(500).json({ message: "Gagal menyimpan edit alokasi jadwal", error });
   }
 }

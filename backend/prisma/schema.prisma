@@ -81,6 +81,7 @@ model ProductVariant {
   barangCounters BarangCounter[]
   orderItems     ProductionOrderItem[]
   realizations   ProductionRealization[]
+  scheduleAllocEdits ProductionScheduleAllocEdit[]
 
   @@unique([productId, styleId, colorId, sizeId])
   @@index([productId])
@@ -217,6 +218,8 @@ model ProductionOrder {
   capacities ProductionCapacity[]
   realizations ProductionRealization[]
   realizationStages ProductionRealizationStage[]
+  scheduleTargetEdits ProductionScheduleTargetEdit[]
+  scheduleAllocEdits ProductionScheduleAllocEdit[]
 
   @@index([periode])
   @@index([status])
@@ -307,4 +310,42 @@ model ProductionCapacity {
 
   @@unique([orderId, stage])
   @@index([orderId])
+}
+
+// =============================================
+// Override edit jadwal otomatis per order.
+// buildSchedule tetap mesin hitung; GET schedule menerapkan delta ini.
+// qty null tidak disimpan — hapus baris = kembali ke angka auto.
+// =============================================
+
+model ProductionScheduleTargetEdit {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  tanggal   DateTime
+  stage     String
+  qty       Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, tanggal, stage])
+  @@index([orderId, tanggal])
+}
+
+model ProductionScheduleAllocEdit {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  variantId Int
+  tanggal   DateTime
+  qty       Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order   ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, tanggal, variantId])
+  @@index([orderId, tanggal])
+  @@index([variantId], map: "ProductionScheduleAllocEdit_variantId_fkey")
 }

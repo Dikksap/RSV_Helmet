@@ -168,3 +168,53 @@ describe("mulaiProduksi order", () => {
     expect(rows[0]).toMatchObject({ tanggal: "2026-10-01", jumlah: 100 });
   });
 });
+
+describe("override manual (targets + allocs)", () => {
+  const caps = [
+    { stage: "BUFFING", kapasitasWeekday: 100, kapasitasSabtu: 50, mulai: "2026-10-01", selesai: "2026-10-31" },
+    { stage: "TOP COAT", kapasitasWeekday: 100, kapasitasSabtu: 50, mulai: "2026-10-01", selesai: "2026-10-31" },
+  ];
+  const items = [{ variantId: 1, qty: 300, priority: 1, style: "S", color: "C", size: "MD", sizeUrutan: 1 }];
+
+  it("target pin dipakai, bukan rate harian, dan di-clamp sisa demand", () => {
+    const { rows } = buildSchedule(items, caps, [], [], null, null, {
+      targets: new Map([["2026-10-01|buffing", 250], ["2026-10-02|buffing", 999]]),
+    });
+    expect(rows.find((r) => r.tanggal === "2026-10-01")).toMatchObject({ buffing: 250 });
+    expect(rows.find((r) => r.tanggal === "2026-10-02")).toMatchObject({ buffing: 50 });
+    expect(rows.reduce((n, r) => n + r.buffing, 0)).toBe(300);
+  });
+
+  it("alloc pin: satu baris per tanggal+variant, total = qty master", () => {
+    const { rows, meta } = buildSchedule(items, caps, [], [], null, null, {
+      allocs: new Map([[1, new Map([["2026-10-05", 120]])]]),
+    });
+    const pinned = rows.filter((r) => r.tanggal === "2026-10-05" && r.variantId === 1);
+    expect(pinned).toHaveLength(1);
+    expect(pinned[0].jumlah).toBe(120);
+    expect(rows.filter((r) => r.variantId === 1).reduce((n, r) => n + r.jumlah, 0)).toBe(300);
+    expect(meta).toMatchObject({ dialokasikan: 300, sisa: 0 });
+  });
+
+  it("pin di tanggal kosong menyintesis head dan tetap urut", () => {
+    const { rows, meta } = buildSchedule(items, caps, [], [], null, null, {
+      allocs: new Map([[1, new Map([["2026-10-10", 25]])]]),
+    });
+    const day = rows.filter((r) => r.tanggal === "2026-10-10");
+    expect(day).toHaveLength(2);
+    expect(day[0]).toMatchObject({ item: "Produksi", variantId: 0, jumlah: 0 });
+    expect(day[1]).toMatchObject({ variantId: 1, jumlah: 25, size: "MD", item: "S C" });
+    const dates = rows.map((r) => r.tanggal);
+    expect(dates).toEqual([...dates].sort());
+    expect(meta).toMatchObject({ dialokasikan: 300, sisa: 0 });
+  });
+
+  it("hariProduksi = jumlah tanggal dengan jumlah > 0 (termasuk hari pin)", () => {
+    const { rows, meta } = buildSchedule(items, caps, [], [], null, null, {
+      allocs: new Map([[1, new Map([["2026-10-10", 25]])]]),
+    });
+    const prodDates = new Set(rows.filter((r) => r.jumlah > 0).map((r) => r.tanggal));
+    expect(meta.hariProduksi).toBe(prodDates.size);
+    expect(prodDates.has("2026-10-10")).toBe(true);
+  });
+});

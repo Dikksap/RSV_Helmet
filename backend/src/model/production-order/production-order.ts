@@ -330,3 +330,105 @@ export async function saveRealisasiStages(
   });
   return getRealisasiStages(orderId, day, day);
 }
+
+// =============================================
+// Override edit jadwal otomatis.
+// Kunci stage sama dengan kolom ScheduleRow.
+// =============================================
+
+export const SCHEDULE_STAGES = ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"] as const;
+
+export type ScheduleStageKey = (typeof SCHEDULE_STAGES)[number];
+
+export type ScheduleTargetEdit = { tanggal: string; stage: string; qty: number };
+
+export type ScheduleAllocEdit = { tanggal: string; variantId: number; qty: number };
+
+export async function getScheduleTargetEdits(orderId: number): Promise<ScheduleTargetEdit[]> {
+  const rows = await prisma.productionScheduleTargetEdit.findMany({
+    where: { orderId },
+    orderBy: [{ tanggal: "asc" }, { stage: "asc" }],
+  });
+  return rows.map((r) => ({ tanggal: dayKey(r.tanggal), stage: r.stage, qty: r.qty }));
+}
+
+export async function getScheduleAllocEdits(orderId: number): Promise<ScheduleAllocEdit[]> {
+  const rows = await prisma.productionScheduleAllocEdit.findMany({
+    where: { orderId },
+    orderBy: [{ tanggal: "asc" }, { variantId: "asc" }],
+  });
+  return rows.map((r) => ({ tanggal: dayKey(r.tanggal), variantId: r.variantId, qty: r.qty }));
+}
+
+// qty null = hapus override (kembali ke angka auto).
+export async function saveScheduleTargetEdit(
+  orderId: number,
+  tanggal: Date,
+  stage: string,
+  qty: number | null,
+): Promise<ScheduleTargetEdit[]> {
+  const order = await prisma.productionOrder.findUnique({ where: { id: orderId }, select: { id: true } });
+  if (!order) {
+    throw Object.assign(new Error("Production order tidak ditemukan"), { code: "P2025" });
+  }
+  const day = startOfDay(tanggal);
+  if (qty === null) {
+    await prisma.productionScheduleTargetEdit.deleteMany({ where: { orderId, tanggal: day, stage } });
+  } else {
+    await prisma.productionScheduleTargetEdit.upsert({
+      where: { orderId_tanggal_stage: { orderId, tanggal: day, stage } },
+      create: { orderId, tanggal: day, stage, qty },
+      update: { qty },
+    });
+  }
+  return getScheduleTargetEdits(orderId);
+}
+
+export async function saveScheduleAllocEdit(
+  orderId: number,
+  tanggal: Date,
+  variantId: number,
+  qty: number | null,
+  mode: "set" | "add" = "set",
+): Promise<ScheduleAllocEdit[]> {
+  const order = await prisma.productionOrder.findUnique({
+    where: { id: orderId },
+    select: { id: true, items: { select: { variantId: true, qty: true } } },
+  });
+  if (!order) {
+    throw Object.assign(new Error("Production order tidak ditemukan"), { code: "P2025" });
+  }
+  const item = order.items.find((it) => it.variantId === variantId);
+  if (!item) {
+    throw Object.assign(new Error("Variant tidak ada di order ini"), { code: "P2003" });
+  }
+  const day = startOfDay(tanggal);
+  if (qty === null) {
+    await prisma.productionScheduleAllocEdit.deleteMany({ where: { orderId, tanggal: day, variantId } });
+    return getScheduleAllocEdits(orderId);
+  }
+  const existing =
+    mode === "add"
+      ? await prisma.productionScheduleAllocEdit.findUnique({
+          where: { orderId_tanggal_variantId: { orderId, tanggal: day, variantId } },
+          select: { qty: true },
+        })
+      : null;
+  const next = (mode === "add" ? (existing?.qty ?? 0) : 0) + qty;
+  const others = await prisma.productionScheduleAllocEdit.aggregate({
+    where: { orderId, variantId, NOT: { tanggal: day } },
+    _sum: { qty: true },
+  });
+  const total = (others._sum.qty ?? 0) + next;
+  // Total pin per variant tak boleh melewati qty master — jadwal tak boleh
+  // menjadwalkan unit yang tak ada di Master Produksi.
+  if (total > item.qty) {
+    throw Object.assign(new Error(`Total alokasi ${total} melebihi qty master ${item.qty}`), { code: "E409" });
+  }
+  await prisma.productionScheduleAllocEdit.upsert({
+    where: { orderId_tanggal_variantId: { orderId, tanggal: day, variantId } },
+    create: { orderId, tanggal: day, variantId, qty: next },
+    update: { qty: next },
+  });
+  return getScheduleAllocEdits(orderId);
+}
