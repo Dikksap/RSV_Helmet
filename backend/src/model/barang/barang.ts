@@ -77,6 +77,7 @@ export interface BarangListFilter {
   limit: number;
   variantId?: number;
   batchId?: number;
+  groupId?: number;
   status?: StatusBarang;
   tanggalAwal?: Date;
   tanggalAkhir?: Date;
@@ -104,7 +105,7 @@ function normalizeEnd(d: Date): Date {
 }
 
 export async function listBarang(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, status, tanggalAwal, tanggalAkhir } =
+  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir } =
     filter;
 
   const cacheKey = barangListKey({
@@ -112,6 +113,7 @@ export async function listBarang(filter: BarangListFilter) {
     limit,
     variantId: variantId ?? "",
     batchId: batchId ?? "",
+    groupId: groupId ?? "",
     status: status ?? "",
     tanggalAwal: tanggalAwal ?? "",
     tanggalAkhir: tanggalAkhir ?? "",
@@ -125,18 +127,20 @@ export async function listBarang(filter: BarangListFilter) {
 }
 
 async function listBarangUncached(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, status, tanggalAwal, tanggalAkhir } =
+  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir } =
     filter;
 
   const where: {
     variantId?: number;
     batchId?: number;
+    groupId?: number;
     status?: StatusBarang;
     tanggal?: { gte?: Date; lte?: Date };
   } = {};
 
   if (variantId !== undefined) where.variantId = variantId;
   if (batchId !== undefined) where.batchId = batchId;
+  if (groupId !== undefined) where.groupId = groupId;
   if (status) where.status = status;
   if (tanggalAwal || tanggalAkhir) {
     where.tanggal = {};

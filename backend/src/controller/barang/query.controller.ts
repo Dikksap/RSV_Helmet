@@ -41,7 +41,7 @@ export async function listBarangHandler(req: Request, res: Response) {
     // limit=all (atau 0) = tanpa paginasi, ambil semua barang.
     const noLimit = req.query.limit === "all" || req.query.limit === "0";
     const limit = noLimit ? 0 : Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { variantId, batchId, status, tanggalAwal, tanggalAkhir, tanggal } = req.query;
+    const { variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, tanggal } = req.query;
 
     if (status && !["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"].includes(String(status))) {
       return res.status(400).json({
@@ -63,6 +63,14 @@ export async function listBarangHandler(req: Request, res: Response) {
       bid = Number(batchId);
       if (Number.isNaN(bid)) {
         return res.status(400).json({ message: "Parameter 'batchId' harus angka" });
+      }
+    }
+
+    let gid: number | undefined;
+    if (groupId !== undefined) {
+      gid = Number(groupId);
+      if (Number.isNaN(gid)) {
+        return res.status(400).json({ message: "Parameter 'groupId' harus angka" });
       }
     }
 
@@ -112,6 +120,7 @@ export async function listBarangHandler(req: Request, res: Response) {
       limit,
       variantId: vid,
       batchId: bid,
+      groupId: gid,
       status: status as StatusBarang | undefined,
       tanggalAwal: tAwal,
       tanggalAkhir: tAkhir,
