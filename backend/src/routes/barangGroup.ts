@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getBarangGroupListHandler,
   getBarangGroupDetailHandler,
+  getBarangGroupBarangsHandler,
   createBarangGroupHandler,
   updateBarangGroupHandler,
   deleteBarangGroupHandler,
@@ -13,6 +14,7 @@ const router = Router();
 
 router.get("/", getBarangGroupListHandler);
 router.get("/:id", getBarangGroupDetailHandler);
+router.get("/:id/barangs", getBarangGroupBarangsHandler);
 router.post("/", createBarangGroupHandler);
 router.put("/:id", updateBarangGroupHandler);
 router.delete("/:id", deleteBarangGroupHandler);

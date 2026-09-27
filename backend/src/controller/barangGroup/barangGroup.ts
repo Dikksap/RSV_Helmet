@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   getAllBarangGroup,
   getBarangGroupById,
+  getBarangInGroup,
   createBarangGroup,
   updateBarangGroup,
   deleteBarangGroup,
@@ -51,6 +52,20 @@ export async function getBarangGroupDetailHandler(req: Request, res: Response) {
     res.status(200).json(row);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data grup barang", error });
+  }
+}
+
+// GET /api/barang-group/:id/barangs
+export async function getBarangGroupBarangsHandler(req: Request, res: Response) {
+  try {
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ message: "ID harus angka bulat positif" });
+    const group = await getBarangGroupById(id);
+    if (!group) return res.status(404).json({ message: "Grup barang tidak ditemukan" });
+    const barang = await getBarangInGroup(id);
+    res.status(200).json({ group, barang });
+  } catch (error) {
+    res.status(500).json({ message: "Gagal mengambil isi grup barang", error });
   }
 }
 
@@ -125,7 +140,10 @@ export async function assignBarangHandler(req: Request, res: Response) {
 
     const result = await assignBarangToGroup(id, parsed.ids);
     res.status(200).json({ message: "Barang berhasil dimasukkan ke grup", ...result });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === "GROUP_FULL") {
+      return res.status(409).json({ message: error.message });
+    }
     res.status(500).json({ message: "Gagal memasukkan barang ke grup", error });
   }
 }

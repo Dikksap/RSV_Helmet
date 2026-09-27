@@ -1,12 +1,14 @@
 /* eslint-disable react-refresh/only-export-components -- constants file, not a component */
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faArchive,
   faBook,
   faBoxesStacked,
   faChartPie,
   faClipboardCheck,
   faClipboardList,
   faDatabase,
+  faFileLines,
   faGaugeHigh,
   faHouse,
   faPlug,
@@ -40,6 +42,12 @@ export const BARANG_PRODUKSI = {
       end: false,
     },
     {
+      to: "/admin/stok-produksi",
+      label: "Stok Produksi",
+      icon: faArchive,
+      end: true,
+    },
+    {
       to: "/admin/variant-produk",
       label: "Variant Produk",
       icon: faTags,
@@ -56,6 +64,12 @@ export const BARANG_PRODUKSI = {
       label: "Plan Production",
       icon: faClipboardList,
       end: false,
+    },
+    {
+      to: "/admin/spk",
+      label: "SPK Produksi",
+      icon: faFileLines,
+      end: true,
     },
     {
       to: "/admin/realisasi-produksi",

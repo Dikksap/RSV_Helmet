@@ -5,6 +5,7 @@ import express from "express";
 vi.mock("../src/model/barangGroup/barangGroup.js", () => ({
   getAllBarangGroup: vi.fn(),
   getBarangGroupById: vi.fn(),
+  getBarangInGroup: vi.fn(),
   createBarangGroup: vi.fn(),
   updateBarangGroup: vi.fn(),
   deleteBarangGroup: vi.fn(),
@@ -16,6 +17,7 @@ import barangGroupRouter from "../src/routes/barangGroup.js";
 import {
   getAllBarangGroup,
   getBarangGroupById,
+  getBarangInGroup,
   createBarangGroup,
   updateBarangGroup,
   deleteBarangGroup,
@@ -26,6 +28,7 @@ import {
 const mocked = {
   getAllBarangGroup: vi.mocked(getAllBarangGroup),
   getBarangGroupById: vi.mocked(getBarangGroupById),
+  getBarangInGroup: vi.mocked(getBarangInGroup),
   createBarangGroup: vi.mocked(createBarangGroup),
   updateBarangGroup: vi.mocked(updateBarangGroup),
   deleteBarangGroup: vi.mocked(deleteBarangGroup),
@@ -86,6 +89,48 @@ describe("GET /api/barang-group/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body.nama).toBe("Gudang A");
     expect(mocked.getBarangGroupById).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("GET /api/barang-group/:id/barangs", () => {
+  it("400 jika id bukan angka bulat positif", async () => {
+    const res = await request(app).get("/api/barang-group/abc/barangs");
+    expect(res.status).toBe(400);
+    expect(mocked.getBarangInGroup).not.toHaveBeenCalled();
+  });
+
+  it("404 jika grup tidak ditemukan", async () => {
+    mocked.getBarangGroupById.mockResolvedValue(null);
+
+    const res = await request(app).get("/api/barang-group/999/barangs");
+
+    expect(res.status).toBe(404);
+    expect(mocked.getBarangInGroup).not.toHaveBeenCalled();
+  });
+
+  it("200 kembalikan isi grup", async () => {
+    mocked.getBarangGroupById.mockResolvedValue(sampleGroup as any);
+    mocked.getBarangInGroup.mockResolvedValue([
+      {
+        id: 1,
+        kodeBarang: "BC001-W001-250826-0001",
+        status: "FINISHGOOD",
+        variant: {
+          product: { nama: "Helm Pro" },
+          style: { nama: "Stripe" },
+          color: { nama: "Merah" },
+          size: { nama: "L" },
+        },
+      },
+    ]);
+
+    const res = await request(app).get("/api/barang-group/1/barangs");
+
+    expect(res.status).toBe(200);
+    expect(res.body.group.nama).toBe("Gudang A");
+    expect(res.body.barang).toHaveLength(1);
+    expect(res.body.barang[0].kodeBarang).toBe("BC001-W001-250826-0001");
+    expect(mocked.getBarangInGroup).toHaveBeenCalledWith(1);
   });
 });
 
@@ -156,13 +201,13 @@ describe("DELETE /api/barang-group/:id", () => {
     expect(res.status).toBe(404);
   });
 
-  it("409 jika grup masih dipakai barang", async () => {
-    mocked.deleteBarangGroup.mockRejectedValue(prismaError("P2003"));
+  it("200 hapus dus berisi barang (barang dilepas, bukan terhapus)", async () => {
+    mocked.deleteBarangGroup.mockResolvedValue(undefined as any);
 
     const res = await request(app).delete("/api/barang-group/1");
 
-    expect(res.status).toBe(409);
-    expect(res.body.message).toContain("masih dipakai barang");
+    expect(res.status).toBe(200);
+    expect(res.body.message).toContain("berhasil dihapus");
   });
 
   it("200 sukses hapus", async () => {

@@ -426,6 +426,7 @@ export interface BulkScanItemResult {
   id?: number;
   kodeBarang: string;
   reason?: string;
+  error?: string;
 }
 
 export interface BulkScanResponse {

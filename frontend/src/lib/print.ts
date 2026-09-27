@@ -1,4 +1,4 @@
-import hangtagCss from "../components/Hangtag/hangtag.css?raw";
+import hangtagCss from "../components/public/Hangtag/hangtag.css?raw";
 
 export interface PrinterInfo {
   name: string;

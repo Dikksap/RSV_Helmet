@@ -3,9 +3,17 @@ import { clearBarangCache } from "../../lib/barangCache.js";
 
 const countBarang = { _count: { select: { barang: true } } };
 
+export const DUS_CAPACITY = 8;
+
 export async function getAllBarangGroup() {
   return prisma.barangGroup.findMany({
-    include: countBarang,
+    include: {
+      ...countBarang,
+      barang: {
+        include: { variant: { include: { product: true, style: true, color: true, size: true } } },
+        orderBy: { kodeBarang: "asc" },
+      },
+    },
     orderBy: { nama: "asc" },
   });
 }
@@ -18,24 +26,48 @@ export async function getBarangGroupById(id: number) {
 }
 
 export async function createBarangGroup(data: { nama: string }) {
-  return prisma.barangGroup.create({ data });
+  return prisma.barangGroup.create({ data, include: countBarang });
 }
 
 export async function updateBarangGroup(id: number, data: { nama: string }) {
-  return prisma.barangGroup.update({ where: { id }, data });
+  return prisma.barangGroup.update({ where: { id }, data, include: countBarang });
 }
 
 export async function deleteBarangGroup(id: number) {
-  await prisma.barangGroup.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.barang.updateMany({ where: { groupId: id }, data: { groupId: null } });
+    await tx.barangGroup.delete({ where: { id } });
+  });
 }
 
 export async function assignBarangToGroup(groupId: number, barangIds: number[]) {
-  const updated = await prisma.barang.updateMany({
-    where: { id: { in: barangIds } },
-    data: { groupId },
+  if (barangIds.length === 0) return { updated: 0, skipped: 0 };
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT id FROM BarangGroup WHERE id = ${groupId} FOR UPDATE`;
+    const updated = await tx.barang.updateMany({
+      where: { id: { in: barangIds }, OR: [{ groupId: null }, { groupId: { not: groupId } }] },
+      data: { groupId },
+    });
+    const rows = await tx.$queryRaw<[{ barang: number }]>`
+      SELECT COUNT(*) AS barang FROM Barang WHERE groupId = ${groupId}`;
+    if (Number(rows[0].barang) > DUS_CAPACITY) {
+      const error = new Error(`Dus hanya muat ${DUS_CAPACITY} barang`) as Error & { code?: string };
+      error.code = "GROUP_FULL";
+      throw error;
+    }
+    if (updated.count > 0) await clearBarangCache();
+    return { updated: updated.count, skipped: barangIds.length - updated.count };
   });
-  if (updated.count > 0) await clearBarangCache();
-  return { updated: updated.count, skipped: barangIds.length - updated.count };
+}
+
+export async function getBarangInGroup(groupId: number) {
+  return prisma.barang.findMany({
+    where: { groupId },
+    include: {
+      variant: { include: { product: true, style: true, color: true, size: true } },
+    },
+    orderBy: { kodeBarang: "asc" },
+  });
 }
 
 export async function unassignBarangFromGroup(groupId: number, barangIds: number[]) {
