@@ -34,12 +34,6 @@ function formatDate(date: string) {
   });
 }
 
-function shortVariant(barang: BarangInGroup) {
-  const v = barang.variant;
-  if (v?.product && v?.size) return `${v.product.nama} ${v.size.nama}`;
-  return "-";
-}
-
 function variantName(barang: BarangInGroup) {
   const v = barang.variant;
   if (v?.product && v?.style && v?.color && v?.size)
@@ -50,7 +44,7 @@ function variantName(barang: BarangInGroup) {
 function summarize(barang: BarangInGroup[]): string {
   const m = new Map<string, number>();
   for (const b of barang) {
-    const k = shortVariant(b);
+    const k = variantName(b);
     m.set(k, (m.get(k) ?? 0) + 1);
   }
   return [...m.entries()].map(([k, n]) => `${k} × ${n}`).join(" · ");

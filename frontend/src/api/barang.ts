@@ -511,6 +511,25 @@ export async function deleteBarang(id: number): Promise<{ message: string; id: n
   return response.json() as Promise<{ message: string; id: number }>;
 }
 
+export interface BulkStatusResponse {
+  success: Barang[];
+  failed: { id: number; error: string }[];
+  summary: { total: number; success: number; failed: number };
+}
+
+export async function bulkStatusBarang(
+  items: { id: number; status: StatusBarang; keterangan?: string }[],
+): Promise<BulkStatusResponse> {
+  const response = await fetch(`${apiUrl}/barang/bulk-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  if (!response.ok)
+    await parseCrudError(response, `Gagal ubah status massal: ${response.status}`);
+  return response.json() as Promise<BulkStatusResponse>;
+}
+
 export interface RiwayatBarangItem {
   id: number;
   barangId: number;

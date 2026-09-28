@@ -30,6 +30,9 @@ type FilterSectionProps = {
   currentPage: number;
   totalPages: number;
   hasActiveFilters: boolean;
+  searchDisabled?: boolean;
+  searchHint?: string;
+  variantError?: string | null;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: StatusBarang) => void;
   onVariantChange: (value: string) => void;
@@ -54,6 +57,9 @@ export function FilterSection({
   currentPage,
   totalPages,
   hasActiveFilters,
+  searchDisabled,
+  searchHint,
+  variantError,
   onSearchChange,
   onStatusChange,
   onVariantChange,
@@ -90,11 +96,13 @@ export function FilterSection({
           <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
           <input
             type="search"
-            className={`${inputCls} pl-9 pr-9`}
-            placeholder="Cari kode barang..."
+            className={`${inputCls} pl-9 pr-9 disabled:cursor-not-allowed disabled:opacity-60`}
+            placeholder={searchDisabled ? "Nonaktif saat filter lain dipakai" : "Cari kode barang..."}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             aria-label="Cari kode barang"
+            disabled={searchDisabled}
+            title={searchHint}
           />
           {search && (
             <button
@@ -121,6 +129,13 @@ export function FilterSection({
           )}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
         </button>
+
+        {variantError && (
+          <p role="alert" className="flex items-start gap-1.5 px-3 pb-2 text-xs text-[#EF4444] sm:px-4">
+            <svg className="mt-0.5 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            {variantError}
+          </p>
+        )}
 
         <span className="hidden shrink-0 text-xs font-medium tabular-nums text-[#6B7280] sm:inline">
           {currentPage}/{totalPages}
@@ -168,12 +183,12 @@ export function FilterSection({
 
           <label className={labelCls}>
             <span>Tgl Awal</span>
-            <input type="date" className={inputCls} value={tanggalAwal} onChange={(e) => onTanggalAwalChange(e.target.value)} />
+            <input type="date" className={inputCls} value={tanggalAwal} onChange={(e) => { onTanggalAwalChange(e.target.value); onDatePresetChange(""); }} />
           </label>
 
           <label className={labelCls}>
             <span>Tgl Akhir</span>
-            <input type="date" className={inputCls} value={tanggalAkhir} onChange={(e) => onTanggalAkhirChange(e.target.value)} />
+            <input type="date" className={inputCls} value={tanggalAkhir} onChange={(e) => { onTanggalAkhirChange(e.target.value); onDatePresetChange(""); }} />
           </label>
 
           <div className="flex items-end">

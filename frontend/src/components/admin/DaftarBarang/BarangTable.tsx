@@ -4,6 +4,7 @@ import { StatusBadge } from "./StatusBadge";
 type BarangTableProps = {
   barang: Barang[];
   currentPage: number;
+  pageSize: number | "all";
   totalBarang: number;
   now: number;
   selectedIds: Set<number>;
@@ -15,11 +16,13 @@ type BarangTableProps = {
   onRiwayat?: (item: Barang) => void;
   formatDate: (date: string) => string;
   formatRelativeTime: (date: string, nowMs: number) => string;
+  caption?: string;
 };
 
 export function BarangTable({
   barang,
   currentPage,
+  pageSize,
   totalBarang,
   now,
   selectedIds,
@@ -31,14 +34,17 @@ export function BarangTable({
   onRiwayat,
   formatDate,
   formatRelativeTime,
+  caption,
 }: BarangTableProps) {
   const allSelected = barang.length > 0 && barang.every((b) => selectedIds.has(b.id));
   const someSelected = barang.some((b) => selectedIds.has(b.id));
+  const size = pageSize === "all" ? barang.length : pageSize;
+  const rowNo = (index: number) => (currentPage - 1) * size + index + 1;
 
   return (
     <div>
       {/* ── Mobile: select all bar ─────────────────── */}
-      <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm md:hidden">
+      <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm lg:hidden">
         <input
           type="checkbox"
           checked={allSelected}
@@ -53,7 +59,7 @@ export function BarangTable({
         <span className="ml-auto text-xs tabular-nums text-[#6B7280]">{selectedIds.size > 0 ? `${selectedIds.size} dipilih` : `${barang.length} item`}</span>
       </div>
       {/* ── Mobile: cards ─────────────────────────────── */}
-      <ul className="grid gap-3 md:hidden" aria-label="Daftar barang">
+      <ul className="grid gap-3 lg:hidden" aria-label="Daftar barang">
         {barang.map((item, index) => {
           const checked = selectedIds.has(item.id);
           return (
@@ -75,7 +81,7 @@ export function BarangTable({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-xs font-medium tabular-nums text-[#6B7280]">
-                          #{(currentPage - 1) * 20 + index + 1} • {formatRelativeTime(item.createdAt, now)}
+                          #{rowNo(index)} • {formatRelativeTime(item.createdAt, now)}
                         </p>
                         <p className="mt-0.5 truncate font-mono text-[15px] font-bold text-[#1E3A5F]">
                           {item.kodeBarang}
@@ -93,7 +99,9 @@ export function BarangTable({
                 <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
                   <span className="font-mono text-xs font-semibold text-[#1F2937]">
                     {item.batch ? `BC${String(item.batch.nomorBatch).padStart(3, "0")}` : "No Batch"}
-                    <span className="ml-2 font-sans font-normal text-[#6B7280]">• {formatDate(item.createdAt)}</span>
+                    <span className="ml-2 font-sans font-normal text-[#6B7280]">
+                      • {item.tanggal ? formatDate(item.tanggal) : formatDate(item.createdAt)}
+                    </span>
                   </span>
                   {(onEdit || onDelete || onRiwayat) && (
                     <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -130,7 +138,7 @@ export function BarangTable({
       </ul>
 
       {/* ── Desktop: table ────────────────────────────── */}
-      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)] md:block">
+      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)] lg:block">
         <div className="max-h-[58vh] overflow-auto">
           <table className="w-full min-w-[900px] border-collapse text-left">
             <thead className="sticky top-0 z-10 bg-[#1E3A5F] text-xs font-bold uppercase tracking-wider text-white">
@@ -153,8 +161,8 @@ export function BarangTable({
                 <th className="px-4 py-3">Varian</th>
                 <th className="px-4 py-3">Batch</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Tanggal</th>
                 <th className="px-4 py-3">Dibuat</th>
-                <th className="px-4 py-3">Waktu</th>
                     {(onEdit || onDelete || onRiwayat) && <th className="px-4 py-3 text-right">Aksi</th>}
               </tr>
             </thead>
@@ -177,7 +185,7 @@ export function BarangTable({
                       />
                     </td>
                     <td className="px-3 py-2.5 text-xs tabular-nums text-[#6B7280]">
-                      {(currentPage - 1) * 20 + index + 1}
+                      {rowNo(index)}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="font-mono text-sm font-bold text-[#1E3A5F] group-hover:text-[#00A8E8] group-hover:underline">
@@ -196,9 +204,11 @@ export function BarangTable({
                     <td className="px-4 py-2.5">
                       <StatusBadge status={item.status} />
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[#6B7280]">{formatDate(item.createdAt)}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[#6B7280]">
-                      <span title={formatDate(item.createdAt)}>{formatRelativeTime(item.createdAt, now)}</span>
+                      {item.tanggal ? formatDate(item.tanggal) : "-"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[#6B7280]">
+                      <span title={formatRelativeTime(item.createdAt, now)}>{formatDate(item.createdAt)}</span>
                     </td>
                     {(onEdit || onDelete || onRiwayat) && (
                       <td className="px-4 py-2.5">
@@ -241,17 +251,22 @@ export function BarangTable({
         </div>
         <div className="flex items-center justify-between border-t border-slate-200 bg-[#F5F7FA] px-4 py-2.5 text-xs tabular-nums text-[#6B7280]">
           <span>
-            Menampilkan {barang.length} dari {totalBarang.toLocaleString("id-ID")} barang
+            {caption ??
+              `Menampilkan ${barang.length} dari ${totalBarang.toLocaleString("id-ID")} barang`}
             {selectedIds.size > 0 && <span className="ml-2 font-semibold text-[#1E3A5F]">• {selectedIds.size} dipilih</span>}
           </span>
-          <span>
-            {totalBarang > 0 ? `${((currentPage - 1) * 20 + 1).toLocaleString("id-ID")}–${Math.min(currentPage * 20, totalBarang).toLocaleString("id-ID")}` : "0"}
-          </span>
+          {!caption && (
+            <span>
+              {totalBarang > 0 && size > 0
+                ? `${((currentPage - 1) * size + 1).toLocaleString("id-ID")}–${Math.min(currentPage * size, totalBarang).toLocaleString("id-ID")}`
+                : "0"}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Mobile count line */}
-      <p className="mt-2 text-center text-xs tabular-nums text-[#6B7280] md:hidden">
+      <p className="mt-2 text-center text-xs tabular-nums text-[#6B7280] lg:hidden">
         {barang.length} dari {totalBarang.toLocaleString("id-ID")} • Hal. {currentPage}
         {selectedIds.size > 0 && <span className="font-semibold text-[#1E3A5F]"> • {selectedIds.size} dipilih</span>}
       </p>

@@ -1,6 +1,8 @@
 type HeaderSectionProps = {
   totalBarang: number;
   isExporting: boolean;
+  exportDisabled?: boolean;
+  exportDisabledReason?: string;
   onExportCSV: () => void;
   onExportJSON: () => void;
   onCreate?: () => void;
@@ -10,6 +12,8 @@ type HeaderSectionProps = {
 export function HeaderSection({
   totalBarang,
   isExporting,
+  exportDisabled,
+  exportDisabledReason,
   onExportCSV,
   onExportJSON,
   onCreate,
@@ -62,9 +66,9 @@ export function HeaderSection({
           <button
             type="button"
             onClick={onExportCSV}
-            disabled={isExporting}
+            disabled={isExporting || exportDisabled}
             className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-slate-50 disabled:opacity-40"
-            title="Export CSV"
+            title={exportDisabled ? exportDisabledReason : "Export CSV"}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             CSV
@@ -72,9 +76,9 @@ export function HeaderSection({
           <button
             type="button"
             onClick={onExportJSON}
-            disabled={isExporting}
+            disabled={isExporting || exportDisabled}
             className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-slate-50 disabled:opacity-40"
-            title="Export JSON"
+            title={exportDisabled ? exportDisabledReason : "Export JSON"}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             JSON

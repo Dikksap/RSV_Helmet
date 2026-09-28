@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  bulkStatusBarang,
   createBarang,
   deleteBarang,
   exportBarang,
@@ -18,6 +19,7 @@ import { HangtagModal } from "../../components/admin/DaftarBarang/HangtagModal";
 import { RiwayatModal } from "../../components/admin/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../../components/admin/DaftarBarang/BarangImportModal";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
+import { downloadCsv } from "../../lib/csv";
 
 const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
   { value: "REGISTER", label: "REGISTER" },
@@ -36,8 +38,8 @@ function DaftarBarang() {
   const [statusFilter, setStatusFilter] = useState("");
   const [variantFilter, setVariantFilter] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
-  const [tanggalAwal, setTanggalAwal] = useState(() => new Date().toISOString().slice(0, 10));
-  const [tanggalAkhir, setTanggalAkhir] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tanggalAwal, setTanggalAwal] = useState("");
+  const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [datePreset, setDatePreset] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
@@ -48,7 +50,9 @@ function DaftarBarang() {
   const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: "single"; barang: Barang } | { kind: "bulk" } | null
+  >(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [isBulkEditing, setIsBulkEditing] = useState(false);
   const [bStatus, setBStatus] = useState("");
@@ -59,9 +63,9 @@ function DaftarBarang() {
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingBarang, setEditingBarang] = useState<Barang | null>(null);
-  const [deletingBarang, setDeletingBarang] = useState<Barang | null>(null);
   const [crudLoading, setCrudLoading] = useState(false);
   const [crudError, setCrudError] = useState<string | null>(null);
+  const [productsError, setProductsError] = useState<string | null>(null);
 
   // Create form state
   const [cVariantId, setCVariantId] = useState("");
@@ -98,6 +102,14 @@ function DaftarBarang() {
     Boolean(tanggalAwal) ||
     Boolean(tanggalAkhir);
 
+  const isSearchMode =
+    Boolean(debouncedSearch) &&
+    !statusFilter &&
+    !variantFilter &&
+    !tanggalAwal &&
+    !tanggalAkhir;
+  const searchLimit = typeof pageSize === "number" ? Math.min(50, pageSize) : 50;
+
   // Debounce ketikan search 400ms agar tidak hit /barang/search tiap keystroke
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 400);
@@ -109,23 +121,18 @@ function DaftarBarang() {
       setIsLoading(true);
       setError(null);
       try {
-        const data =
-          debouncedSearch &&
-          !statusFilter &&
-          !variantFilter &&
-          !tanggalAwal &&
-          !tanggalAkhir
-            ? await searchBarang(debouncedSearch, 20)
-            : await getBarangPage({
-                page,
-                limit: pageSize,
-                variantId: variantFilter ? Number(variantFilter) : undefined,
-                status: statusFilter
-                  ? (statusFilter as StatusBarang)
-                  : undefined,
-                tanggalAwal: tanggalAwal || undefined,
-                tanggalAkhir: tanggalAkhir || undefined,
-              });
+        const data = isSearchMode
+          ? await searchBarang(debouncedSearch, searchLimit)
+          : await getBarangPage({
+              page,
+              limit: pageSize,
+              variantId: variantFilter ? Number(variantFilter) : undefined,
+              status: statusFilter
+                ? (statusFilter as StatusBarang)
+                : undefined,
+              tanggalAwal: tanggalAwal || undefined,
+              tanggalAkhir: tanggalAkhir || undefined,
+            });
         setBarang(data.data);
         setTotalPages("totalPages" in data.meta ? data.meta.totalPages : 1);
         setTotalBarang(
@@ -146,7 +153,7 @@ function DaftarBarang() {
         setIsLoading(false);
       }
     },
-    [tanggalAwal, tanggalAkhir, variantFilter, debouncedSearch, statusFilter, pageSize],
+    [isSearchMode, searchLimit, tanggalAwal, tanggalAkhir, variantFilter, debouncedSearch, statusFilter, pageSize],
   );
 
   useEffect(() => {
@@ -166,7 +173,9 @@ function DaftarBarang() {
   useEffect(() => {
     getProducts()
       .then(setProducts)
-      .catch(() => undefined);
+      .catch(() =>
+        setProductsError("Gagal memuat daftar variant — filter dan form variant tidak tersedia"),
+      );
   }, []);
 
   useEffect(() => {
@@ -177,28 +186,34 @@ function DaftarBarang() {
         setShowCreate(false);
         setShowImport(false);
         setEditingBarang(null);
-        setDeletingBarang(null);
+        setPendingDelete(null);
         setShowBulkEdit(false);
       }
     };
-    if (selectedBarang || riwayatBarang || showCreate || showImport || editingBarang || deletingBarang || showBulkEdit) {
+    if (selectedBarang || riwayatBarang || showCreate || showImport || editingBarang || pendingDelete || showBulkEdit) {
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedBarang, riwayatBarang, showCreate, showImport, editingBarang, deletingBarang, showBulkEdit]);
+  }, [selectedBarang, riwayatBarang, showCreate, showImport, editingBarang, pendingDelete, showBulkEdit]);
 
-  const variantOptions = useMemo(
-    () =>
-      products
-        .flatMap((product) =>
-          product.variants.map((variant) => ({
-            id: variant.id,
-            nama: `${product.nama} / ${variant.style.nama} / ${variant.color.nama} / ${variant.size.nama}`,
-          })),
-        )
-        .sort((a, b) => a.nama.localeCompare(b.nama)),
-    [products],
-  );
+  const variantOptions = useMemo(() => {
+    const options = products
+      .flatMap((product) =>
+        product.variants.map((variant) => ({
+          id: variant.id,
+          nama: `${product.nama} / ${variant.style.nama} / ${variant.color.nama} / ${variant.size.nama}`,
+        })),
+      )
+      .sort((a, b) => a.nama.localeCompare(b.nama));
+    const current = editingBarang?.variant;
+    if (current && !options.some((o) => o.id === current.id)) {
+      options.unshift({
+        id: current.id,
+        nama: `${current.product.nama} / ${current.style.nama} / ${current.color.nama} / ${current.size.nama}`,
+      });
+    }
+    return options;
+  }, [products, editingBarang]);
 
   const handleResetFilters = () => {
     setSearch("");
@@ -228,8 +243,6 @@ function DaftarBarang() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Hapus ${selectedIds.size} barang terpilih? Tindakan tidak dapat dibatalkan.`)) return;
-    setIsBulkDeleting(true);
     setCrudError(null);
     try {
       const ids = [...selectedIds];
@@ -240,9 +253,7 @@ function DaftarBarang() {
       const nextPage = barang.length === ids.length && currentPage > 1 ? currentPage - 1 : currentPage;
       await fetchBarang(nextPage);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal hapus massal");
-    } finally {
-      setIsBulkDeleting(false);
+      setCrudError(err instanceof Error ? err.message : "Gagal hapus massal");
     }
   };
 
@@ -282,12 +293,21 @@ function DaftarBarang() {
       const ids = [...selectedIds];
       const failedIds: number[] = [];
       let firstError = "";
-      for (const id of ids) {
-        try {
-          await updateBarang(id, payload);
-        } catch (err) {
-          failedIds.push(id);
-          if (!firstError) firstError = err instanceof Error ? err.message : "Gagal memperbarui";
+      if (payload.tanggal) {
+        for (const id of ids) {
+          try {
+            await updateBarang(id, payload);
+          } catch (err) {
+            failedIds.push(id);
+            if (!firstError) firstError = err instanceof Error ? err.message : "Gagal memperbarui";
+          }
+        }
+      } else {
+        const items = ids.map((id) => ({ id, status: payload.status!, keterangan: payload.keterangan }));
+        for (let i = 0; i < items.length; i += 500) {
+          const res = await bulkStatusBarang(items.slice(i, i + 500));
+          failedIds.push(...res.failed.map((f) => f.id));
+          if (!firstError) firstError = res.failed[0]?.error ?? "Gagal memperbarui";
         }
       }
       const ok = ids.length - failedIds.length;
@@ -308,26 +328,20 @@ function DaftarBarang() {
   const handleBulkExport = () => {
     if (selectedIds.size === 0) return;
     const selected = barang.filter((b) => selectedIds.has(b.id));
-    const headers = ["id", "kodeBarang", "status", "produk", "varian", "batch", "createdAt"];
-    const rows = selected.map((b) => [
-      String(b.id),
-      b.kodeBarang,
-      b.status,
-      b.variant.product.nama,
-      `${b.variant.style.nama} ${b.variant.color.nama} ${b.variant.size.nama}`,
-      b.batch ? `BC${String(b.batch.nomorBatch).padStart(3, "0")}` : "",
-      b.createdAt,
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `barang-selected-${Date.now()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const rows: unknown[][] = [
+      ["id", "kodeBarang", "status", "produk", "varian", "batch", "createdAt"],
+      ...selected.map((b) => [
+        b.id,
+        b.kodeBarang,
+        b.status,
+        b.variant.product.nama,
+        `${b.variant.style.nama} ${b.variant.color.nama} ${b.variant.size.nama}`,
+        b.batch ? `BC${String(b.batch.nomorBatch).padStart(3, "0")}` : "",
+        b.createdAt.slice(0, 10),
+      ]),
+    ];
+    downloadCsv(`barang-selected-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `Export ${selected.length} barang terpilih ke CSV` } }));
   };
 
   const handleExport = async (format: "json" | "csv") => {
@@ -343,11 +357,12 @@ function DaftarBarang() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `barang-export-${Date.now()}.${format}`;
+      a.download = `barang-export-${new Date().toISOString().slice(0, 10)}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `Export ${format.toUpperCase()} berhasil` } }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal export barang");
     } finally {
@@ -387,7 +402,15 @@ function DaftarBarang() {
       };
       if (cBatchId.trim()) payload.batchId = Number(cBatchId);
       if (cKodeBarang.trim()) payload.kodeBarang = cKodeBarang.trim();
-      if (cTanggal) payload.tanggal = new Date(cTanggal).toISOString();
+      if (cTanggal) {
+        const d = new Date(cTanggal + "T00:00:00");
+        if (Number.isNaN(d.getTime())) {
+          setCrudError("Field 'tanggal' harus tanggal valid");
+          setCrudLoading(false);
+          return;
+        }
+        payload.tanggal = d.toISOString();
+      }
       if (cStatus) payload.status = cStatus;
       if (cKeterangan.trim()) payload.keterangan = cKeterangan.trim();
 
@@ -491,13 +514,19 @@ function DaftarBarang() {
   };
 
   const handleDelete = async () => {
-    if (!deletingBarang) return;
+    if (!pendingDelete) return;
+    if (pendingDelete.kind === "bulk") {
+      setPendingDelete(null);
+      await handleBulkDelete();
+      return;
+    }
+    const target = pendingDelete.barang;
     setCrudLoading(true);
     setCrudError(null);
     try {
-      await deleteBarang(deletingBarang.id);
-      setDeletingBarang(null);
-      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.deleted", message: `Barang ${deletingBarang.kodeBarang} berhasil dihapus` } }));
+      await deleteBarang(target.id);
+      setPendingDelete(null);
+      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.deleted", message: `Barang ${target.kodeBarang} berhasil dihapus` } }));
       // if last item on page, go prev page
       const nextPage = barang.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
       await fetchBarang(nextPage);
@@ -538,6 +567,8 @@ function DaftarBarang() {
       <HeaderSection
         totalBarang={totalBarang}
         isExporting={isExporting}
+        exportDisabled={isSearchMode}
+        exportDisabledReason="Export tidak mendukung pencarian — gunakan filter"
         onExportCSV={() => handleExport("csv")}
         onExportJSON={() => handleExport("json")}
         onCreate={openCreate}
@@ -555,6 +586,9 @@ function DaftarBarang() {
         currentPage={currentPage}
         totalPages={totalPages}
         hasActiveFilters={hasActiveFilters}
+        searchDisabled={Boolean(statusFilter || variantFilter || tanggalAwal || tanggalAkhir)}
+        searchHint="Pencarian dinonaktifkan saat filter lain dipakai"
+        variantError={productsError}
         onSearchChange={setSearch}
         onStatusChange={setStatusFilter}
         onVariantChange={setVariantFilter}
@@ -567,7 +601,7 @@ function DaftarBarang() {
       {isLoading && (
         <div className="space-y-3" aria-label="Memuat data barang">
           {/* Mobile skeleton cards */}
-          <div className="grid gap-3 md:hidden">
+          <div className="grid gap-3 lg:hidden">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-6">
                 <div className="h-3 w-2/5 rounded bg-slate-200" />
@@ -577,7 +611,7 @@ function DaftarBarang() {
             ))}
           </div>
           {/* Desktop skeleton */}
-          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] md:block">
+          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] lg:block">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex animate-pulse gap-4 border-b border-slate-100 py-3 last:border-0">
                 <div className="h-4 w-8 rounded bg-slate-200" />
@@ -654,11 +688,11 @@ function DaftarBarang() {
                     </button>
                     <button
                       type="button"
-                      onClick={handleBulkDelete}
-                      disabled={isBulkDeleting}
+                      onClick={() => { setCrudError(null); setPendingDelete({ kind: "bulk" }); }}
+                      disabled={crudLoading}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50"
                     >
-                      {isBulkDeleting ? "Menghapus..." : `Hapus (${selectedIds.size})`}
+                      Hapus ({selectedIds.size})
                     </button>
                     <button
                       type="button"
@@ -673,6 +707,12 @@ function DaftarBarang() {
               <BarangTable
                 barang={barang}
                 currentPage={currentPage}
+                pageSize={isSearchMode ? barang.length : pageSize}
+                caption={
+                  isSearchMode
+                    ? `Pencarian "${debouncedSearch}" — ${barang.length} dari maks ${searchLimit} hasil, tanpa paginasi`
+                    : undefined
+                }
                 totalBarang={totalBarang}
                 now={now}
                 selectedIds={selectedIds}
@@ -680,18 +720,19 @@ function DaftarBarang() {
                 onToggleAll={toggleSelectAll}
                 onRowClick={setSelectedBarang}
                 onEdit={openEdit}
-                onDelete={setDeletingBarang}
+                onDelete={(b) => { setCrudError(null); setPendingDelete({ kind: "single", barang: b }); }}
                 onRiwayat={setRiwayatBarang}
                 formatDate={formatDate}
                 formatRelativeTime={formatRelativeTime}
               />
-              {totalPages > 1 && (
+              {!isSearchMode && totalPages > 1 && (
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
                   onPageChange={fetchBarang}
                 />
               )}
+              {!isSearchMode && (
               <div className="flex items-center justify-center gap-2 text-sm text-[#6B7280]">
                 <label htmlFor="page-size">Tampil per halaman</label>
                 <select
@@ -710,6 +751,7 @@ function DaftarBarang() {
                   <option value="all">Semua ({totalBarang.toLocaleString("id-ID")})</option>
                 </select>
               </div>
+              )}
             </>
           )}
         </section>
@@ -774,6 +816,7 @@ function DaftarBarang() {
                     <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
                   ))}
                 </select>
+                {productsError && <span className="text-xs text-[#EF4444]">{productsError}</span>}
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -865,6 +908,7 @@ function DaftarBarang() {
                     <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
                   ))}
                 </select>
+                {productsError && <span className="text-xs text-[#EF4444]">{productsError}</span>}
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1005,11 +1049,11 @@ function DaftarBarang() {
       )}
 
       {/* DELETE CONFIRM — bottom sheet on mobile */}
-      {deletingBarang && (
+      {pendingDelete && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
-          onClick={() => setDeletingBarang(null)}
+          onClick={() => setPendingDelete(null)}
         >
           <div
             className="relative w-full rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-md sm:rounded-xl"
@@ -1018,9 +1062,15 @@ function DaftarBarang() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
-            <h2 className="pr-8 text-lg font-bold text-[#1E3A5F]">Hapus Barang?</h2>
+            <h2 className="pr-8 text-lg font-bold text-[#1E3A5F]">
+              {pendingDelete.kind === "bulk" ? `Hapus ${selectedIds.size} Barang?` : "Hapus Barang?"}
+            </h2>
             <p className="mt-2 text-[15px] text-[#6B7280]">
-              Yakin hapus <span className="font-mono font-bold text-[#1E3A5F]">{deletingBarang.kodeBarang}</span>? Tindakan ini tidak dapat dibatalkan.
+              {pendingDelete.kind === "bulk" ? (
+                <>Yakin hapus <span className="font-bold text-[#1E3A5F]">{selectedIds.size} barang</span> terpilih? Tindakan ini tidak dapat dibatalkan.</>
+              ) : (
+                <>Yakin hapus <span className="font-mono font-bold text-[#1E3A5F]">{pendingDelete.barang.kodeBarang}</span>? Tindakan ini tidak dapat dibatalkan.</>
+              )}
             </p>
             {crudError && (
               <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
@@ -1028,7 +1078,7 @@ function DaftarBarang() {
             <div className="mt-6 flex gap-2">
               <button
                 type="button"
-                onClick={() => setDeletingBarang(null)}
+                onClick={() => setPendingDelete(null)}
                 className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none sm:px-6"
               >
                 Batal
