@@ -333,7 +333,7 @@ export function VariantImportModal({ open, onClose, products, styles, colors, si
             <details className="rounded-lg border border-[#00A8E8]/20 bg-[#00A8E8]/5 px-4 py-3">
               <summary className="cursor-pointer list-none text-xs font-bold text-[#00A8E8]"><FontAwesomeIcon icon={faCircleInfo} className="mr-1 h-3 w-3" /> Cara import (6 langkah) — klik untuk buka</summary>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[#1F2937]">
-                <li>Buat <strong>Produk</strong> di tab Produk & <strong>Style/Warna/Ukuran</strong> di <code className="font-mono">/admin/master-data</code> dulu.</li>
+                <li>Buat <strong>Produk</strong> di tab Produk & <strong>Style/Warna/Ukuran</strong> di <code className="font-mono">/admin/pengaturan/master-data</code> dulu.</li>
                 <li>Klik <strong>Template CSV</strong> → buka di Excel/Sheets, isi baris. Contoh: <code className="font-mono">Windbreaker,Motif,BOB,LG,2026-08-01</code></li>
                 <li>Simpan sebagai <strong>CSV UTF-8</strong> (koma). XLSX bisa tapi butuh <code className="font-mono">npm i xlsx</code> atau save as CSV.</li>
                 <li>Klik <strong>Pilih File</strong> → preview cek <span className="text-emerald-600">OK</span> vs <span className="text-[#EF4444]">invalid + alasan</span>.</li>

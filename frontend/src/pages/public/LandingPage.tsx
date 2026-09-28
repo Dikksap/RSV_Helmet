@@ -53,7 +53,7 @@ const ADMIN_MODULES: Module[] = [
   {
     title: "Dashboard",
     desc: "Pantau stok & aktivitas",
-    to: "/admin/dashboard",
+    to: "/admin/home",
     icon: (
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
         <path strokeLinecap="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
@@ -149,7 +149,7 @@ function LandingPage() {
               {admin ? "Admin" : "Operator"}
             </span>
             <Link
-              to={admin ? "/admin/dashboard" : "/login"}
+              to={admin ? "/admin/home" : "/login"}
               className={`inline-flex h-11 items-center justify-center rounded-lg px-5 text-[15px] font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8] ${
                 admin
                   ? "bg-[#00A8E8] text-white shadow-sm hover:bg-[#0088C0]"

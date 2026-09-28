@@ -273,7 +273,7 @@ function StokProduksi() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Barang Produksi</p>

@@ -276,7 +276,7 @@ function VariantProduk() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-3">
+    <div className="w-full space-y-3">
       <VariantHeader onCreateProduct={openCreateProduct} onCreateVariant={openCreateVariant} onImport={() => setImportOpen(true)} />
       <VariantTabs tab={tab} onChange={setTab} totalVarian={allRows.length} totalProduk={products.length} />
 

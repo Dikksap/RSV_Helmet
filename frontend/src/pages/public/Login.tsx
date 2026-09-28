@@ -16,7 +16,7 @@ function Login() {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate("/admin/dashboard", { replace: true });
+      navigate("/admin/home", { replace: true });
     }
   }, [navigate]);
 
@@ -27,7 +27,7 @@ function Login() {
     try {
       const response = await login({ email, password });
       setAuth(response.token, response.user);
-      navigate("/admin/dashboard", { replace: true });
+      navigate("/admin/home", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {

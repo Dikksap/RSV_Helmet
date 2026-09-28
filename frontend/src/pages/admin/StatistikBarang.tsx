@@ -153,7 +153,7 @@ function StatistikBarang() {
   const labelCls = "grid gap-1 text-xs font-medium text-[#1F2937]";
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-3">
+    <div className="w-full space-y-3">
       {/* Header compact single row */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4">
         <div className="min-w-0">

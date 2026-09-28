@@ -153,7 +153,7 @@ async function listBarangUncached(filter: BarangListFilter) {
     prisma.barang.findMany({
       where,
       include: barangInclude,
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       ...(limit > 0 ? { skip: (page - 1) * limit, take: limit } : {}),
     }),
   ]);

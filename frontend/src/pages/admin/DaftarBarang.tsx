@@ -161,7 +161,7 @@ function DaftarBarang() {
     return () => window.clearTimeout(refreshId);
   }, [fetchBarang]);
 
-  // live update: refetch saat ada event barang.* — aman dipakai bareng AdminDashboard karena subscribe = Set multi-subscriber
+  // live update: refetch saat ada event barang.* — aman dipakai bareng Homepage karena subscribe = Set multi-subscriber
   useEffect(() => {
     return subscribe((payload) => {
       if (payload.type.startsWith("barang.")) {
@@ -563,7 +563,7 @@ function DaftarBarang() {
     "min-h-[88px] w-full rounded-lg border border-[#D1D5DB] bg-white px-3 py-2.5 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-3">
+    <div className="w-full space-y-3">
       <HeaderSection
         totalBarang={totalBarang}
         isExporting={isExporting}
