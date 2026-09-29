@@ -72,6 +72,12 @@ export const MANAJEMEN = {
   ],
 };
 
+export const WAREHOUSE: typeof MANAJEMEN = {
+  label: "Warehouse",
+  icon: faBoxesStacked,
+  children: [],
+};
+
 export const NAV_MANAGEMENT = [
   { to: "/", label: "Halaman Utama", icon: faHouse, end: false },
 ];

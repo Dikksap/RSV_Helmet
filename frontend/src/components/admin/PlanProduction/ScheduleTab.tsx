@@ -882,10 +882,10 @@ export default function ScheduleTab({ orderId }: Props) {
                         key={h}
                         scope="col"
                         className={[
-                          "sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 px-3 py-3.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500 backdrop-blur-sm",
-                          index <= 2
-                            ? "text-left"
-                            : "text-right",
+                          "sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500",
+                          index === 0 && "left-0 z-30 border-r",
+                          index === 1 && "left-[86px] z-30 border-r",
+                          index === 2 && "left-[170px] z-30 border-r",
                         ].join(" ")}
                       >
                         {h}
@@ -905,17 +905,17 @@ export default function ScheduleTab({ orderId }: Props) {
                       ].join(" ")}
                     >
                       {/* Tanggal */}
-                      <td className="sticky left-0 z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 font-semibold tabular-nums text-[#1E3A5F] shadow-[2px_0_4px_-4px_rgba(15,23,42,0.25)]">
+                      <td className="sticky left-0 z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 text-center font-semibold tabular-nums text-[#1E3A5F] shadow-[2px_0_4px_-4px_rgba(15,23,42,0.25)]">
                         {fmtDate(d.tanggal)}
                       </td>
 
                       {/* Hari */}
-                      <td className="sticky left-[86px] z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 text-slate-500 shadow-[2px_0_4px_-4px_rgba(15,23,42,0.18)]">
+                      <td className="sticky left-[86px] z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 text-center text-slate-500 shadow-[2px_0_4px_-4px_rgba(15,23,42,0.18)]">
                         {d.hari}
                       </td>
 
                       {/* Jam */}
-                      <td className="sticky left-[170px] z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 tabular-nums text-slate-500 shadow-[2px_0_4px_-4px_rgba(15,23,42,0.18)]">
+                      <td className="sticky left-[170px] z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 text-center tabular-nums text-slate-500 shadow-[2px_0_4px_-4px_rgba(15,23,42,0.18)]">
                         {d.jam}
                       </td>
 
@@ -934,13 +934,14 @@ export default function ScheduleTab({ orderId }: Props) {
                                 : "Klik untuk edit"
                             }
                             className={[
-                              "border-b border-slate-100 px-3 py-2.5 text-right tabular-nums",
+                              "border-b border-slate-100 px-3 py-2.5 text-center tabular-nums",
                               edited
                                 ? "bg-amber-100 text-amber-900"
                                 : "text-slate-700",
                             ].join(" ")}
                           >
                             <EditableCell
+                              align="center"
                               value={d.head[
                                 s.key
                               ].toLocaleString("id-ID")}
@@ -1189,7 +1190,7 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
 
                       {/* Jumlah */}
-                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-right tabular-nums">
+                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-center tabular-nums">
                         <span className="block font-bold text-[#1E3A5F]">
                           {d.total.toLocaleString(
                             "id-ID",
@@ -1203,7 +1204,7 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
 
                       {/* Status */}
-                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5">
+                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-center">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${badgeOf(
                             d.status,
@@ -1214,7 +1215,7 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
 
                       {/* Aksi */}
-                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5">
+                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-center">
                         <button
                           type="button"
                           title="Cetak SPK"

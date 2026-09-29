@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   BARANG_PRODUKSI,
   MANAJEMEN,
+  WAREHOUSE,
   NAV_INTEGRASI,
   NAV_MANAGEMENT,
 } from "../../layouts/admin/navigation";
@@ -39,6 +40,23 @@ function Homepage() {
             <MenuCard key={item.to} to={item.to} label={item.label} icon={item.icon} />
           ))}
         </div>
+      </section>
+
+      <section aria-label={WAREHOUSE.label}>
+        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+          {WAREHOUSE.label}
+        </h3>
+        {WAREHOUSE.children.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3.5 text-xs text-slate-400">
+            Belum ada modul — segera hadir.
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {WAREHOUSE.children.map((item) => (
+              <MenuCard key={item.to} to={item.to} label={item.label} icon={item.icon} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section aria-label={NAV_INTEGRASI.label}>

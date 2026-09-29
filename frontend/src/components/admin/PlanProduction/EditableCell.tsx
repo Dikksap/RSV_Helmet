@@ -4,7 +4,7 @@ interface Props {
   value: string | number;
   onSave: (raw: string) => Promise<void>;
   numeric?: boolean;
-  align?: "left" | "right";
+  align?: "left" | "right" | "center";
 }
 
 // Klik cell → input; Enter/blur simpan, Esc batal.
@@ -60,7 +60,7 @@ export default function EditableCell({ value, onSave, numeric, align = "left" }:
           setEditing(true);
         }}
         className={`w-full rounded px-1 py-0.5 transition-colors hover:bg-[#00A8E8]/10 hover:outline hover:outline-1 hover:outline-[#00A8E8]/40 ${
-          align === "right" ? "text-right" : "text-left"
+          align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"
         } ${error ? "text-[#EF4444]" : ""}`}
       >
         {String(value ?? "")}
@@ -83,7 +83,7 @@ export default function EditableCell({ value, onSave, numeric, align = "left" }:
           if (e.key === "Escape") cancel();
         }}
         className={`w-full min-w-[3rem] rounded border border-[#00A8E8] bg-white px-1 py-0.5 outline-none disabled:opacity-50 ${
-          align === "right" ? "text-right" : "text-left"
+          align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"
         }`}
       />
       {error && <span className="block text-[11px] text-[#EF4444]">{error}</span>}
