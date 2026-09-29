@@ -22,7 +22,6 @@ import SpkProduksi from "./pages/admin/SpkProduksi.tsx";
 import IntegrasiJurnal from "./pages/admin/IntegrasiJurnal.tsx";
 import PrintManager from "./pages/public/PrintManager.tsx";
 import ScanQr from "./pages/public/ScanQr.tsx";
-import StatistikBarang from "./pages/admin/StatistikBarang.tsx";
 import StokProduksi from "./pages/admin/StokProduksi.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
@@ -48,7 +47,6 @@ const routes = (
       <Route path="/admin/dashboard" element={<Navigate to="/admin/home" replace />} />
       <Route path="/admin/home" element={<Homepage />} />
       <Route path="/admin/barang" element={<DaftarBarang />} />
-      <Route path="/admin/barang/statistik" element={<StatistikBarang />} />
       <Route path="/admin/stok-produksi" element={<StokProduksi />} />
       <Route path="/admin/variant-produk" element={<Navigate to="/admin/pengaturan/variant-produk" replace />} />
       <Route path="/admin/master-data" element={<Navigate to="/admin/pengaturan/master-data" replace />} />

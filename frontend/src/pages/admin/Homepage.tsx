@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   BARANG_PRODUKSI,
+  MANAJEMEN,
   NAV_INTEGRASI,
   NAV_MANAGEMENT,
 } from "../../layouts/admin/navigation";
@@ -29,6 +30,17 @@ function Homepage() {
         </div>
       </section>
 
+      <section aria-label={MANAJEMEN.label}>
+        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+          {MANAJEMEN.label}
+        </h3>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {MANAJEMEN.children.map((item) => (
+            <MenuCard key={item.to} to={item.to} label={item.label} icon={item.icon} />
+          ))}
+        </div>
+      </section>
+
       <section aria-label={NAV_INTEGRASI.label}>
         <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
           {NAV_INTEGRASI.label}
@@ -40,9 +52,9 @@ function Homepage() {
         </div>
       </section>
 
-      <section aria-label="Manajemen">
+      <section aria-label="Lainnya">
         <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
-          Manajemen
+          Lainnya
         </h3>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {NAV_MANAGEMENT.map((item) => (

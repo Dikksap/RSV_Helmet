@@ -11,6 +11,7 @@ import { clearAuth, getToken, getUser, isAdmin, logout } from "../api/auth";
 import {
   NAV_MAIN,
   BARANG_PRODUKSI,
+  MANAJEMEN,
   NAV_INTEGRASI,
   NAV_MANAGEMENT,
 } from "./admin/navigation";
@@ -38,6 +39,9 @@ function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const inBarangProduksi = BARANG_PRODUKSI.children.some(
+    (c) => location.pathname === c.to || location.pathname.startsWith(c.to + "/"),
+  );
+  const inManajemen = MANAJEMEN.children.some(
     (c) => location.pathname === c.to || location.pathname.startsWith(c.to + "/"),
   );
   const inIntegrasi = NAV_INTEGRASI.children.some(
@@ -183,6 +187,44 @@ function AdminLayout() {
               </div>
             </div>
 
+            {/* Dropdown: Manajemen */}
+            <div className="group relative flex items-stretch">
+              <button
+                type="button"
+                aria-haspopup="true"
+                className={[
+                  "flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-[#00A8E8]",
+                  inManajemen
+                    ? "border-[#00A8E8] text-[#1E3A5F]"
+                    : "border-transparent text-[#6B7280] group-hover:border-slate-300 group-hover:text-[#1F2937]",
+                ].join(" ")}
+              >
+                <FontAwesomeIcon icon={MANAJEMEN.icon} className="h-4 w-4" fixedWidth />
+                {MANAJEMEN.label}
+                <FontAwesomeIcon icon={faChevronDown} className="h-3 w-3 transition-transform group-hover:rotate-180" />
+              </button>
+              <div className="invisible absolute left-0 top-full z-40 w-60 translate-y-1 rounded-b-xl border border-slate-200 bg-white py-1 opacity-0 shadow-lg transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+                {MANAJEMEN.children.map((child) => (
+                  <NavLink
+                    key={child.to}
+                    to={child.to}
+                    end={child.end}
+                    className={({ isActive }) =>
+                      [
+                        "flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors",
+                        isActive
+                          ? "bg-[#1E3A5F]/5 font-semibold text-[#1E3A5F]"
+                          : "text-[#4B5563] hover:bg-[#F5F7FA] hover:text-[#1F2937]",
+                      ].join(" ")
+                    }
+                  >
+                    <FontAwesomeIcon icon={child.icon} className="h-4 w-4 shrink-0 text-[#6B7280]" fixedWidth />
+                    {child.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+
             {/* Dropdown: Integrasi */}
             <div className="group relative flex items-stretch">
               <button
@@ -255,6 +297,28 @@ function AdminLayout() {
                 {BARANG_PRODUKSI.label}
               </p>
               {BARANG_PRODUKSI.children.map((child) => (
+                <NavLink
+                  key={child.to}
+                  to={child.to}
+                  end={child.end}
+                  className={({ isActive }) =>
+                    [
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
+                      isActive
+                        ? "bg-[#1E3A5F]/5 text-[#1E3A5F]"
+                        : "text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]",
+                    ].join(" ")
+                  }
+                >
+                  <FontAwesomeIcon icon={child.icon} className="h-4 w-4" fixedWidth />
+                  {child.label}
+                </NavLink>
+              ))}
+
+              <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">
+                {MANAJEMEN.label}
+              </p>
+              {MANAJEMEN.children.map((child) => (
                 <NavLink
                   key={child.to}
                   to={child.to}

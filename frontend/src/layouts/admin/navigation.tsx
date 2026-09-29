@@ -3,7 +3,6 @@ import {
   faArchive,
   faBook,
   faBoxesStacked,
-  faChartPie,
   faClipboardCheck,
   faClipboardList,
   faDatabase,
@@ -34,17 +33,24 @@ export const BARANG_PRODUKSI = {
       end: true,
     },
     {
-      to: "/admin/barang/statistik",
-      label: "Statistik Hasil Produksi",
-      icon: faChartPie,
-      end: false,
-    },
-    {
       to: "/admin/stok-produksi",
       label: "Stok Produksi",
       icon: faArchive,
       end: true,
     },
+    {
+      to: "/admin/pengaturan",
+      label: "Pengaturan",
+      icon: faGear,
+      end: false,
+    },
+  ],
+};
+
+export const MANAJEMEN = {
+  label: "Manajemen",
+  icon: faClipboardList,
+  children: [
     {
       to: "/admin/plan-production",
       label: "Plan Production",
@@ -61,12 +67,6 @@ export const BARANG_PRODUKSI = {
       to: "/admin/realisasi-produksi",
       label: "Realisasi Produksi",
       icon: faClipboardCheck,
-      end: false,
-    },
-    {
-      to: "/admin/pengaturan",
-      label: "Pengaturan",
-      icon: faGear,
       end: false,
     },
   ],
