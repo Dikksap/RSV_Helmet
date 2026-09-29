@@ -8,9 +8,9 @@ export type StatusBarang = string;
 // terbuka (allow any) agar langsung bisa dipakai tanpa config transisi.
 export const VALID_TRANSITIONS: Record<string, string[]> = {
   REGISTER: ["FINISHGOOD", "OUT", "RETUR", "BAD"],
-  FINISHGOOD: ["OUT", "RETUR", "BAD"],
+  FINISHGOOD: ["OUT", "RETUR", "BAD","FINISHGOOD"],
   RETUR: ["FINISHGOOD", "OUT", "BAD"],
-  OUT: ["RETUR"],
+  OUT: ["RETUR","FINISHGOOD","BAD"],
   BAD: ["FINISHGOOD"],
 };
 
