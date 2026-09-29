@@ -41,13 +41,23 @@ function variantName(barang: BarangInGroup) {
   return "-";
 }
 
-function summarize(barang: BarangInGroup[]): string {
+function summarizeEntries(barang: BarangInGroup[]): [string, number][] {
   const m = new Map<string, number>();
   for (const b of barang) {
     const k = variantName(b);
     m.set(k, (m.get(k) ?? 0) + 1);
   }
-  return [...m.entries()].map(([k, n]) => `${k} × ${n}`).join(" · ");
+  return [...m.entries()];
+}
+
+function summarize(barang: BarangInGroup[]): string {
+  return summarizeEntries(barang)
+    .map(([k, n]) => `${k} × ${n}`)
+    .join(" · ");
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function toast(message: string, type: "success" | "error" = "success") {
@@ -78,6 +88,8 @@ function StokProduksi() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [unassigningId, setUnassigningId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [isPrinting, setIsPrinting] = useState(false);
 
   const fetchGroups = useCallback(async () => {
     setIsLoading(true);
@@ -255,6 +267,123 @@ function StokProduksi() {
     }
   };
 
+  const resolveItems = async (group: BarangGroup) => {
+    const cached = group.barang ?? [];
+    if (cached.length >= group._count.barang) return cached;
+    return getBarangInGroup(group.id);
+  };
+
+  const printGroups = async (targets: BarangGroup[]) => {
+    if (targets.length === 0) return;
+    setIsPrinting(true);
+    try {
+      const resolved = await Promise.all(
+        targets.map(async (g) => ({ group: g, items: await resolveItems(g) })),
+      );
+      const w = window.open("", "_blank", "width=400,height=600");
+      if (!w) {
+        toast("Popup diblokir, izinkan popup untuk print", "error");
+        return;
+      }
+      if (resolved.length === 1) {
+        const { group, items } = resolved[0]!;
+        const entries = summarizeEntries(items);
+        const total = items.length || group._count.barang;
+        const body = entries.length === 0
+          ? `<p>Kosong</p>`
+          : `<table><tr><th>Isi</th><th>Qty</th></tr>` +
+            entries.map(([k, n]) => `<tr><td>${escapeHtml(k)}</td><td>x ${n}</td></tr>`).join("") +
+            `</table><p class="total">Total: ${total} pcs</p>`;
+        w.document.write(
+          `<html><head><title>Dus ${escapeHtml(group.nama)}</title>` +
+            `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
+            `.nama{font-size:42px;font-weight:800;margin:0}` +
+            `.sub{font-size:14px;color:#555;margin:4px 0 16px}` +
+            `table{width:100%;border-collapse:collapse;margin-top:8px}` +
+            `td,th{border:1px solid #333;padding:8px;font-size:18px;text-align:left}` +
+            `.total{font-size:20px;font-weight:700;margin-top:12px}` +
+            `@media print{button{display:none}}</style></head><body>` +
+            `<p class="nama">Dus ${escapeHtml(group.nama)}</p>` +
+            `<p class="sub">${total}/${DUS_CAPACITY} barang &middot; ${escapeHtml(formatDate(group.updatedAt))}</p>` +
+            body +
+            `<script>window.onload=()=>{window.print()}</script>` +
+            `</body></html>`,
+        );
+        w.document.close();
+        return;
+      }
+      const grandTotal = resolved.reduce((a, r) => a + (r.items.length || r.group._count.barang), 0);
+      const rows = resolved
+        .map(({ group, items }) => {
+          const entries = summarizeEntries(items);
+          const total = items.length || group._count.barang;
+          const isi = entries.length === 0
+            ? `Kosong`
+            : entries.map(([k, n]) => `${escapeHtml(k)} x ${n}`).join("<br>");
+          return `<tr><td class="dus">Dus ${escapeHtml(group.nama)}</td><td>${isi}</td><td class="num">${total}</td></tr>`;
+        })
+        .join("");
+      w.document.write(
+        `<html><head><title>Rekap ${targets.length} Dus</title>` +
+          `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
+          `h1{font-size:22px;margin:0 0 4px}` +
+          `.sub{font-size:13px;color:#555;margin:0 0 12px}` +
+          `table{width:100%;border-collapse:collapse}` +
+          `td,th{border:1px solid #333;padding:6px 8px;font-size:14px;text-align:left;vertical-align:top}` +
+          `.dus{white-space:nowrap;font-weight:700}` +
+          `.num{text-align:center;font-weight:700}` +
+          `.total{font-size:15px;font-weight:700;margin-top:10px}` +
+          `@media print{button{display:none}}</style></head><body>` +
+          `<h1>Rekap ${targets.length} Dus</h1>` +
+          `<p class="sub">${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }))} &middot; Total ${grandTotal} pcs</p>` +
+          `<table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${rows}</table>` +
+          `<p class="total">Total: ${grandTotal} pcs</p>` +
+          `<script>window.onload=()=>{window.print()}</script>` +
+          `</body></html>`,
+      );
+      w.document.close();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Gagal print dus", "error");
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handlePrint = (group: BarangGroup) => void printGroups([group]);
+
+  const handlePrintSelected = () => {
+    const targets = filteredGroups.filter((g) => selected.has(g.id));
+    if (targets.length === 0) {
+      toast("Pilih dus dulu", "error");
+      return;
+    }
+    void printGroups(targets);
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allFilteredSelected =
+    filteredGroups.length > 0 && filteredGroups.every((g) => selected.has(g.id));
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const g of filteredGroups) next.delete(g.id);
+      } else {
+        for (const g of filteredGroups) next.add(g.id);
+      }
+      return next;
+    });
+  };
+
   const modalShell = (onClose: () => void, children: ReactNode) => (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
@@ -361,6 +490,39 @@ function StokProduksi() {
         </select>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            onChange={toggleSelectAll}
+            disabled={filteredGroups.length === 0}
+            className="h-4 w-4 accent-[#00A8E8]"
+          />
+          Pilih semua ({filteredGroups.length})
+        </label>
+        <span className="text-sm text-slate-500">{selected.size} dipilih</span>
+        <div className="ml-auto flex gap-2">
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Batal
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handlePrintSelected}
+            disabled={selected.size === 0 || isPrinting}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+          >
+            {isPrinting ? "Menyiapkan..." : `Print ${selected.size > 0 ? `(${selected.size})` : ""}`}
+          </button>
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Memuat daftar dus">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -395,6 +557,7 @@ function StokProduksi() {
             const percentage = Math.round((count / DUS_CAPACITY) * 100);
             const barColor = isFull ? "bg-rose-500" : count === 0 ? "bg-slate-300" : "bg-[#00A8E8]";
             const ringkasan = summarize(g.barang ?? []);
+            const isSelected = selected.has(g.id);
             return (
               <div
                 key={g.id}
@@ -402,10 +565,18 @@ function StokProduksi() {
                 tabIndex={0}
                 onClick={() => void openDetail(g)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openDetail(g); } }}
-                className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-[#00A8E8]/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
+                className={`group cursor-pointer rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:border-[#00A8E8]/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-[#00A8E8] ${isSelected ? "border-[#00A8E8] ring-2 ring-[#00A8E8]/30" : "border-slate-200"}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(g.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Pilih Dus ${g.nama}`}
+                      className="h-4 w-4 shrink-0 accent-[#00A8E8]"
+                    />
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-[#00A8E8] transition group-hover:bg-[#00A8E8] group-hover:text-white">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                     </div>
@@ -436,6 +607,13 @@ function StokProduksi() {
                   </p>
                 </div>
                 <div className="mt-3 flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handlePrint(g); }}
+                    className="rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 transition hover:bg-sky-100"
+                  >
+                    Print
+                  </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); openEdit(g); }}

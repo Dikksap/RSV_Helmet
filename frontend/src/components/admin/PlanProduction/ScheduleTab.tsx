@@ -44,6 +44,7 @@ const HEADERS = [
   "Item",
   "Jumlah",
   "Status",
+  "Aksi",
 ] as const;
 
 const fmtDate = (iso: string) => {
@@ -727,15 +728,27 @@ export default function ScheduleTab({ orderId }: Props) {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={download}
-            disabled={rows.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E3A5F] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#16294a] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            ↓
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={rows.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#1E3A5F] shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              title="Print"
+            >
+              <span className="text-base leading-none">🖨</span>
+              Print
+            </button>
+
+            <button
+              type="button"
+              onClick={download}
+              disabled={rows.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E3A5F] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#16294a] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="text-base leading-none">↓</span>
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -860,16 +873,16 @@ export default function ScheduleTab({ orderId }: Props) {
             </div>
 
             {/* Table */}
-            <div className="overflow-auto">
-              <table className="w-full min-w-[1200px] text-left text-sm">
+            <div className="overflow-x-auto overflow-y-visible">
+              <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-white">
+                  <tr className="border-b border-slate-200 bg-slate-50/95">
                     {HEADERS.map((h, index) => (
                       <th
                         key={h}
                         scope="col"
                         className={[
-                          "sticky top-0 z-10 whitespace-nowrap px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500",
+                          "sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 px-3 py-3.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500 backdrop-blur-sm",
                           index <= 2
                             ? "text-left"
                             : "text-right",
@@ -888,21 +901,21 @@ export default function ScheduleTab({ orderId }: Props) {
                       className={[
                         "border-b border-slate-100 transition-colors last:border-0",
                         rowTone(d.status),
-                        "hover:bg-slate-50",
+                        "hover:bg-slate-50/80",
                       ].join(" ")}
                     >
                       {/* Tanggal */}
-                      <td className="whitespace-nowrap px-3 py-3 font-semibold tabular-nums text-[#1E3A5F]">
+                      <td className="sticky left-0 z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 font-semibold tabular-nums text-[#1E3A5F] shadow-[2px_0_4px_-4px_rgba(15,23,42,0.25)]">
                         {fmtDate(d.tanggal)}
                       </td>
 
                       {/* Hari */}
-                      <td className="whitespace-nowrap px-3 py-3 text-slate-500">
+                      <td className="sticky left-[86px] z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 text-slate-500 shadow-[2px_0_4px_-4px_rgba(15,23,42,0.18)]">
                         {d.hari}
                       </td>
 
                       {/* Jam */}
-                      <td className="whitespace-nowrap px-3 py-3 tabular-nums text-slate-500">
+                      <td className="sticky left-[170px] z-[5] whitespace-nowrap border-r border-slate-100 bg-white px-3 py-3 tabular-nums text-slate-500 shadow-[2px_0_4px_-4px_rgba(15,23,42,0.18)]">
                         {d.jam}
                       </td>
 
@@ -921,7 +934,7 @@ export default function ScheduleTab({ orderId }: Props) {
                                 : "Klik untuk edit"
                             }
                             className={[
-                              "px-3 py-3 text-right tabular-nums",
+                              "border-b border-slate-100 px-3 py-2.5 text-right tabular-nums",
                               edited
                                 ? "bg-amber-100 text-amber-900"
                                 : "text-slate-700",
@@ -958,7 +971,7 @@ export default function ScheduleTab({ orderId }: Props) {
 
                       {/* Item */}
                       <td
-                        className="min-w-[270px] max-w-[430px] px-3 py-3"
+                        className="min-w-[280px] max-w-[430px] border-b border-slate-100 px-3 py-2.5 align-top"
                         title={d.rincian || d.status}
                       >
                         {d.list.length === 0 ? (
@@ -1176,7 +1189,7 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
 
                       {/* Jumlah */}
-                      <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
+                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-right tabular-nums">
                         <span className="block font-bold text-[#1E3A5F]">
                           {d.total.toLocaleString(
                             "id-ID",
@@ -1190,7 +1203,7 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
 
                       {/* Status */}
-                      <td className="whitespace-nowrap px-3 py-3">
+                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${badgeOf(
                             d.status,
@@ -1198,6 +1211,18 @@ export default function ScheduleTab({ orderId }: Props) {
                         >
                           {d.status}
                         </span>
+                      </td>
+
+                      {/* Aksi */}
+                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5">
+                        <button
+                          type="button"
+                          title="Cetak SPK"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#1E3A5F]/15 bg-white px-3 py-1.5 text-[11px] font-bold text-[#1E3A5F] shadow-sm transition hover:border-[#1E3A5F]/30 hover:bg-slate-50 active:scale-[0.98]"
+                        >
+                          <span className="text-sm leading-none">🖨</span>
+                          SPK
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1209,7 +1234,7 @@ export default function ScheduleTab({ orderId }: Props) {
                     <tr className="border-t-2 border-slate-200 bg-slate-50">
                       <td
                         colSpan={3}
-                        className="px-3 py-3"
+                        className="border-t border-slate-200 px-3 py-3"
                       >
                         <p className="text-xs font-bold text-[#1E3A5F]">
                           Total Terjadwal
@@ -1228,7 +1253,7 @@ export default function ScheduleTab({ orderId }: Props) {
                           )} · kapasitas ${s.acuan.toLocaleString(
                             "id-ID",
                           )}`}
-                          className="px-3 py-3 text-right tabular-nums"
+                          className="border-t border-slate-200 px-3 py-3 text-right tabular-nums"
                         >
                           <span className="block text-xs font-bold text-slate-700">
                             {s.terjadwal.toLocaleString(
