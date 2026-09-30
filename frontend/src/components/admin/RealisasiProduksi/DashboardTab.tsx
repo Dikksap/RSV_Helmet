@@ -68,7 +68,7 @@ export default function DashboardTab({ orderData, orders, orderId, dashRows, das
   }, [orderData, dashRows]);
 
   const divisiProgress = useMemo(() => {
-    if (!orderData) return [] as { divisi: string; targetHari: number; rak: string; hariSelesai: number; totalHari: number; progress: number; status: string }[];
+    if (!orderData) return [] as { divisi: string; targetHari: number; rak: string; aktual: number; totalRencana: number; hariSelesai: number; totalHari: number; progress: number; status: string }[];
     const rencanaByDayStage = new Map<string, Map<string, number>>();
     for (const r of orderData.schedule.rows) { if (!rencanaByDayStage.has(r.tanggal)) rencanaByDayStage.set(r.tanggal, new Map()); const m = rencanaByDayStage.get(r.tanggal)!; for (const k of STAGE_KEYS) m.set(k, (r as any)[k] ?? 0); }
     const aktualByDayStage = new Map<string, Map<string, number>>();
