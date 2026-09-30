@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   getProductionCapacities,
@@ -9,10 +10,12 @@ import {
   type ProductionCapacity,
   type ScheduleRow,
   type ScheduleStageKey,
+  type ScheduleStageTake,
 } from "../../../api/productionOrders";
 
 import {
   PCS_PER_DUS,
+  WHITE_BATOK,
   fmt,
   fmtDus,
   fmtPcsDus,
@@ -116,11 +119,16 @@ const STATUS_BADGE: Record<string, string> = {
 const badgeOf = (status: string) =>
   STATUS_BADGE[status] ?? "bg-slate-100 text-slate-600";
 
-const WHITE_BATOK = new Set([
-  "Nation",
-  "Platinum Grey",
-  "White Glossy",
-]);
+// Divisi SPK (sama dengan halaman /admin/spk). Decal = gabungan decalSolid + decalMotif.
+const SPK_DIVISI = ["Buffing", "Base Coat", "Decal", "Top Coat", "Perakitan", "QC"] as const;
+const SPK_STAGES: Record<(typeof SPK_DIVISI)[number], ScheduleStageTake["stage"][]> = {
+  Buffing: ["buffing"],
+  "Base Coat": ["baseCoat"],
+  Decal: ["decalSolid", "decalMotif"],
+  "Top Coat": ["topCoat"],
+  Perakitan: ["perakitan"],
+  QC: ["qc"],
+};
 
 const rowTone = (status: string) => {
   if (status === "LIBUR") return "bg-slate-50";
@@ -132,7 +140,10 @@ const rowTone = (status: string) => {
 };
 
 export default function ScheduleTab({ orderId }: Props) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [rincian, setRincian] = useState<ScheduleStageTake[]>([]);
+  const [spkOpen, setSpkOpen] = useState<string | null>(null);
 
   const [meta, setMeta] = useState<{
     dialokasikan: number;
@@ -189,6 +200,7 @@ export default function ScheduleTab({ orderId }: Props) {
     ])
       .then(([res, det, caps]) => {
         setRows(res.rows);
+        setRincian(res.rincian ?? []);
         setMeta(res.meta);
 
         setTargetEdits(
@@ -550,6 +562,29 @@ export default function ScheduleTab({ orderId }: Props) {
     });
   }, [rows, capacities]);
 
+  // Total rincian per tanggal per divisi — untuk label picker SPK.
+  const spkCounts = useMemo(() => {
+    const m = new Map<string, Map<string, number>>();
+    for (const r of rincian) {
+      for (const div of SPK_DIVISI) {
+        if (!SPK_STAGES[div].includes(r.stage)) continue;
+        let per = m.get(r.tanggal);
+        if (!per) {
+          per = new Map();
+          m.set(r.tanggal, per);
+        }
+        per.set(div, (per.get(div) ?? 0) + r.jumlah);
+      }
+    }
+    return m;
+  }, [rincian]);
+
+  const openSpk = (tanggal: string, divisi: string) => {
+    if (orderId === null) return;
+    setSpkOpen(null);
+    navigate(`/admin/spk?orderId=${orderId}&tanggal=${tanggal}&divisi=${encodeURIComponent(divisi)}`);
+  };
+
   return (
     <div className="space-y-4">
       {/* =====================================================
@@ -731,9 +766,10 @@ export default function ScheduleTab({ orderId }: Props) {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => window.print()}
               disabled={rows.length === 0}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#1E3A5F] shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-              title="Print"
+              title="Print jadwal ini"
             >
               <span className="text-base leading-none">🖨</span>
               Print
@@ -1215,15 +1251,67 @@ export default function ScheduleTab({ orderId }: Props) {
                       </td>
 
                       {/* Aksi */}
-                      <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-center">
+                      <td className="relative whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-center">
                         <button
                           type="button"
-                          title="Cetak SPK"
+                          title="Cetak SPK per divisi (otomatis dari jadwal)"
+                          onClick={() =>
+                            setSpkOpen((v) =>
+                              v === d.tanggal ? null : d.tanggal,
+                            )
+                          }
                           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#1E3A5F]/15 bg-white px-3 py-1.5 text-[11px] font-bold text-[#1E3A5F] shadow-sm transition hover:border-[#1E3A5F]/30 hover:bg-slate-50 active:scale-[0.98]"
                         >
                           <span className="text-sm leading-none">🖨</span>
                           SPK
                         </button>
+
+                        {spkOpen === d.tanggal && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setSpkOpen(null)}
+                            />
+
+                            <div className="absolute right-0 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-xl">
+                              <p className="border-b border-slate-100 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                SPK {fmtDate(d.tanggal)}
+                              </p>
+
+                              {SPK_DIVISI.map((div) => {
+                                const qty =
+                                  spkCounts.get(d.tanggal)?.get(div) ??
+                                  0;
+
+                                return (
+                                  <button
+                                    key={div}
+                                    type="button"
+                                    onClick={() =>
+                                      openSpk(d.tanggal, div)
+                                    }
+                                    className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                                  >
+                                    <span>{div}</span>
+
+                                    <span
+                                      className={[
+                                        "rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums",
+                                        qty > 0
+                                          ? "bg-emerald-50 text-emerald-700"
+                                          : "bg-slate-100 text-slate-400",
+                                      ].join(" ")}
+                                    >
+                                      {qty > 0
+                                        ? `${fmt(qty)} pcs`
+                                        : "kosong"}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}

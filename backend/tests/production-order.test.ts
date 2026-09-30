@@ -381,10 +381,17 @@ describe("PUT /api/production-orders/:id/realisasi", () => {
     const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "xx", items: [] });
     expect(res.status).toBe(400);
   });
-  it("400 items kosong", async () => {
+  it("400 items + tahapan dua-duanya kosong", async () => {
     const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [] });
     expect(res.status).toBe(400);
     expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+  });
+  it("200 items kosong + tahapan terisi (tanggal tanpa jadwal)", async () => {
+    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "buffing", qty: 100 }]);
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [], tahapan: [{ stage: "buffing", qty: 100 }] });
+    expect(res.status).toBe(200);
+    expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+    expect(mocked.saveRealisasiStages).toHaveBeenCalled();
   });
   it("400 qty negatif", async () => {
     const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [{ variantId: 1, qty: -1 }] });
@@ -424,11 +431,12 @@ describe("PUT /api/production-orders/:id/realisasi tahapan", () => {
   });
 });
 
-describe("PUT /api/production-orders/:id/realisasi kunci tanggal", () => {
-  it("400 tanggal lampau terkunci", async () => {
+describe("PUT /api/production-orders/:id/realisasi tanggal lampau", () => {
+  it("200 tanggal lampau boleh diisi (backfill)", async () => {
+    mocked.saveRealisasi.mockResolvedValue([{ tanggal: "2020-01-01", variantId: 1, qty: 1 }]);
     const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2020-01-01", items: [{ variantId: 1, qty: 1 }] });
-    expect(res.status).toBe(400);
-    expect(mocked.saveRealisasi).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mocked.saveRealisasi).toHaveBeenCalled();
   });
 });
 

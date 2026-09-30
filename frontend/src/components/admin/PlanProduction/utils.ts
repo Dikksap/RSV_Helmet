@@ -4,10 +4,11 @@ import type {
   StatusProductionOrder,
 } from "../../../api/productionOrders";
 
-export type Tab = "orders" | "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower";
+export type Tab = "orders" | "dashboard" | "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower";
 
 export const TABS: { key: Tab; label: string }[] = [
   { key: "orders", label: "Daftar Orders" },
+  { key: "dashboard", label: "Dashboard" },
   { key: "master", label: "Master Produksi" },
   { key: "jadwal", label: "Jadwal" },
   { key: "ringkasan", label: "Ringkasan" },
@@ -26,6 +27,14 @@ export const fmt = (n: number): string => n.toLocaleString("id-ID");
 
 // 1 dus = 8 pcs (global, display only — backend tetap pcs).
 export const PCS_PER_DUS = 8;
+
+// Warna yang memakai batok putih; sisanya batok hitam.
+// Dipakai estimasi batok (ScheduleTab) + SPK Buffing/Base Coat (per material, bukan per model).
+export const WHITE_BATOK = new Set([
+  "Nation",
+  "Platinum Grey",
+  "White Glossy",
+]);
 
 export const fmtDus = (pcs: number): string =>
   (pcs / PCS_PER_DUS).toLocaleString("id-ID", { maximumFractionDigits: 1 });

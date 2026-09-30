@@ -75,13 +75,13 @@ export default function DashboardTab({ orderData, orders, orderId, dashRows, das
     for (const t of dashTahap) { if (!aktualByDayStage.has(t.tanggal)) aktualByDayStage.set(t.tanggal, new Map()); aktualByDayStage.get(t.tanggal)!.set(t.stage, t.qty); }
     const mode = (vals: number[]) => { if (vals.length===0) return 0; const freq = new Map<number,number>(); for (const v of vals) freq.set(v,(freq.get(v)??0)+1); return [...freq.entries()].sort((a,b)=> b[1]-a[1] || b[0]-a[0])[0][0]; };
     return DIVISI_DEFS.map((d) => {
-      const vals: number[] = []; let totalHari=0, hariSelesai=0;
-      for (const [tgl, mp] of rencanaByDayStage) { const rencana = mp.get(d.key) ?? 0; if (rencana<=0) continue; totalHari+=1; vals.push(rencana); const aktual = aktualByDayStage.get(tgl)?.get(d.key) ?? 0; if (aktual >= rencana) hariSelesai+=1; }
+      const vals: number[] = []; let totalHari=0, hariSelesai=0, totalRencana=0, totalAktual=0;
+      for (const [tgl, mp] of rencanaByDayStage) { const rencana = mp.get(d.key) ?? 0; if (rencana<=0) continue; totalHari+=1; vals.push(rencana); totalRencana+=rencana; const aktual = aktualByDayStage.get(tgl)?.get(d.key) ?? 0; totalAktual+=aktual; if (aktual >= rencana) hariSelesai+=1; }
       const targetHari = mode(vals);
       const rak = d.rakDenom ? (targetHari>0 ? `${Math.round(targetHari/d.rakDenom)} rak` : "-") : "-";
-      const progress = totalHari>0 ? (hariSelesai/totalHari)*100 : 0;
+      const progress = totalRencana>0 ? (totalAktual/totalRencana)*100 : 0;
       const status = progress>=100 ? "✅ SELESAI" : progress>0 ? "🔄 JALAN" : totalHari===0 ? "—" : "⏸ BELUM";
-      return { divisi: d.label, targetHari, rak, hariSelesai, totalHari, progress, status };
+      return { divisi: d.label, targetHari, rak, aktual: totalAktual, totalRencana, hariSelesai, totalHari, progress, status };
     });
   }, [orderData, dashTahap]);
 
@@ -182,8 +182,8 @@ export default function DashboardTab({ orderData, orders, orderId, dashRows, das
             <div className="p-4"><div className="h-64"><Bar data={{ labels: divisiProgress.map(r=>r.divisi), datasets: [{ label:"% Progress", data: divisiProgress.map(r=> Number(r.progress.toFixed(1))), backgroundColor: divisiProgress.map(r=> r.progress>=100 ? "#10b981" : r.progress>0 ? "#0ea5e9" : "#e2e8f0"), borderRadius:6, barThickness:22 }] }} options={{ indexAxis:"y" as const, responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{max:100,grid:{color:"#f1f5f9"},ticks:{callback:(v:any)=>`${v}%`,font:{size:11}}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }} /></div></div>
             <div className="overflow-x-auto border-t border-slate-100">
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead><tr className="border-y border-slate-100 bg-white text-xs uppercase tracking-wide text-[#6B7280]"><th className="px-3 py-2.5 font-semibold">Divisi</th><th className="px-3 py-2.5 text-right font-semibold">Target/Hari</th><th className="px-3 py-2.5 text-right font-semibold">Target/Hari (RAK)</th><th className="px-3 py-2.5 text-right font-semibold">Hari Selesai</th><th className="px-3 py-2.5 text-right font-semibold">Total Hari</th><th className="px-3 py-2.5 text-right font-semibold">% Progress</th><th className="px-3 py-2.5 font-semibold">Status</th></tr></thead>
-                <tbody>{divisiProgress.map((r)=>(<tr key={r.divisi} className="border-b border-slate-50 hover:bg-[#F5F7FA]"><td className="px-3 py-2 font-medium text-[#1F2937]">{r.divisi}</td><td className="px-3 py-2 text-right tabular-nums">{r.targetHari? r.targetHari.toLocaleString("id-ID"):"-"}</td><td className="px-3 py-2 text-right tabular-nums text-[#6B7280]">{r.rak}</td><td className="px-3 py-2 text-right tabular-nums">{r.hariSelesai}</td><td className="px-3 py-2 text-right tabular-nums">{r.totalHari}</td><td className="px-3 py-2 text-right tabular-nums">{r.progress.toFixed(1).replace(".",",")}%</td><td className="px-3 py-2 text-xs font-semibold">{r.status}</td></tr>))}</tbody>
+                <thead><tr className="border-y border-slate-100 bg-white text-xs uppercase tracking-wide text-[#6B7280]"><th className="px-3 py-2.5 font-semibold">Divisi</th><th className="px-3 py-2.5 text-right font-semibold">Target/Hari</th><th className="px-3 py-2.5 text-right font-semibold">Target/Hari (RAK)</th><th className="px-3 py-2.5 text-right font-semibold">Aktual</th><th className="px-3 py-2.5 text-right font-semibold">Hari Selesai</th><th className="px-3 py-2.5 text-right font-semibold">Total Hari</th><th className="px-3 py-2.5 text-right font-semibold">% Progress</th><th className="px-3 py-2.5 font-semibold">Status</th></tr></thead>
+                <tbody>{divisiProgress.map((r)=>(<tr key={r.divisi} className="border-b border-slate-50 hover:bg-[#F5F7FA]"><td className="px-3 py-2 font-medium text-[#1F2937]">{r.divisi}</td><td className="px-3 py-2 text-right tabular-nums">{r.targetHari? r.targetHari.toLocaleString("id-ID"):"-"}</td><td className="px-3 py-2 text-right tabular-nums text-[#6B7280]">{r.rak}</td><td className="px-3 py-2 text-right font-bold tabular-nums text-emerald-700">{r.aktual.toLocaleString("id-ID")}</td><td className="px-3 py-2 text-right tabular-nums">{r.hariSelesai}</td><td className="px-3 py-2 text-right tabular-nums">{r.totalHari}</td><td className="px-3 py-2 text-right tabular-nums">{r.progress.toFixed(1).replace(".",",")}%</td><td className="px-3 py-2 text-xs font-semibold">{r.status}</td></tr>))}</tbody>
               </table>
             </div>
           </>

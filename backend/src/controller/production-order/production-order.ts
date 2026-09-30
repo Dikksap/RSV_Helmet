@@ -340,12 +340,9 @@ export async function saveRealisasiHandler(req: Request, res: Response) {
     if (!orderId) return res.status(400).json({ message: "ID harus angka bulat positif" });
     const tanggal = validDay(req.body?.tanggal);
     if (!tanggal) return res.status(400).json({ message: "Field 'tanggal' wajib tanggal valid (YYYY-MM-DD)" });
-    const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
-    if (req.body.tanggal < today)
-      return res.status(400).json({ message: "Tanggal sebelum hari ini terkunci dan tidak bisa diubah" });
     const items = req.body?.items;
-    if (!Array.isArray(items) || items.length === 0)
-      return res.status(400).json({ message: "Field 'items' wajib array tidak kosong" });
+    if (!Array.isArray(items))
+      return res.status(400).json({ message: "Field 'items' wajib array" });
     for (const it of items) {
       if (!it || !Number.isInteger(it.variantId) || it.variantId <= 0)
         return res.status(400).json({ message: "Field 'variantId' tiap item wajib angka bulat positif" });
@@ -364,7 +361,9 @@ export async function saveRealisasiHandler(req: Request, res: Response) {
           return res.status(400).json({ message: "Field 'qty' tiap tahapan harus bilangan bulat >= 0" });
       }
     }
-    const saved = await saveRealisasi(orderId, tanggal, items);
+    if (items.length === 0 && (!Array.isArray(tahapan) || tahapan.length === 0))
+      return res.status(400).json({ message: "Field 'items'/'tahapan' minimal salah satu tidak kosong" });
+    const saved = items.length > 0 ? await saveRealisasi(orderId, tanggal, items) : [];
     const savedStages = tahapan ? await saveRealisasiStages(orderId, tanggal, tahapan) : [];
     res.status(200).json({ items: saved, tahapan: savedStages });
   } catch (error: any) {

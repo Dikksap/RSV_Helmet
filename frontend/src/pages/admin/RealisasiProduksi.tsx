@@ -3,17 +3,16 @@ import {
   getProductionOrders, getProductionOrderSummary, getProductionSchedule, getRealisasi, saveRealisasi,
   type ProductionOrderListItem, type ProductionOrderSummary, type ProductionSchedule, type RealisasiRow, type RealisasiStageRow,
 } from "../../api/productionOrders";
-import DashboardTab from "../../components/admin/RealisasiProduksi/DashboardTab";
 import JadwalTab from "../../components/admin/RealisasiProduksi/JadwalTab";
 import InputTab from "../../components/admin/RealisasiProduksi/InputTab";
 import RekapTab from "../../components/admin/RealisasiProduksi/RekapTab";
 import { STAGE_KEYS, todayKey, shiftDay, hariOf, monthRange, fmtDate, eachDay, statusOf } from "../../components/admin/RealisasiProduksi/utils";
 
-type Tab = "dashboard" | "jadwal" | "input" | "rekap";
+type Tab = "jadwal" | "input" | "rekap";
 type Row = { variantId:number; label:string; sub:string; rencana:number; finishgood:number; };
 
 export default function RealisasiProduksi(){
-  const [tab,setTab]=useState<Tab>("dashboard");
+  const [tab,setTab]=useState<Tab>("jadwal");
   const [orders,setOrders]=useState<ProductionOrderListItem[]>([]);
   const [ordersLoaded,setOrdersLoaded]=useState(false);
   const [orderId,setOrderId]=useState<number|null>(null);
@@ -26,10 +25,6 @@ export default function RealisasiProduksi(){
   const [rejectInputs,setRejectInputs]=useState<Record<number,number>>({});
   const [rekapAll,setRekapAll]=useState<RealisasiRow[]>([]);
   const [loadingRekap,setLoadingRekap]=useState(false);
-  const [dashRows,setDashRows]=useState<RealisasiRow[]>([]);
-  const [dashTahap,setDashTahap]=useState<RealisasiStageRow[]>([]);
-  const [dashLoading,setDashLoading]=useState(false);
-  const [lastUpdate,setLastUpdate]=useState("");
   const [rencanaTahap,setRencanaTahap]=useState<Record<string,number>>({});
   const [tahapInputs,setTahapInputs]=useState<Record<string,number>>({});
   const [jadwalSaved,setJadwalSaved]=useState<RealisasiRow[]>([]);
@@ -79,7 +74,6 @@ export default function RealisasiProduksi(){
   },[orderId,awal,akhir]);
   useEffect(()=>{ if(tab==="jadwal") void loadJadwal(); },[tab,loadJadwal]);
 
-  useEffect(()=>{ if(orderId===null) return; setDashLoading(true); getRealisasi(orderId).then(data=>{ setDashRows(data.realisasi); setDashTahap(data.tahapan??[]); setLastUpdate(new Date().toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})+" WIB"); }).catch(()=>{}).finally(()=>setDashLoading(false)); },[orderId,jadwalSaved,rekapAll]);
   useEffect(()=>{ if(tab!=="rekap" || orderId===null) return; setLoadingRekap(true); setError(null); getRealisasi(orderId).then(data=>setRekapAll(data.realisasi)).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat rekap.")).finally(()=>setLoadingRekap(false)); },[tab,orderId]);
 
   const rekapRows=useMemo(()=>{
@@ -112,7 +106,7 @@ export default function RealisasiProduksi(){
   const totals=useMemo(()=>{ let rencana=0,aktual=0; for(const r of rows){ rencana+=r.rencana; aktual+=inputs[r.variantId]??0; } return {rencana,aktual,selisih:aktual-rencana}; },[rows,inputs]);
 
   const save=async()=>{
-    if(orderId===null || tanggal<todayKey()) return;
+    if(orderId===null) return;
     setSaving(true); setError(null); setNotice(null);
     try{
       const items=rows.map(r=>({variantId:r.variantId, qty:Math.max(0,Math.floor(inputs[r.variantId]??0)), reject:Math.max(0,Math.floor(rejectInputs[r.variantId]??0))}));
@@ -124,17 +118,16 @@ export default function RealisasiProduksi(){
       const tmap=new Map(saved.tahapan.map(x=>[x.stage,x.qty]));
       setTahapInputs(p=>{ const n={...p}; for(const k of STAGE_KEYS) n[k]=tmap.get(k)??0; return n; });
       setNotice(`Tersimpan untuk ${fmtDate(tanggal)}.`);
-      getRealisasi(orderId).then(d=>{ setDashRows(d.realisasi); setDashTahap(d.tahapan??[]); setLastUpdate(new Date().toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})+" WIB"); }).catch(()=>{});
     }catch(e){ setError(e instanceof Error?e.message:"Gagal menyimpan realisasi."); } finally{ setSaving(false); }
   };
   const gotoInput=(t:string)=>{ setTanggal(t); setTab("input"); };
   const autofill=async(t:string,items:{variantId:number;qty:number}[])=>{
     if(orderId===null||items.length===0) return;
     setSaving(true); setError(null); setNotice(null);
-    try{ await saveRealisasi(orderId,t,items); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari finishgood (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); getRealisasi(orderId).then(d=>{ setDashRows(d.realisasi); setDashTahap(d.tahapan??[]); setLastUpdate(new Date().toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})+" WIB"); }).catch(()=>{}); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
+    try{ await saveRealisasi(orderId,t,items); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari finishgood (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
   };
   const dayStatus=rows.length===0?{text:"Belum ada jadwal hari ini",cls:"bg-slate-100 text-slate-500"}:statusOf(totals.rencana,totals.aktual);
-  const today=todayKey(); const locked=tanggal<today;
+  const today=todayKey(); const locked=false;
 
   return (
     <div className="space-y-6">
@@ -142,11 +135,10 @@ export default function RealisasiProduksi(){
         <div className="max-w-2xl"><p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Barang Produksi</p><h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Realisasi Produksi</h1><p className="mt-2 text-base text-[#6B7280]">Jadwal realisasi dari plan produksi dan input hasil harian per item variant.</p></div>
         <label className="flex items-center gap-2 text-sm font-medium text-[#1F2937]">Periode<select value={orderId??""} onChange={(e)=>setOrderId(Number(e.target.value))} disabled={orders.length===0} className="rounded-lg border border-[#D1D5DB] bg-white px-3 py-2.5 text-[15px] focus:outline-2 focus:outline-[#00A8E8] disabled:opacity-40">{orders.map(o=>(<option key={o.id} value={o.id}>{o.nomor} · {o.periode}</option>))}</select></label>
       </header>
-      <nav className="flex flex-wrap gap-2" aria-label="Tab realisasi produksi">{((["dashboard","jadwal","input","rekap"] as const).map(t=>{ const active=tab===t; return <button key={t} type="button" onClick={()=>setTab(t)} aria-pressed={active} className={`rounded-lg px-4 py-2.5 text-[15px] font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8] ${active?"bg-[#1E3A5F] text-white":"bg-white text-[#6B7280] ring-1 ring-slate-200/70 hover:bg-[#F5F7FA] hover:text-[#1F2937]"}`}>{t==="dashboard"?"Dashboard":t==="jadwal"?"Jadwal Realisasi":t==="input"?"Input Harian":"Rekap"}</button>; }))}</nav>
+      <nav className="flex flex-wrap gap-2" aria-label="Tab realisasi produksi">{((["jadwal","input","rekap"] as const).map(t=>{ const active=tab===t; return <button key={t} type="button" onClick={()=>setTab(t)} aria-pressed={active} className={`rounded-lg px-4 py-2.5 text-[15px] font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8] ${active?"bg-[#1E3A5F] text-white":"bg-white text-[#6B7280] ring-1 ring-slate-200/70 hover:bg-[#F5F7FA] hover:text-[#1F2937]"}`}>{t==="jadwal"?"Jadwal Realisasi":t==="input"?"Input Harian":"Rekap"}</button>; }))}</nav>
       {error && <p role="alert" className="rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-[#EF4444]">{error}</p>}
       {notice && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-700">{notice}</p>}
       {ordersLoaded && orders.length===0 && !error && <p role="status" className="rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-[#6B7280]">Belum ada plan produksi berstatus AKTIF.</p>}
-      {tab==="dashboard" && <DashboardTab orderData={orderData} orders={orders} orderId={orderId} dashRows={dashRows} dashTahap={dashTahap} dashLoading={dashLoading} loadingOrder={loadingOrder} lastUpdate={lastUpdate} />}
       {tab==="jadwal" && <JadwalTab jadwalRows={jadwalRows} jadwalTotals={jadwalTotals} awal={awal} akhir={akhir} setAwal={setAwal} setAkhir={setAkhir} loadingOrder={loadingOrder} loadingJadwal={loadingJadwal} expanded={expanded} setExpanded={setExpanded} saving={saving} today={today} statusOf={statusOf} gotoInput={gotoInput} autofill={autofill} />}
       {tab==="rekap" && <RekapTab rekapRows={rekapRows} rekapTotals={rekapTotals} loadingRekap={loadingRekap} loadingOrder={loadingOrder} />}
       {tab==="input" && <InputTab tanggal={tanggal} setTanggal={setTanggal} rows={rows} inputs={inputs} setInputs={setInputs} rejectInputs={rejectInputs} setRejectInputs={setRejectInputs} rencanaTahap={rencanaTahap} tahapInputs={tahapInputs} setTahapInputs={setTahapInputs} totals={totals} dayStatus={dayStatus} loading={loading} saving={saving} locked={locked} statusOf={statusOf} save={save} />}

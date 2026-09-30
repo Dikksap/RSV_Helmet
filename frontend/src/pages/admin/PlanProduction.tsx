@@ -22,6 +22,7 @@ import MasterTab from "../../components/admin/PlanProduction/MasterTab";
 import CapacityTab from "../../components/admin/PlanProduction/CapacityTab";
 import ScheduleTab from "../../components/admin/PlanProduction/ScheduleTab";
 import SummaryTab from "../../components/admin/PlanProduction/SummaryTab";
+import ProductionDashboardTab from "../../components/admin/PlanProduction/ProductionDashboardTab";
 import CreateOrderModal from "../../components/admin/PlanProduction/CreateOrderModal";
 
 import {
@@ -452,7 +453,7 @@ export default function PlanProduction() {
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Kelola order, kapasitas, master produksi, dan jadwal produksi.
+              Kelola order, dashboard, kapasitas, master produksi, dan jadwal produksi.
             </p>
           </div>
 
@@ -606,6 +607,8 @@ export default function PlanProduction() {
         <Route index element={<OrdersPanel {...ordersPanelProps} />} />
 
         <Route path="orders" element={<OrdersPanel {...ordersPanelProps} />} />
+
+        <Route path="dashboard" element={<ProductionDashboardTab orderId={selectedId} orders={orders} />} />
 
         <Route path="jadwal" element={<ScheduleTab orderId={selectedId} />} />
 

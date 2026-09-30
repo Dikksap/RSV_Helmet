@@ -16,6 +16,7 @@ interface Props {
 }
 
 export default function InputTab({ tanggal, setTanggal, rows, inputs, setInputs, rejectInputs, setRejectInputs, rencanaTahap, tahapInputs, setTahapInputs, totals, dayStatus, loading, saving, locked, statusOf, save }: Props) {
+  const canSave = rows.length > 0 || Object.values(tahapInputs).some((v) => (v ?? 0) > 0);
   return (
     <>
       {locked && (<p role="status" className="rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-[#6B7280]">Tanggal {fmtDate(tanggal)} terkunci — data sebelum hari ini tidak bisa diubah. Yang bisa diisi: hari ini sampai akhir plan produksi.</p>)}
@@ -53,10 +54,10 @@ export default function InputTab({ tanggal, setTanggal, rows, inputs, setInputs,
       <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
           <h3 className="font-semibold text-[#1E3A5F]">{fmtDate(tanggal)} <span className="font-normal text-xs text-[#6B7280]">· {rows.length} variant</span></h3>
-          <button type="button" onClick={()=>void save()} disabled={saving || rows.length===0 || locked} className="rounded-lg bg-[#1E3A5F] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#16294a] active:scale-[0.98] disabled:opacity-40">{saving ? "Menyimpan..." : "Simpan Realisasi"}</button>
+          <button type="button" onClick={()=>void save()} disabled={saving || locked || !canSave} className="rounded-lg bg-[#1E3A5F] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#16294a] active:scale-[0.98] disabled:opacity-40">{saving ? "Menyimpan..." : "Simpan Realisasi"}</button>
         </div>
         <p className="border-b border-slate-100 bg-[#F5F7FA] px-4 py-2 text-xs text-[#6B7280]">Kolom Aktual terisi otomatis dari Finishgood — ubah manual bila perlu, lalu tekan Simpan Realisasi.</p>
-        {loading ? (<p className="animate-pulse p-6 text-[15px] text-[#6B7280]">Memuat jadwal & realisasi...</p>) : rows.length===0 ? (<p className="p-6 text-center text-[#6B7280]">Tidak ada jadwal produksi pada tanggal ini.</p>) : (
+        {loading ? (<p className="animate-pulse p-6 text-[15px] text-[#6B7280]">Memuat jadwal & realisasi...</p>) : rows.length===0 ? (<p className="p-6 text-center text-[#6B7280]">Tidak ada jadwal item pada tanggal ini — tahapan divisi di atas tetap bisa diisi lalu Simpan Realisasi.</p>) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead><tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-[#6B7280]"><th className="px-3 py-3 font-semibold">Item Variant</th><th className="px-3 py-3 text-right font-semibold">Rencana<span className="block text-[10px] font-normal normal-case text-slate-400">jadwal hari ini</span></th><th className="px-3 py-3 text-right font-semibold">Finishgood<span className="block text-[10px] font-normal normal-case text-slate-400">barang tercatat</span></th><th className="px-3 py-3 text-right font-semibold">Aktual<span className="block text-[10px] font-normal normal-case text-slate-400">ketik hasil</span></th><th className="px-3 py-3 text-right font-semibold">Reject<span className="block text-[10px] font-normal normal-case text-slate-400">barang gagal</span></th><th className="px-3 py-3 font-semibold">Status</th></tr></thead>

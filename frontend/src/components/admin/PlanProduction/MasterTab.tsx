@@ -56,6 +56,20 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
     }
     return [...map.entries()].map(([style, total]) => ({ style, total }));
   }, [local]);
+  // Total per size (urut ikut Size.urutan) — tampil di bawah baris TOTAL.
+  const sizeTotals = useMemo(() => {
+    const map = new Map<string, { size: string; urutan: number; total: number }>();
+    for (const i of local.items) {
+      const cur = map.get(i.variant.size.nama) ?? {
+        size: i.variant.size.nama,
+        urutan: i.variant.size.urutan,
+        total: 0,
+      };
+      cur.total += i.qty;
+      map.set(i.variant.size.nama, cur);
+    }
+    return [...map.values()].sort((a, b) => a.urutan - b.urutan || a.size.localeCompare(b.size));
+  }, [local]);
   const options = useMemo(
     () => variants.filter((v) => !usedIds.has(v.id)),
     [variants, usedIds],
@@ -458,14 +472,24 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-[#1E3A5F]">100,00%</td>
                 </tr>
+
               </tfoot>
             </table>
           )}
-          {!loading && styleTotals.length > 0 && (
+          {!loading && (styleTotals.length > 0 || sizeTotals.length > 0) && (
             <div className="flex flex-wrap gap-2 border-t border-slate-100 bg-[#F5F7FA] px-4 py-3">
               {styleTotals.map((s) => (
                 <span key={s.style} className="inline-flex items-baseline gap-1.5 rounded-full bg-white px-3 py-1 text-sm ring-1 ring-slate-200/70">
                   <span className="font-medium text-[#6B7280]">{s.style} :</span>
+                  <span className="font-bold tabular-nums text-[#1E3A5F]">{fmt(s.total)}</span>
+                </span>
+              ))}
+              {styleTotals.length > 0 && sizeTotals.length > 0 && (
+                <span aria-hidden className="mx-1 hidden h-6 w-px self-center bg-slate-300 sm:inline-block" />
+              )}
+              {sizeTotals.map((s) => (
+                <span key={s.size} className="inline-flex items-baseline gap-1.5 rounded-full bg-white px-3 py-1 text-sm ring-1 ring-slate-200/70">
+                  <span className="font-medium text-[#6B7280]">{s.size} :</span>
                   <span className="font-bold tabular-nums text-[#1E3A5F]">{fmt(s.total)}</span>
                 </span>
               ))}

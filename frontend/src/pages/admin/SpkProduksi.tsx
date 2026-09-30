@@ -1,8 +1,25 @@
-import { useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
+import {
+  getProductionOrderSummary,
+  getProductionSchedule,
+  type ProductionOrderSummary,
+  type ScheduleStageTake,
+} from "../../api/productionOrders";
+import { WHITE_BATOK } from "../../components/admin/PlanProduction/utils";
 
 const DIVISI = ["Buffing", "Base Coat", "Decal", "Top Coat", "Perakitan", "QC"] as const;
+
+// Stage backend per divisi SPK. Decal = gabungan decalSolid + decalMotif.
+const DIVISI_STAGES: Record<string, ScheduleStageTake["stage"][]> = {
+  Buffing: ["buffing"],
+  "Base Coat": ["baseCoat"],
+  Decal: ["decalSolid", "decalMotif"],
+  "Top Coat": ["topCoat"],
+  Perakitan: ["perakitan"],
+  QC: ["qc"],
+};
 
 // Divisi cat/shell pakai tabel ringkas: tanpa Size, nama item saja.
 const SIMPLIFIED_DIVISI = new Set(["Buffing", "Base Coat", "Decal", "Top Coat"]);
@@ -40,9 +57,114 @@ const hariOf = (iso: string) => {
   return d.toLocaleDateString("id-ID", { weekday: "long" });
 };
 
+interface AutoCache {
+  rincian: ScheduleStageTake[];
+  summary: ProductionOrderSummary | null;
+  nomor: string;
+  periode: string;
+}
+
+// Bangun baris SPK dari rincian jadwal backend untuk satu tanggal + divisi.
+// Buffing/Base Coat proses batok → gabung per material (Batok Putih/Hitam),
+// bukan per model. Decal/Top Coat gabung per item; Perakitan/QC per variant+size.
+const BATOK_DIVISI = new Set(["Buffing", "Base Coat"]);
+
+function buildAutoRows(
+  div: string,
+  tanggal: string,
+  rincian: ScheduleStageTake[],
+  summary: ProductionOrderSummary | null,
+): SpkRow[] {
+  const stages = DIVISI_STAGES[div] ?? [];
+  const simple = SIMPLIFIED_DIVISI.has(div);
+  const byBatok = BATOK_DIVISI.has(div);
+  const sumByVariant = new Map<number, number>();
+  const labelByVariant = new Map<number, string>();
+  for (const r of rincian) {
+    if (r.tanggal !== tanggal || !stages.includes(r.stage)) continue;
+    sumByVariant.set(r.variantId, (sumByVariant.get(r.variantId) ?? 0) + r.jumlah);
+    if (!labelByVariant.has(r.variantId)) labelByVariant.set(r.variantId, r.item);
+  }
+  const variantInfo = new Map(
+    (summary?.items ?? []).map((it) => [
+      it.variantId,
+      {
+        model: `${it.variant.product.nama} ${it.variant.style.nama}`,
+        style: it.variant.style.nama,
+        warna: it.variant.color.nama,
+        size: it.variant.size.nama,
+      },
+    ]),
+  );
+  // Klasifikasi batok: warna master, fallback cocokkan nama warna di label jadwal.
+  const batokOf = (variantId: number): "Putih" | "Hitam" => {
+    const warna = variantInfo.get(variantId)?.warna;
+    if (warna) return WHITE_BATOK.has(warna) ? "Putih" : "Hitam";
+    const label = labelByVariant.get(variantId) ?? "";
+    return [...WHITE_BATOK].some((w) => label.includes(w)) ? "Putih" : "Hitam";
+  };
+  // ponytail: gabung per batok / per item / per variant, satu map
+  const grouped = new Map<string, SpkRow>();
+  let n = 0;
+  for (const [variantId, qty] of sumByVariant) {
+    if (qty <= 0) continue;
+    const info = variantInfo.get(variantId);
+    let model: string;
+    let warna: string;
+    let size: string;
+    let key: string;
+    if (byBatok) {
+      const batok = batokOf(variantId);
+      model = `Batok ${batok}`;
+      warna = batok;
+      size = "";
+      key = batok;
+    } else if (div === "Decal") {
+      // Decal: Nama = Style + Warna (label jadwal sudah "Style Warna").
+      const label = labelByVariant.get(variantId) ?? "-";
+      const vi = variantInfo.get(variantId);
+      model = vi ? `${vi.style} ${vi.warna}` : label;
+      warna = "";
+      size = "";
+      key = model;
+    } else {
+      model = info?.model ?? labelByVariant.get(variantId) ?? "-";
+      warna = info?.warna ?? "";
+      size = info?.size ?? "";
+      key = simple ? `${model}|${warna}` : `${model}|${warna}|${size}`;
+    }
+    const prev = grouped.get(key);
+    if (prev) {
+      prev.target = String(Number(prev.target) + qty);
+    } else {
+      grouped.set(key, {
+        key: `auto-${n++}`,
+        model,
+        size,
+        warna,
+        target: String(qty),
+      });
+    }
+  }
+  return grouped.size > 0 ? [...grouped.values()] : [emptyRow(`auto-empty-${div}`)];
+}
+
 export default function SpkProduksi() {
-  const [divisi, setDivisi] = useState<string>(DIVISI[0]);
-  const [tanggal, setTanggal] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [searchParams] = useSearchParams();
+  const autoOrderId = searchParams.get("orderId");
+  const autoTanggal = searchParams.get("tanggal");
+  const autoDivisiParam = searchParams.get("divisi");
+  const isAuto = autoOrderId !== null && autoTanggal !== null;
+
+  const [divisi, setDivisi] = useState<string>(
+    autoDivisiParam && (DIVISI as readonly string[]).includes(autoDivisiParam)
+      ? autoDivisiParam
+      : DIVISI[0],
+  );
+  const [tanggal, setTanggal] = useState<string>(() => autoTanggal ?? new Date().toISOString().split("T")[0]);
+  const [autoCache, setAutoCache] = useState<AutoCache | null>(null);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoError, setAutoError] = useState<string | null>(null);
   const [noDok, setNoDok] = useState("SPK-PRD-2026/0001");
   const [revisi, setRevisi] = useState("00");
   const [periode, setPeriode] = useState("");
@@ -57,6 +179,10 @@ export default function SpkProduksi() {
   const [rows, setRows] = useState<SpkRow[]>([emptyRow("row-0")]);
 
   const isSimple = SIMPLIFIED_DIVISI.has(divisi);
+  // Buffing/Base Coat proses batok → kolom Warna dihapus (Nama sudah "Batok Putih/Hitam").
+  // Decal sama: Nama sudah "Style Warna".
+  const isBatok = BATOK_DIVISI.has(divisi);
+  const hideWarna = isBatok || divisi === "Decal";
 
   const paperRef = useRef<HTMLDivElement>(null);
 
@@ -74,10 +200,53 @@ export default function SpkProduksi() {
     `,
   });
 
+  // Mode otomatis: tarik rincian jadwal + master order sekali, isi kertas SPK.
+  useEffect(() => {
+    if (!isAuto || !autoOrderId || !autoTanggal) return;
+    const id = Number(autoOrderId);
+    if (!Number.isInteger(id)) {
+      setAutoError("orderId tidak valid");
+      return;
+    }
+    setAutoLoading(true);
+    setAutoError(null);
+    Promise.all([
+      getProductionSchedule(id),
+      getProductionOrderSummary(id).catch(() => null),
+    ])
+      .then(([sched, summary]) => {
+        const cache: AutoCache = {
+          rincian: sched.rincian ?? [],
+          summary,
+          nomor: sched.order.nomor,
+          periode: sched.order.periode,
+        };
+        setAutoCache(cache);
+        setTanggal(autoTanggal);
+        setOrderNo(sched.order.nomor);
+        setPeriode(sched.order.periode);
+        const div =
+          autoDivisiParam && (DIVISI as readonly string[]).includes(autoDivisiParam)
+            ? autoDivisiParam
+            : DIVISI[0];
+        setDivisi(div);
+        setLini(div);
+        setRows(buildAutoRows(div, autoTanggal, cache.rincian, cache.summary));
+      })
+      .catch((e) => setAutoError(e instanceof Error ? e.message : "Gagal memuat jadwal"))
+      .finally(() => setAutoLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOrderId, autoTanggal]);
+
   const changeDivisi = (v: string) => {
     setDivisi(v);
     setLini(v);
-    setRows([emptyRow(`row-${v}`)]);
+    // Mode otomatis: hitung ulang dari cache, bukan reset kosong.
+    if (autoCache && isAuto && autoTanggal) {
+      setRows(buildAutoRows(v, autoTanggal, autoCache.rincian, autoCache.summary));
+    } else {
+      setRows([emptyRow(`row-${v}`)]);
+    }
   };
 
   const updateRow = (idx: number, field: keyof SpkRow, value: string) => {
@@ -105,7 +274,9 @@ export default function SpkProduksi() {
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Barang Produksi</p>
           <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">SPK Produksi</h1>
           <p className="mt-2 text-base text-[#6B7280]">
-            Buat Surat Perintah Kerja manual per divisi. Mode offline — belum tersambung backend.
+            {isAuto
+              ? "SPK otomatis dari jadwal produksi — ganti divisi untuk isi ulang target."
+              : "Buat Surat Perintah Kerja manual per divisi. Mode offline — belum tersambung backend."}
           </p>
         </div>
         <Link
@@ -115,6 +286,31 @@ export default function SpkProduksi() {
           ← Plan Production
         </Link>
       </header>
+
+      {isAuto && (
+        <div
+          className={[
+            "flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
+            autoError
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
+          ].join(" ")}
+        >
+          <p>
+            {autoLoading
+              ? "Memuat target SPK dari jadwal…"
+              : autoError
+                ? `Gagal memuat otomatis: ${autoError} — isi manual tetap bisa.`
+                : `Otomatis dari jadwal · Order ${(autoCache?.nomor ?? orderNo) || autoOrderId} · ${fmtTanggal(autoTanggal ?? "")} · ganti divisi = target dihitung ulang.`}
+          </p>
+          <Link
+            to="/admin/plan-production/jadwal"
+            className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#1E3A5F] ring-1 ring-slate-200 hover:bg-slate-50"
+          >
+            ← Kembali ke Jadwal
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-4">
         <section className="rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
@@ -129,7 +325,9 @@ export default function SpkProduksi() {
             </button>
           </div>
           <p className="mt-1 text-xs text-[#6B7280]">
-            Pilih divisi → isi baris target → print. Hasil, Reject, dan Keterangan diisi manual di kertas.
+            {isAuto
+              ? "Target terisi dari jadwal — koreksi bila perlu → print. Hasil, Reject, dan Keterangan diisi manual di kertas."
+              : "Pilih divisi → isi baris target → print. Hasil, Reject, dan Keterangan diisi manual di kertas."}
           </p>
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
@@ -258,7 +456,7 @@ export default function SpkProduksi() {
                         placeholder={isSimple ? "Nama" : "Model — Style"}
                         className="mb-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
                       />
-                      {isSimple ? (
+                      {hideWarna ? null : isSimple ? (
                         <input
                           value={r.warna}
                           onChange={(e) => updateRow(idx, "warna", e.target.value)}
@@ -434,7 +632,7 @@ export default function SpkProduksi() {
                       <th className="border border-black px-1 py-1" style={{ width: "4%" }}>
                         No
                       </th>
-                      <th className="border border-black px-1 py-1" style={{ width: isSimple ? "30%" : "24%" }}>
+                      <th className="border border-black px-1 py-1" style={{ width: hideWarna ? "50%" : isSimple ? "30%" : "24%" }}>
                         {isSimple ? "Nama" : "Model / Tipe Helm"}
                       </th>
                       {!isSimple && (
@@ -442,9 +640,11 @@ export default function SpkProduksi() {
                           Size
                         </th>
                       )}
-                      <th className="border border-black px-1 py-1" style={{ width: isSimple ? "20%" : "18%" }}>
-                        Warna
-                      </th>
+                      {!hideWarna && (
+                        <th className="border border-black px-1 py-1" style={{ width: isSimple ? "20%" : "18%" }}>
+                          Warna
+                        </th>
+                      )}
                       <th className="border border-black px-1 py-1" style={{ width: isSimple ? "10%" : "9%" }}>
                         Target
                       </th>
@@ -467,7 +667,7 @@ export default function SpkProduksi() {
                           {r.model || "-"}
                         </td>
                         {!isSimple && <td className="border border-black px-1 py-1 text-center">{r.size || "-"}</td>}
-                        <td className="border border-black px-1 py-1 text-center">{r.warna || "-"}</td>
+                        {!hideWarna && <td className="border border-black px-1 py-1 text-center">{r.warna || "-"}</td>}
                         <td className="border border-black px-1 py-1 text-center">
                           {r.target ? Number(r.target).toLocaleString("id-ID") : ""}
                         </td>
@@ -478,7 +678,7 @@ export default function SpkProduksi() {
                     ))}
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={isSimple ? 7 : 8} className="border border-black px-1 py-4 text-center text-[#6B7280]">
+                        <td colSpan={hideWarna ? 6 : isSimple ? 7 : 8} className="border border-black px-1 py-4 text-center text-[#6B7280]">
                           Belum ada baris target
                         </td>
                       </tr>
@@ -486,7 +686,7 @@ export default function SpkProduksi() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-[#f0f0f0] font-bold">
-                      <td colSpan={isSimple ? 3 : 4} className="border border-black px-1 py-1 text-right">
+                      <td colSpan={hideWarna ? 2 : isSimple ? 3 : 4} className="border border-black px-1 py-1 text-right">
                         TOTAL
                       </td>
                       <td className="border border-black px-1 py-1 text-center">{totals.toLocaleString("id-ID")}</td>
@@ -524,7 +724,7 @@ export default function SpkProduksi() {
                 </div>
 
                 <p className="mt-2 text-center text-[6pt] text-[#6B7280]">
-                  SPK manual · Divisi {divisi} · {rows.length} baris · total target {totals.toLocaleString("id-ID")} pcs
+                  SPK {isAuto ? "otomatis" : "manual"} · Divisi {divisi} · {rows.length} baris · total target {totals.toLocaleString("id-ID")} pcs
                 </p>
               </div>
               <p className="mt-2 text-center text-xs text-[#6B7280]">Preview live — ubah form kiri otomatis update kertas. Print → Save as PDF.</p>
