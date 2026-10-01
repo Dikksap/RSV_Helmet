@@ -220,3 +220,53 @@ export async function printHangtagSilently(
     landscape: false,
   });
 }
+
+export interface AssetLabelRow {
+  kode: string;
+  nama: string;
+}
+
+const A4_MICRONS = { width: 210 * MICRONS_PER_MM, height: 297 * MICRONS_PER_MM };
+
+function escapeAssetHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => (({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }) as Record<string, string>)[c]);
+}
+
+export function buildAssetPrintHtml(rows: AssetLabelRow[]): string {
+  const cards = rows
+    .map(
+      (r) =>
+        `<div class="asset-box"><div class="asset-kode">${escapeAssetHtml(r.kode)}</div><div class="asset-nama">${escapeAssetHtml(r.nama)}</div></div>`,
+    )
+    .join("");
+  return [
+    "<!doctype html>",
+    '<html><head><meta charset="utf-8" /><style>',
+    "@page { size: A4; margin: 10mm; }",
+    "* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }",
+    "html, body { margin: 0; padding: 0; background: #ffffff; font-family: Inter, Arial, sans-serif; }",
+    ".asset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }",
+    ".asset-box { border: 1.5px solid #000; padding: 14px; break-inside: avoid; page-break-inside: avoid; }",
+    ".asset-kode { font-weight: 800; font-size: 20px; line-height: 1.2; color: #000; margin-bottom: 4px; word-break: break-all; }",
+    ".asset-nama { font-size: 13px; font-weight: 500; color: #1f2937; word-break: break-word; }",
+    "</style></head>",
+    `<body><div class="asset-grid">${cards}</div></body></html>`,
+  ].join("");
+}
+
+export async function printAssetSilently(
+  rows: AssetLabelRow[],
+  printerName?: string,
+): Promise<SilentPrintResult> {
+  if (!window.electron) {
+    throw new Error("Silent print hanya tersedia di aplikasi Electron.");
+  }
+  const savedPrinter = loadDefaultPrinter();
+  return window.electron.printSilent({
+    html: buildAssetPrintHtml(rows),
+    printerName: printerName ?? savedPrinter ?? null,
+    copies: 1,
+    pageSize: A4_MICRONS,
+    landscape: false,
+  });
+}

@@ -81,6 +81,51 @@ export interface BarangListFilter {
   status?: StatusBarang;
   tanggalAwal?: Date;
   tanggalAkhir?: Date;
+  pernahRetur?: boolean;
+  styleId?: number;
+  colorId?: number;
+  sizeId?: number;
+}
+
+export interface ReturInfo {
+  pernahRetur: boolean;
+  jumlahRetur: number;
+  tanggalReturTerakhir: string | null;
+}
+
+export async function getReturInfo(
+  barangIds: number[],
+): Promise<Map<number, ReturInfo>> {
+  const info = new Map<number, ReturInfo>();
+  if (barangIds.length === 0) return info;
+  const rows = await prisma.riwayatBarang.groupBy({
+    by: ["barangId"],
+    where: { barangId: { in: barangIds }, status: "RETUR" },
+    _count: { _all: true },
+    _max: { tanggal: true },
+  });
+  for (const row of rows) {
+    info.set(row.barangId, {
+      pernahRetur: true,
+      jumlahRetur: row._count._all,
+      tanggalReturTerakhir: row._max.tanggal
+        ? row._max.tanggal.toISOString()
+        : null,
+    });
+  }
+  return info;
+}
+
+function withReturInfo<T extends { id: number }>(
+  items: T[],
+  info: Map<number, ReturInfo>,
+): (T & ReturInfo)[] {
+  return items.map((item) => ({
+    ...item,
+    pernahRetur: info.get(item.id)?.pernahRetur ?? false,
+    jumlahRetur: info.get(item.id)?.jumlahRetur ?? 0,
+    tanggalReturTerakhir: info.get(item.id)?.tanggalReturTerakhir ?? null,
+  }));
 }
 
 function normalizeStart(d: Date): Date {
@@ -105,7 +150,7 @@ function normalizeEnd(d: Date): Date {
 }
 
 export async function listBarang(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir } =
+  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
     filter;
 
   const cacheKey = barangListKey({
@@ -117,6 +162,10 @@ export async function listBarang(filter: BarangListFilter) {
     status: status ?? "",
     tanggalAwal: tanggalAwal ?? "",
     tanggalAkhir: tanggalAkhir ?? "",
+    pernahRetur: pernahRetur ?? "",
+    styleId: styleId ?? "",
+    colorId: colorId ?? "",
+    sizeId: sizeId ?? "",
   });
   const cached = await getBarangCache<{ data: unknown[]; meta: unknown }>(cacheKey);
   if (cached) return cached as Awaited<ReturnType<typeof listBarangUncached>>;
@@ -127,7 +176,7 @@ export async function listBarang(filter: BarangListFilter) {
 }
 
 async function listBarangUncached(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir } =
+  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
     filter;
 
   const where: {
@@ -136,12 +185,22 @@ async function listBarangUncached(filter: BarangListFilter) {
     groupId?: number;
     status?: StatusBarang;
     tanggal?: { gte?: Date; lte?: Date };
+    riwayat?: { some: { status: string } };
+    variant?: { styleId?: number; colorId?: number; sizeId?: number };
   } = {};
 
   if (variantId !== undefined) where.variantId = variantId;
   if (batchId !== undefined) where.batchId = batchId;
   if (groupId !== undefined) where.groupId = groupId;
   if (status) where.status = status;
+  if (pernahRetur) where.riwayat = { some: { status: "RETUR" } };
+  if (styleId !== undefined || colorId !== undefined || sizeId !== undefined) {
+    where.variant = {
+      ...(styleId !== undefined ? { styleId } : {}),
+      ...(colorId !== undefined ? { colorId } : {}),
+      ...(sizeId !== undefined ? { sizeId } : {}),
+    };
+  }
   if (tanggalAwal || tanggalAkhir) {
     where.tanggal = {};
     if (tanggalAwal) where.tanggal.gte = normalizeStart(tanggalAwal);
@@ -158,8 +217,10 @@ async function listBarangUncached(filter: BarangListFilter) {
     }),
   ]);
 
+  const info = await getReturInfo(data.map((b) => b.id));
+
   return {
-    data,
+    data: withReturInfo(data, info),
     meta: {
       page: limit > 0 ? page : 1,
       limit: limit > 0 ? limit : total,
@@ -170,34 +231,48 @@ async function listBarangUncached(filter: BarangListFilter) {
 }
 
 export async function getBarangById(id: number) {
-  return prisma.barang.findUnique({
+  const barang = await prisma.barang.findUnique({
     where: { id },
     include: barangInclude,
   });
+  if (!barang) return null;
+  const info = await getReturInfo([barang.id]);
+  const enriched = withReturInfo([barang], info);
+  return enriched[0];
 }
 
 export async function searchBarangByKode(opts: {
   q: string;
   limit: number;
+  pernahRetur?: boolean;
 }): Promise<{
   data: Awaited<ReturnType<typeof prisma.barang.findMany>>;
   meta: { q: string; count: number };
 }> {
   const kode = opts.q.trim();
-  const cacheKey = barangSearchKey(kode, opts.limit);
+  const cacheKey = barangSearchKey(kode, opts.limit, opts.pernahRetur);
   const cached = await getBarangCache<{
     data: Awaited<ReturnType<typeof prisma.barang.findMany>>;
     meta: { q: string; count: number };
   }>(cacheKey);
   if (cached) return cached;
   const data = await prisma.barang.findMany({
-    where: { kodeBarang: { contains: kode } },
+    where: {
+      kodeBarang: { contains: kode },
+      ...(opts.pernahRetur
+        ? { riwayat: { some: { status: "RETUR" } } }
+        : {}),
+    },
     include: barangInclude,
     orderBy: { kodeBarang: "asc" },
     take: opts.limit,
   });
 
-  const result = { data, meta: { q: kode, count: data.length } };
+  const info = await getReturInfo(data.map((b) => b.id));
+  const result = {
+    data: withReturInfo(data, info),
+    meta: { q: kode, count: data.length },
+  };
   await setBarangCache(cacheKey, result, BARANG_TTL_LIST);
   return result;
 }
@@ -266,7 +341,8 @@ export async function scanBarang(
     throw new Error("Barang tidak ditemukan");
   }
 
-  return barang;
+  const info = await getReturInfo([barang.id]);
+  return withReturInfo([barang], info)[0];
 }
 
 export async function bulkScanBarang(

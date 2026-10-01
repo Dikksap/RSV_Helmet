@@ -140,8 +140,16 @@ export function BarangTable({
                           {item.kodeBarang}
                         </p>
 
-                        <div className="shrink-0">
+                        <div className="flex shrink-0 flex-col items-end gap-1">
                           <StatusBadge status={item.status} />
+                          {item.pernahRetur && (
+                            <span
+                              title={item.tanggalReturTerakhir ? `Retur ${item.jumlahRetur ?? 1}x, terakhir ${formatDate(item.tanggalReturTerakhir)} — klik Riwayat` : "Pernah retur — klik Riwayat"}
+                              className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                            >
+                              ↩ RETUR{(item.jumlahRetur ?? 0) > 1 ? ` ×${item.jumlahRetur}` : ""}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -400,7 +408,17 @@ export function BarangTable({
 
                     {/* Status */}
                     <td className="px-4 py-3">
-                      <StatusBadge status={item.status} />
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={item.status} />
+                        {item.pernahRetur && (
+                          <span
+                            title={item.tanggalReturTerakhir ? `Retur ${item.jumlahRetur ?? 1}x, terakhir ${formatDate(item.tanggalReturTerakhir)} — klik Riwayat` : "Pernah retur — klik Riwayat"}
+                            className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                          >
+                            ↩ RETUR{(item.jumlahRetur ?? 0) > 1 ? ` ×${item.jumlahRetur}` : ""}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Tanggal */}

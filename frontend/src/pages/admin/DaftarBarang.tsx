@@ -11,6 +11,7 @@ import {
   type StatusBarang,
 } from "../../api/barang";
 import { getProducts, type Product } from "../../api/products";
+import { getColors, getSizes, getStyles } from "../../api/masterData";
 import { HeaderSection } from "../../components/admin/DaftarBarang/HeaderSection";
 import { FilterSection } from "../../components/admin/DaftarBarang/FilterSection";
 import { BarangTable } from "../../components/admin/DaftarBarang/BarangTable";
@@ -37,9 +38,16 @@ function DaftarBarang() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [variantFilter, setVariantFilter] = useState("");
+  const [styleFilter, setStyleFilter] = useState("");
+  const [colorFilter, setColorFilter] = useState("");
+  const [sizeFilter, setSizeFilter] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
+  const [styleOptions, setStyleOptions] = useState<{ id: number; nama: string }[]>([]);
+  const [colorOptions, setColorOptions] = useState<{ id: number; nama: string }[]>([]);
+  const [sizeOptions, setSizeOptions] = useState<{ id: number; nama: string }[]>([]);
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
+  const [hanyaPernahRetur, setHanyaPernahRetur] = useState(false);
   const [datePreset, setDatePreset] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
@@ -99,15 +107,23 @@ function DaftarBarang() {
     Boolean(search) ||
     Boolean(statusFilter) ||
     Boolean(variantFilter) ||
+    Boolean(styleFilter) ||
+    Boolean(colorFilter) ||
+    Boolean(sizeFilter) ||
     Boolean(tanggalAwal) ||
-    Boolean(tanggalAkhir);
+    Boolean(tanggalAkhir) ||
+    hanyaPernahRetur;
 
   const isSearchMode =
     Boolean(debouncedSearch) &&
     !statusFilter &&
     !variantFilter &&
+    !styleFilter &&
+    !colorFilter &&
+    !sizeFilter &&
     !tanggalAwal &&
-    !tanggalAkhir;
+    !tanggalAkhir &&
+    !hanyaPernahRetur;
   const searchLimit = typeof pageSize === "number" ? Math.min(50, pageSize) : 50;
 
   // Debounce ketikan search 400ms agar tidak hit /barang/search tiap keystroke
@@ -132,6 +148,10 @@ function DaftarBarang() {
                 : undefined,
               tanggalAwal: tanggalAwal || undefined,
               tanggalAkhir: tanggalAkhir || undefined,
+              pernahRetur: hanyaPernahRetur || undefined,
+              styleId: styleFilter ? Number(styleFilter) : undefined,
+              colorId: colorFilter ? Number(colorFilter) : undefined,
+              sizeId: sizeFilter ? Number(sizeFilter) : undefined,
             });
         setBarang(data.data);
         setTotalPages("totalPages" in data.meta ? data.meta.totalPages : 1);
@@ -153,7 +173,7 @@ function DaftarBarang() {
         setIsLoading(false);
       }
     },
-    [isSearchMode, searchLimit, tanggalAwal, tanggalAkhir, variantFilter, debouncedSearch, statusFilter, pageSize],
+    [isSearchMode, searchLimit, tanggalAwal, tanggalAkhir, variantFilter, styleFilter, colorFilter, sizeFilter, debouncedSearch, statusFilter, pageSize, hanyaPernahRetur],
   );
 
   useEffect(() => {
@@ -176,6 +196,15 @@ function DaftarBarang() {
       .catch(() =>
         setProductsError("Gagal memuat daftar variant — filter dan form variant tidak tersedia"),
       );
+    getStyles()
+      .then((rows) => setStyleOptions(rows.map((r) => ({ id: r.id, nama: r.nama }))))
+      .catch(() => setStyleOptions([]));
+    getColors()
+      .then((rows) => setColorOptions(rows.map((r) => ({ id: r.id, nama: r.nama }))))
+      .catch(() => setColorOptions([]));
+    getSizes()
+      .then((rows) => setSizeOptions(rows.map((r) => ({ id: r.id, nama: r.nama }))))
+      .catch(() => setSizeOptions([]));
   }, []);
 
   useEffect(() => {
@@ -199,10 +228,17 @@ function DaftarBarang() {
   const variantOptions = useMemo(() => {
     const options = products
       .flatMap((product) =>
-        product.variants.map((variant) => ({
-          id: variant.id,
-          nama: `${product.nama} / ${variant.style.nama} / ${variant.color.nama} / ${variant.size.nama}`,
-        })),
+        product.variants
+          .filter(
+            (variant) =>
+              (!styleFilter || String(variant.styleId) === styleFilter) &&
+              (!colorFilter || String(variant.colorId) === colorFilter) &&
+              (!sizeFilter || String(variant.sizeId) === sizeFilter),
+          )
+          .map((variant) => ({
+            id: variant.id,
+            nama: `${product.nama} / ${variant.style.nama} / ${variant.color.nama} / ${variant.size.nama}`,
+          })),
       )
       .sort((a, b) => a.nama.localeCompare(b.nama));
     const current = editingBarang?.variant;
@@ -213,15 +249,34 @@ function DaftarBarang() {
       });
     }
     return options;
-  }, [products, editingBarang]);
+  }, [products, editingBarang, styleFilter, colorFilter, sizeFilter]);
+
+  // Cascading: variant terpilih yang tak lagi cocok style/warna/size ikut dibersihkan
+  useEffect(() => {
+    if (!variantFilter) return;
+    const stillValid = products.some((product) =>
+      product.variants.some(
+        (variant) =>
+          String(variant.id) === variantFilter &&
+          (!styleFilter || String(variant.styleId) === styleFilter) &&
+          (!colorFilter || String(variant.colorId) === colorFilter) &&
+          (!sizeFilter || String(variant.sizeId) === sizeFilter),
+      ),
+    );
+    if (!stillValid) setVariantFilter("");
+  }, [styleFilter, colorFilter, sizeFilter, variantFilter, products]);
 
   const handleResetFilters = () => {
     setSearch("");
     setStatusFilter("");
     setVariantFilter("");
+    setStyleFilter("");
+    setColorFilter("");
+    setSizeFilter("");
     setTanggalAwal("");
     setTanggalAkhir("");
     setDatePreset("");
+    setHanyaPernahRetur(false);
   };
 
   const toggleSelect = (id: number) => {
@@ -353,6 +408,10 @@ function DaftarBarang() {
         status: statusFilter ? (statusFilter as StatusBarang) : undefined,
         tanggalAwal: tanggalAwal || undefined,
         tanggalAkhir: tanggalAkhir || undefined,
+        pernahRetur: hanyaPernahRetur || undefined,
+        styleId: styleFilter ? Number(styleFilter) : undefined,
+        colorId: colorFilter ? Number(colorFilter) : undefined,
+        sizeId: sizeFilter ? Number(sizeFilter) : undefined,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -579,19 +638,30 @@ function DaftarBarang() {
         search={search}
         statusFilter={statusFilter}
         variantFilter={variantFilter}
+        styleFilter={styleFilter}
+        colorFilter={colorFilter}
+        sizeFilter={sizeFilter}
         tanggalAwal={tanggalAwal}
         tanggalAkhir={tanggalAkhir}
         datePreset={datePreset}
         variantOptions={variantOptions}
+        styleOptions={styleOptions}
+        colorOptions={colorOptions}
+        sizeOptions={sizeOptions}
         currentPage={currentPage}
         totalPages={totalPages}
         hasActiveFilters={hasActiveFilters}
-        searchDisabled={Boolean(statusFilter || variantFilter || tanggalAwal || tanggalAkhir)}
+        hanyaPernahRetur={hanyaPernahRetur}
+        onPernahReturChange={setHanyaPernahRetur}
+        searchDisabled={Boolean(statusFilter || variantFilter || styleFilter || colorFilter || sizeFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur)}
         searchHint="Pencarian dinonaktifkan saat filter lain dipakai"
         variantError={productsError}
         onSearchChange={setSearch}
         onStatusChange={setStatusFilter}
         onVariantChange={setVariantFilter}
+        onStyleChange={setStyleFilter}
+        onColorChange={setColorFilter}
+        onSizeChange={setSizeFilter}
         onDatePresetChange={setDatePreset}
         onTanggalAwalChange={setTanggalAwal}
         onTanggalAkhirChange={setTanggalAkhir}

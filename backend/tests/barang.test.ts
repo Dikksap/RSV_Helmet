@@ -224,6 +224,59 @@ describe("GET /api/barang", () => {
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("tanggalAkhir");
   });
+
+  it("teruskan pernahRetur=true ke model", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+    } as any);
+
+    const res = await request(app).get("/api/barang?pernahRetur=true");
+
+    expect(res.status).toBe(200);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({ pernahRetur: true })
+    );
+  });
+
+  it("abaikan pernahRetur invalid (tanpa filter)", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+    } as any);
+
+    const res = await request(app).get("/api/barang?pernahRetur=salah");
+
+    expect(res.status).toBe(200);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({ pernahRetur: undefined })
+    );
+  });
+
+  it("teruskan styleId/colorId/sizeId ke model", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+    } as any);
+
+    const res = await request(app).get("/api/barang?styleId=1&colorId=2&sizeId=3");
+
+    expect(res.status).toBe(200);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({ styleId: 1, colorId: 2, sizeId: 3 })
+    );
+  });
+
+  it("400 jika styleId/colorId/sizeId bukan angka", async () => {
+    const res1 = await request(app).get("/api/barang?styleId=x");
+    const res2 = await request(app).get("/api/barang?colorId=x");
+    const res3 = await request(app).get("/api/barang?sizeId=x");
+
+    expect(res1.status).toBe(400);
+    expect(res2.status).toBe(400);
+    expect(res3.status).toBe(400);
+    expect(mocked.listBarang).not.toHaveBeenCalled();
+  });
 });
 
 // =============================================
@@ -693,7 +746,21 @@ describe("GET /api/barang/search", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    expect(mocked.searchBarangByKode).toHaveBeenCalledWith({ q: "BC001", limit: 5 });
+    expect(mocked.searchBarangByKode).toHaveBeenCalledWith({ q: "BC001", limit: 5, pernahRetur: undefined });
+  });
+
+  it("200 teruskan pernahRetur ke searchBarangByKode", async () => {
+    mocked.searchBarangByKode.mockResolvedValue({
+      data: [],
+      meta: { q: "BC001", count: 0 },
+    } as any);
+
+    const res = await request(app).get("/api/barang/search?q=BC001&pernahRetur=true");
+
+    expect(res.status).toBe(200);
+    expect(mocked.searchBarangByKode).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "BC001", pernahRetur: true })
+    );
   });
 });
 

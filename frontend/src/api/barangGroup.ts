@@ -15,6 +15,7 @@ export interface BarangInGroup {
   id: number;
   kodeBarang: string;
   status: StatusBarang;
+  pernahRetur?: boolean;
   createdAt: string;
   variant: {
     kodeVariant: string;

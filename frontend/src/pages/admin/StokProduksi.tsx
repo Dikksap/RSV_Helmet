@@ -41,23 +41,42 @@ function variantName(barang: BarangInGroup) {
   return "-";
 }
 
-function summarizeEntries(barang: BarangInGroup[]): [string, number][] {
-  const m = new Map<string, number>();
+function kondisiLabel(barang: BarangInGroup): "R" | "FG" {
+  return barang.pernahRetur ? "R" : "FG";
+}
+
+function summarizeEntries(barang: BarangInGroup[]): [string, number, "R" | "FG"][] {
+  const m = new Map<string, { name: string; n: number; label: "R" | "FG" }>();
   for (const b of barang) {
-    const k = variantName(b);
-    m.set(k, (m.get(k) ?? 0) + 1);
+    const label = kondisiLabel(b);
+    const name = variantName(b);
+    const k = `${name} ${label}`;
+    const prev = m.get(k);
+    m.set(k, { name, n: (prev?.n ?? 0) + 1, label });
   }
-  return [...m.entries()];
+  return [...m.values()].map(({ name, n, label }) => [name, n, label]);
 }
 
 function summarize(barang: BarangInGroup[]): string {
   return summarizeEntries(barang)
-    .map(([k, n]) => `${k} × ${n}`)
+    .map(([k, n, label]) => `${k} × ${n} ${label}`)
     .join(" · ");
 }
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Nama dus = string berisi angka ("5", "12", "Dus A-1"): urut numerik menaik,
+// non-angka di belakang.
+function dusOrder(nama: string): number {
+  const m = nama.match(/\d+(\.\d+)?/);
+  return m ? Number(m[0]) : Number.POSITIVE_INFINITY;
+}
+
+function compareDus(a: { nama: string }, b: { nama: string }): number {
+  const d = dusOrder(a.nama) - dusOrder(b.nama);
+  return d !== 0 ? d : a.nama.localeCompare(b.nama, "id", { numeric: true });
 }
 
 function toast(message: string, type: "success" | "error" = "success") {
@@ -241,7 +260,7 @@ function StokProduksi() {
     if (filteredGroups.length === 0) return;
     try {
       const rows: unknown[][] = [
-        ["Nama Dus", "Kode Barang", "Kode Variant", "Status", "Produk", "Style", "Color", "Size"],
+        ["Nama Dus", "Kode Barang", "Kode Variant", "Status", "Kondisi", "Produk", "Style", "Color", "Size"],
       ];
       for (const g of filteredGroups) {
         for (const b of g.barang ?? []) {
@@ -251,6 +270,7 @@ function StokProduksi() {
             b.kodeBarang,
             v?.kodeVariant ?? "",
             b.status,
+            kondisiLabel(b),
             v?.product?.nama ?? "",
             v?.style?.nama ?? "",
             v?.color?.nama ?? "",
@@ -280,6 +300,7 @@ function StokProduksi() {
       const resolved = await Promise.all(
         targets.map(async (g) => ({ group: g, items: await resolveItems(g) })),
       );
+      resolved.sort((a, b) => compareDus(a.group, b.group));
       const w = window.open("", "_blank", "width=400,height=600");
       if (!w) {
         toast("Popup diblokir, izinkan popup untuk print", "error");
@@ -291,8 +312,8 @@ function StokProduksi() {
         const total = items.length || group._count.barang;
         const body = entries.length === 0
           ? `<p>Kosong</p>`
-          : `<table><tr><th>Isi</th><th>Qty</th></tr>` +
-            entries.map(([k, n]) => `<tr><td>${escapeHtml(k)}</td><td>x ${n}</td></tr>`).join("") +
+          : `<table><tr><th>Isi</th><th>Qty</th><th>R/FG</th></tr>` +
+            entries.map(([k, n, label]) => `<tr><td>${escapeHtml(k)}</td><td>x ${n}</td><td>${label}</td></tr>`).join("") +
             `</table><p class="total">Total: ${total} pcs</p>`;
         w.document.write(
           `<html><head><title>Dus ${escapeHtml(group.nama)}</title>` +
@@ -319,7 +340,7 @@ function StokProduksi() {
           const total = items.length || group._count.barang;
           const isi = entries.length === 0
             ? `Kosong`
-            : entries.map(([k, n]) => `${escapeHtml(k)} x ${n}`).join("<br>");
+            : entries.map(([k, n, label]) => `${escapeHtml(k)} x ${n} ${label}`).join("<br>");
           return `<tr><td class="dus">Dus ${escapeHtml(group.nama)}</td><td>${isi}</td><td class="num">${total}</td></tr>`;
         })
         .join("");
@@ -834,6 +855,12 @@ function StokProduksi() {
                       <div className="flex shrink-0 items-center gap-2">
                         <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[b.status] ?? "bg-slate-100 text-slate-600"}`}>
                           {b.status}
+                        </span>
+                        <span
+                          title={b.pernahRetur ? "Pernah retur" : "Tidak pernah retur"}
+                          className={`rounded px-2 py-0.5 text-[11px] font-bold ${b.pernahRetur ? "bg-amber-100 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}
+                        >
+                          {kondisiLabel(b)}
                         </span>
                         <button
                           type="button"

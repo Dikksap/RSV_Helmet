@@ -1,12 +1,19 @@
 import prisma from "../../lib/prisma.js";
 import { clearBarangCache } from "../../lib/barangCache.js";
+import { getReturInfo } from "../barang/barang.js";
 
 const countBarang = { _count: { select: { barang: true } } };
 
 export const DUS_CAPACITY = 8;
 
+async function attachPernahRetur<T extends { id: number }>(items: T[]) {
+  if (items.length === 0) return items as (T & { pernahRetur: boolean })[];
+  const info = await getReturInfo(items.map((b) => b.id));
+  return items.map((b) => ({ ...b, pernahRetur: info.get(b.id)?.pernahRetur ?? false }));
+}
+
 export async function getAllBarangGroup() {
-  return prisma.barangGroup.findMany({
+  const groups = await prisma.barangGroup.findMany({
     include: {
       ...countBarang,
       barang: {
@@ -16,6 +23,12 @@ export async function getAllBarangGroup() {
     },
     orderBy: { nama: "asc" },
   });
+  const allIds = groups.flatMap((g) => g.barang.map((b) => b.id));
+  const info = await getReturInfo(allIds);
+  return groups.map((g) => ({
+    ...g,
+    barang: g.barang.map((b) => ({ ...b, pernahRetur: info.get(b.id)?.pernahRetur ?? false })),
+  }));
 }
 
 export async function getBarangGroupById(id: number) {
@@ -61,13 +74,14 @@ export async function assignBarangToGroup(groupId: number, barangIds: number[]) 
 }
 
 export async function getBarangInGroup(groupId: number) {
-  return prisma.barang.findMany({
+  const items = await prisma.barang.findMany({
     where: { groupId },
     include: {
       variant: { include: { product: true, style: true, color: true, size: true } },
     },
     orderBy: { kodeBarang: "asc" },
   });
+  return attachPernahRetur(items);
 }
 
 export async function unassignBarangFromGroup(groupId: number, barangIds: number[]) {

@@ -18,8 +18,8 @@ export function barangListKey(filter: Record<string, unknown>): string {
   return `${PREFIX}list:${parts.join("&") || "all"}`;
 }
 
-export function barangSearchKey(q: string, limit: number): string {
-  return `${PREFIX}search:${q.toLowerCase()}:${limit}`;
+export function barangSearchKey(q: string, limit: number, pernahRetur?: boolean): string {
+  return `${PREFIX}search:${q.toLowerCase()}:${limit}:${pernahRetur ? "retur" : "all"}`;
 }
 
 export function barangStatsKey(scope: string, filter: Record<string, unknown>): string {

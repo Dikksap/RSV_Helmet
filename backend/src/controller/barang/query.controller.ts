@@ -35,13 +35,22 @@ function parseTanggalAkhir(value: string): Date | null {
   return toEndOfDay(d);
 }
 
+function parsePernahRetur(value: unknown): boolean | undefined {
+  if (value === true) return true;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "1") return true;
+  }
+  return undefined;
+}
+
 export async function listBarangHandler(req: Request, res: Response) {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     // limit=all (atau 0) = tanpa paginasi, ambil semua barang.
     const noLimit = req.query.limit === "all" || req.query.limit === "0";
     const limit = noLimit ? 0 : Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, tanggal } = req.query;
+    const { variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, tanggal, pernahRetur, styleId, colorId, sizeId } = req.query;
 
     if (status && !["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"].includes(String(status))) {
       return res.status(400).json({
@@ -71,6 +80,30 @@ export async function listBarangHandler(req: Request, res: Response) {
       gid = Number(groupId);
       if (Number.isNaN(gid)) {
         return res.status(400).json({ message: "Parameter 'groupId' harus angka" });
+      }
+    }
+
+    let sid: number | undefined;
+    if (styleId !== undefined && styleId !== "") {
+      sid = Number(styleId);
+      if (Number.isNaN(sid)) {
+        return res.status(400).json({ message: "Parameter 'styleId' harus angka" });
+      }
+    }
+
+    let cid: number | undefined;
+    if (colorId !== undefined && colorId !== "") {
+      cid = Number(colorId);
+      if (Number.isNaN(cid)) {
+        return res.status(400).json({ message: "Parameter 'colorId' harus angka" });
+      }
+    }
+
+    let zid: number | undefined;
+    if (sizeId !== undefined && sizeId !== "") {
+      zid = Number(sizeId);
+      if (Number.isNaN(zid)) {
+        return res.status(400).json({ message: "Parameter 'sizeId' harus angka" });
       }
     }
 
@@ -124,6 +157,10 @@ export async function listBarangHandler(req: Request, res: Response) {
       status: status as StatusBarang | undefined,
       tanggalAwal: tAwal,
       tanggalAkhir: tAkhir,
+      pernahRetur: parsePernahRetur(pernahRetur),
+      styleId: sid,
+      colorId: cid,
+      sizeId: zid,
     });
 
     res.status(200).json(result);
@@ -363,7 +400,7 @@ export async function searchBarangHandler(req: Request, res: Response) {
     }
 
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-    const result = await searchBarangByKode({ q, limit });
+    const result = await searchBarangByKode({ q, limit, pernahRetur: parsePernahRetur(req.query.pernahRetur) });
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mencari barang", error });

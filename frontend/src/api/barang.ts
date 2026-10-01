@@ -22,6 +22,9 @@ export interface Barang {
   batchId: number | null;
   status: StatusBarang;
   tanggal: string | null;
+  pernahRetur?: boolean;
+  jumlahRetur?: number;
+  tanggalReturTerakhir?: string | null;
   createdAt: string;
   updatedAt: string;
   variant: BarangVariant;
@@ -57,6 +60,10 @@ export interface BarangListParams {
   tanggal?: string; // shortcut 1 hari penuh, diabaikan jika tanggalAwal/tanggalAkhir dikirim
   tanggalAwal?: string;
   tanggalAkhir?: string;
+  pernahRetur?: boolean;
+  styleId?: number;
+  colorId?: number;
+  sizeId?: number;
 }
 
 export async function getBarangPage(
@@ -72,6 +79,10 @@ export async function getBarangPage(
   if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
+  if (params.pernahRetur) query.set("pernahRetur", "true");
+  if (params.styleId) query.set("styleId", String(params.styleId));
+  if (params.colorId) query.set("colorId", String(params.colorId));
+  if (params.sizeId) query.set("sizeId", String(params.sizeId));
 
   const response = await fetch(`${apiUrl}/barang?${query}`);
   if (!response.ok) {
@@ -84,8 +95,10 @@ export async function getBarangPage(
 export async function searchBarang(
   q: string,
   limit = 50,
+  pernahRetur?: boolean,
 ): Promise<{ data: Barang[]; meta: { q: string; count: number } }> {
   const query = new URLSearchParams({ q: q.trim(), limit: String(limit) });
+  if (pernahRetur) query.set("pernahRetur", "true");
   const response = await fetch(`${apiUrl}/barang/search?${query}`);
   if (!response.ok) {
     throw new Error(`Gagal mencari barang: ${response.status}`);
@@ -106,6 +119,10 @@ export interface ExportBarangParams {
   tanggal?: string;
   tanggalAwal?: string;
   tanggalAkhir?: string;
+  pernahRetur?: boolean;
+  styleId?: number;
+  colorId?: number;
+  sizeId?: number;
 }
 
 export async function exportBarang(
@@ -122,6 +139,10 @@ export async function exportBarang(
   if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
+  if (params.pernahRetur) query.set("pernahRetur", "true");
+  if (params.styleId) query.set("styleId", String(params.styleId));
+  if (params.colorId) query.set("colorId", String(params.colorId));
+  if (params.sizeId) query.set("sizeId", String(params.sizeId));
 
   const response = await fetch(`${apiUrl}/barang/export?${query}`);
   if (!response.ok) {

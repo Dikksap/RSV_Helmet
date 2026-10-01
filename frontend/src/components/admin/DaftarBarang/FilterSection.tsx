@@ -23,19 +23,30 @@ type FilterSectionProps = {
   search: string;
   statusFilter: string;
   variantFilter: string;
+  styleFilter: string;
+  colorFilter: string;
+  sizeFilter: string;
   tanggalAwal: string;
   tanggalAkhir: string;
   datePreset: string;
   variantOptions: { id: number; nama: string }[];
+  styleOptions: { id: number; nama: string }[];
+  colorOptions: { id: number; nama: string }[];
+  sizeOptions: { id: number; nama: string }[];
   currentPage: number;
   totalPages: number;
   hasActiveFilters: boolean;
+  hanyaPernahRetur?: boolean;
+  onPernahReturChange?: (value: boolean) => void;
   searchDisabled?: boolean;
   searchHint?: string;
   variantError?: string | null;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: StatusBarang) => void;
   onVariantChange: (value: string) => void;
+  onStyleChange: (value: string) => void;
+  onColorChange: (value: string) => void;
+  onSizeChange: (value: string) => void;
   onDatePresetChange: (value: string) => void;
   onTanggalAwalChange: (value: string) => void;
   onTanggalAkhirChange: (value: string) => void;
@@ -50,19 +61,30 @@ export function FilterSection({
   search,
   statusFilter,
   variantFilter,
+  styleFilter,
+  colorFilter,
+  sizeFilter,
   tanggalAwal,
   tanggalAkhir,
   datePreset,
   variantOptions,
+  styleOptions,
+  colorOptions,
+  sizeOptions,
   currentPage,
   totalPages,
   hasActiveFilters,
+  hanyaPernahRetur,
+  onPernahReturChange,
   searchDisabled,
   searchHint,
   variantError,
   onSearchChange,
   onStatusChange,
   onVariantChange,
+  onStyleChange,
+  onColorChange,
+  onSizeChange,
   onDatePresetChange,
   onTanggalAwalChange,
   onTanggalAkhirChange,
@@ -71,7 +93,7 @@ export function FilterSection({
   const [open, setOpen] = useState(false);
   const inputCls = "h-9 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[14px] text-[#1F2937] outline-none transition placeholder:text-[#6B7280]/60 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
   const labelCls = "flex flex-col gap-1 text-xs font-medium text-[#1F2937]";
-  const activeCount = [search, statusFilter, variantFilter, tanggalAwal, tanggalAkhir].filter(Boolean).length;
+  const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur].filter(Boolean).length;
 
   const handleDatePresetChange = (value: string) => {
     onDatePresetChange(value);
@@ -172,6 +194,36 @@ export function FilterSection({
           </label>
 
           <label className={labelCls}>
+            <span>Style</span>
+            <select className={`${inputCls} truncate`} value={styleFilter} onChange={(e) => onStyleChange(e.target.value)}>
+              <option value="">Semua Style</option>
+              {styleOptions.map((opt) => (
+                <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={labelCls}>
+            <span>Warna</span>
+            <select className={`${inputCls} truncate`} value={colorFilter} onChange={(e) => onColorChange(e.target.value)}>
+              <option value="">Semua Warna</option>
+              {colorOptions.map((opt) => (
+                <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={labelCls}>
+            <span>Ukuran</span>
+            <select className={inputCls} value={sizeFilter} onChange={(e) => onSizeChange(e.target.value)}>
+              <option value="">Semua Ukuran</option>
+              {sizeOptions.map((opt) => (
+                <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={labelCls}>
             <span>Periode</span>
             <select className={inputCls} value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
               <option value="">Pilih periode...</option>
@@ -189,6 +241,16 @@ export function FilterSection({
           <label className={labelCls}>
             <span>Tgl Akhir</span>
             <input type="date" className={inputCls} value={tanggalAkhir} onChange={(e) => { onTanggalAkhirChange(e.target.value); onDatePresetChange(""); }} />
+          </label>
+
+          <label className="flex h-9 items-center gap-2 rounded-lg border border-[#D1D5DB] bg-white px-3 text-[13px] font-medium text-[#1F2937]">
+            <input
+              type="checkbox"
+              checked={Boolean(hanyaPernahRetur)}
+              onChange={(e) => onPernahReturChange?.(e.target.checked)}
+              className="h-4 w-4 accent-[#00A8E8]"
+            />
+            Pernah retur
           </label>
 
           <div className="flex items-end">

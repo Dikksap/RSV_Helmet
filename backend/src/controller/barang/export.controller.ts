@@ -39,7 +39,7 @@ export async function exportBarangHandler(req: Request, res: Response) {
       10000,
       Math.max(1, Number(req.query.limit) || 10000),
     );
-    const { variantId, batchId, status, tanggalAwal, tanggalAkhir } = req.query;
+    const { variantId, batchId, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } = req.query;
 
     if (status && !isValidStatus(status)) {
       return res.status(400).json({
@@ -53,6 +53,9 @@ export async function exportBarangHandler(req: Request, res: Response) {
       limit,
       status: status as StatusBarang | undefined,
     };
+    if (pernahRetur === "true" || pernahRetur === "1") {
+      filter.pernahRetur = true;
+    }
 
     if (variantId !== undefined) {
       const v = Number(variantId);
@@ -71,6 +74,33 @@ export async function exportBarangHandler(req: Request, res: Response) {
           .json({ message: "Parameter 'batchId' harus angka" });
       }
       filter.batchId = b;
+    }
+    if (styleId !== undefined && styleId !== "") {
+      const s = Number(styleId);
+      if (Number.isNaN(s)) {
+        return res
+          .status(400)
+          .json({ message: "Parameter 'styleId' harus angka" });
+      }
+      filter.styleId = s;
+    }
+    if (colorId !== undefined && colorId !== "") {
+      const c = Number(colorId);
+      if (Number.isNaN(c)) {
+        return res
+          .status(400)
+          .json({ message: "Parameter 'colorId' harus angka" });
+      }
+      filter.colorId = c;
+    }
+    if (sizeId !== undefined && sizeId !== "") {
+      const z = Number(sizeId);
+      if (Number.isNaN(z)) {
+        return res
+          .status(400)
+          .json({ message: "Parameter 'sizeId' harus angka" });
+      }
+      filter.sizeId = z;
     }
     if (tanggalAwal) {
       const t = new Date(tanggalAwal as string);
@@ -121,6 +151,9 @@ export async function exportBarangHandler(req: Request, res: Response) {
       "size",
       "batchId",
       "nomorBatch",
+      "pernahRetur",
+      "jumlahRetur",
+      "tanggalReturTerakhir",
     ];
 
     const lines: string[] = [headers.join(",")];
@@ -145,6 +178,11 @@ export async function exportBarangHandler(req: Request, res: Response) {
           batch?.nomorBatch
             ? `BC${String(batch.nomorBatch).padStart(3, "0")}`
             : "",
+          (b as any).pernahRetur ? "YA" : "",
+          (b as any).jumlahRetur ?? "",
+          (b as any).tanggalReturTerakhir instanceof Date
+            ? (b as any).tanggalReturTerakhir.toISOString()
+            : ((b as any).tanggalReturTerakhir ?? ""),
         ]
           .map(escapeCsv)
           .join(","),

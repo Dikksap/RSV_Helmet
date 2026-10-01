@@ -25,6 +25,18 @@ const PUBLIC_MODULES: Module[] = [
     ),
   },
   {
+    title: "Cetak Label Aset",
+    desc: "Import Excel & cetak label aset",
+    to: "/cetak-label-aset",
+    icon: (
+      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+        <path d="M6 9V4h12v5" />
+        <rect x="6" y="11" width="12" height="8" rx="1" />
+        <path d="M6 14H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2" />
+      </svg>
+    ),
+  },
+  {
     title: "Scan Barang",
     desc: "Entry & update status stok",
     to: "/scan-qr",

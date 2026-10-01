@@ -27,7 +27,15 @@ export function RiwayatModal({ barangId, kodeBarang, onClose }: Props) {
         <button type="button" onClick={onClose} aria-label="Tutup" className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]">✕</button>
         <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Riwayat Barang</p>
         <h2 className="mt-1 font-mono text-sm font-bold text-[#1E3A5F]">{kodeBarang}</h2>
-        {data && <p className="mt-1 text-xs text-[#6B7280]">{data.summary.total} entri • Status saat ini: {data.summary.currentStatus}</p>}
+        {data && (() => {
+          const returCount = data.data.filter((r) => r.status === "RETUR").length;
+          return (
+            <p className="mt-1 text-xs text-[#6B7280]">
+              {data.summary.total} entri • Status saat ini: {data.summary.currentStatus}
+              {returCount > 0 && <span className="ml-1 font-semibold text-amber-700">• Pernah RETUR {returCount}x</span>}
+            </p>
+          );
+        })()}
 
         <div className="mt-4">
           {loading && <p className="py-8 text-center text-sm text-[#6B7280]">Memuat riwayat...</p>}
