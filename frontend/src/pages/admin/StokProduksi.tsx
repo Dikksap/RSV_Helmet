@@ -256,32 +256,40 @@ function StokProduksi() {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (filteredGroups.length === 0) return;
     try {
-      const rows: unknown[][] = [
-        ["Nama Dus", "Kode Barang", "Kode Variant", "Status", "Kondisi", "Produk", "Style", "Color", "Size"],
-      ];
-      for (const g of filteredGroups) {
-        for (const b of g.barang ?? []) {
+      const targets = [...filteredGroups].sort(compareDus);
+      const resolved = await Promise.all(
+        targets.map(async (g) => ({ group: g, items: await resolveItems(g) })),
+      );
+      const rows: unknown[][] = [];
+      for (const { group, items } of resolved) {
+        rows.push([`Dus ${group.nama}`]);
+        rows.push(["NO", "PRODUCT", "SIZE", "JUMLAH"]);
+        const m = new Map<string, { product: string; size: string; n: number }>();
+        for (const b of items) {
           const v = b.variant;
-          rows.push([
-            g.nama,
-            b.kodeBarang,
-            v?.kodeVariant ?? "",
-            b.status,
-            kondisiLabel(b),
-            v?.product?.nama ?? "",
-            v?.style?.nama ?? "",
-            v?.color?.nama ?? "",
-            v?.size?.nama ?? "",
-          ]);
+          const product =
+            [v?.product?.nama, v?.style?.nama, v?.color?.nama].filter(Boolean).join(" ") || "-";
+          const size = v?.size?.nama ?? "-";
+          const k = `${product}|||${size}`;
+          const prev = m.get(k);
+          m.set(k, { product, size, n: (prev?.n ?? 0) + 1 });
         }
+        const entries = [...m.values()].sort(
+          (a, b) =>
+            a.product.localeCompare(b.product, "id") ||
+            a.size.localeCompare(b.size, "id", { numeric: true }),
+        );
+        if (entries.length === 0) rows.push(["Kosong"]);
+        entries.forEach((e, i) => rows.push([i + 1, e.product, e.size, e.n]));
+        rows.push([]);
       }
       const stamp = new Date().toISOString().slice(0, 10);
       const suffix = statusFilter === "all" ? "" : `-${statusFilter}`;
       downloadCsv(`stok-produksi-${stamp}${suffix}.csv`, rows);
-      toast(`Export ${rows.length - 1} barang ke CSV`);
+      toast(`Export rekap ${targets.length} dus ke CSV`);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Gagal export CSV", "error");
     }
@@ -440,7 +448,7 @@ function StokProduksi() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={handleExportCSV}
+            onClick={() => void handleExportCSV()}
             disabled={isLoading || filteredGroups.length === 0}
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-95 disabled:opacity-50"
           >
