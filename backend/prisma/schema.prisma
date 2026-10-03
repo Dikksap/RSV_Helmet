@@ -48,6 +48,14 @@ model Color {
   variants ProductVariant[]
 }
 
+model Karyawan {
+  id        Int      @id @default(autoincrement())
+  nama      String
+  jabatan   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Size {
   id        Int      @id @default(autoincrement())
   nama      String   @unique
@@ -140,6 +148,7 @@ model StatusBarang {
 model BarangGroup {
   id        Int      @id @default(autoincrement())
   nama      String   @unique
+  isArsip   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

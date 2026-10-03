@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 import { bulkScanBarang, getScanBarang, type BulkScanItemResult, type StatusBarang } from "../../api/barang";
+import { familyOfDus, nextDusName } from "../../lib/dus";
+import { useStatusOptions } from "../../lib/useStatusOptions";
 import {
   assignBarangToGroup,
   createBarangGroup,
@@ -10,30 +12,6 @@ import {
 
 const DUS_CAPACITY = 8; // 1 dus = 8 kode barang
 
-const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
-  { value: "FINISHGOOD", label: "Finish Good (Lolos QC)" },
-  { value: "RETUR", label: "Retur" },
-  { value: "OUT", label: "Keluar (Out)" },
-  { value: "BAD", label: "Bad (Reject)" },
-  { value: "REGISTER", label: "Register" },
-];
-
-const STATUS_SHORT: Record<StatusBarang, string> = {
-  FINISHGOOD: "Finish Good",
-  RETUR: "Retur",
-  OUT: "Keluar",
-  BAD: "Bad",
-  REGISTER: "Register",
-};
-
-const STATUS_BADGE: Record<StatusBarang, string> = {
-  FINISHGOOD: "bg-emerald-100 text-emerald-700",
-  RETUR: "bg-amber-100 text-amber-800",
-  OUT: "bg-sky-100 text-sky-700",
-  BAD: "bg-red-100 text-red-700",
-  REGISTER: "bg-slate-100 text-slate-600",
-};
-
 type ScannedItem = {
   id: number;
   kode: string;
@@ -41,6 +19,7 @@ type ScannedItem = {
   waktu: string;
   loading: boolean;
   targetStatus: StatusBarang;
+  pernahRetur?: boolean;
 };
 
 type FailedItem = BulkScanItemResult;
@@ -93,6 +72,14 @@ function groupByStatus<T extends { targetStatus: StatusBarang; kode: string }>(i
 function ScanQr() {
   const [searchParams] = useSearchParams();
   const isDusMode = searchParams.get("mode") === "dus";
+  const { options: statusOptions } = useStatusOptions();
+  const statusLabel = (kode: string) => statusOptions.find((o) => o.value === kode)?.label ?? kode;
+  const statusBadge = (kode: string) => {
+    const opt = statusOptions.find((o) => o.value === kode);
+    return opt?.warna
+      ? { className: "", style: { backgroundColor: opt.warna, color: "#fff" } as CSSProperties }
+      : { className: "bg-slate-100 text-slate-600", style: undefined as CSSProperties | undefined };
+  };
 
   const [groups, setGroups] = useState<BarangGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
@@ -102,7 +89,7 @@ function ScanQr() {
 
   const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [status, setStatus] = useState<StatusBarang>("FINISHGOOD");
+  const [status, setStatus] = useState<StatusBarang>(() => searchParams.get("status")?.trim() || "FINISHGOOD");
   const [keterangan, setKeterangan] = useState("");
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -147,10 +134,23 @@ function ScanQr() {
     if (!isDusMode) return;
     let cancelled = false;
     getBarangGroups()
-      .then((data) => {
+      .then(async (data) => {
         if (cancelled) return;
         setGroups(data);
-        setActiveGroupId((prev) => prev ?? data.find((g) => g._count.barang < DUS_CAPACITY)?.id ?? null);
+        const available = data.filter((g) => !g.isArsip && g._count.barang < DUS_CAPACITY);
+        if (available.length === 0) {
+          try {
+            const created = await createBarangGroup(nextDusName(data, false));
+            if (cancelled) return;
+            setGroups((prev) => [...prev, created]);
+            setActiveGroupId((prev) => prev ?? created.id);
+            notify("success", `Dus "${created.nama}" dibuat otomatis.`);
+          } catch (e) {
+            if (!cancelled) notify("error", e instanceof Error ? e.message : "Gagal membuat dus otomatis.");
+          }
+          return;
+        }
+        setActiveGroupId((prev) => prev ?? available[0]?.id ?? null);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -192,13 +192,30 @@ function ScanQr() {
       notify("error", "Belum ada data — scan barang dulu.");
       return;
     }
-    if (!activeGroup) {
-      notify("error", "Pilih atau buat dus dulu.");
-      return;
-    }
-    if (validItems.length > remainingCapacity) {
-      notify("error", `Dus "${activeGroup.nama}" hanya muat ${remainingCapacity} lagi.`);
-      return;
+    const needsPengganti = validItems.some((it) => it.pernahRetur);
+    const familyOf = (nama: string) => (familyOfDus(nama) === "pengganti") === needsPengganti;
+    let target = activeGroup;
+    if (!target || !familyOf(target.nama) || validItems.length > remainingCapacity) {
+      const candidate = groups.find(
+        (g) => !g.isArsip && familyOf(g.nama) && DUS_CAPACITY - g._count.barang >= validItems.length,
+      );
+      if (candidate) {
+        target = candidate;
+        setActiveGroupId(candidate.id);
+        notify("success", target.id !== activeGroup?.id ? `Otomatis masuk "${target.nama}".` : `Disimpan ke "${target.nama}".`);
+      } else {
+        try {
+          const created = await createBarangGroup(nextDusName(groups, needsPengganti));
+          setGroups((prev) => [...prev, created]);
+          setActiveGroupId(created.id);
+          target = created;
+          beep(true);
+        } catch (e) {
+          notify("error", e instanceof Error ? e.message : "Gagal membuat dus otomatis.");
+          beep(false);
+          return;
+        }
+      }
     }
     setSavingDus(true);
     setSubmitProgress(0);
@@ -221,7 +238,7 @@ function ScanQr() {
       }
       let assigned: number;
       try {
-        assigned = (await assignBarangToGroup(activeGroup.id, successItems.map((it) => it.id))).updated;
+        assigned = (await assignBarangToGroup(target.id, successItems.map((it) => it.id))).updated;
       } catch {
         notify("error", `${successItems.length} item sudah berstatus baru, tapi gagal masuk dus — coba simpan lagi.`);
         beep(false);
@@ -233,7 +250,7 @@ function ScanQr() {
       }
       setScannedItems((prev) => prev.filter((it) => it.loading || !successKodes.has(it.kode.toLowerCase())));
       await refreshGroups();
-      notify("success", `${successItems.length} item tersimpan ke dus "${activeGroup.nama}".`);
+      notify("success", target ? `${successItems.length} item tersimpan ke dus "${target.nama}".` : `${successItems.length} item tersimpan.`);
       beep(true);
     } catch (e) {
       notify("error", e instanceof Error ? e.message : "Gagal menyimpan dus.");
@@ -300,7 +317,7 @@ function ScanQr() {
             : "-";
         setScannedItems((prev) =>
           prev.map((it) =>
-            it.id === item.id ? { ...it, id: barang.id ?? it.id, kode: barang.kodeBarang, variant: variantName, loading: false } : it,
+            it.id === item.id ? { ...it, id: barang.id ?? it.id, kode: barang.kodeBarang, variant: variantName, loading: false, pernahRetur: barang.pernahRetur } : it,
           ),
         );
         beep(true);
@@ -480,7 +497,7 @@ function ScanQr() {
   for (const it of scannedItems) {
     if (!it.loading) statusCounts.set(it.targetStatus, (statusCounts.get(it.targetStatus) ?? 0) + 1);
   }
-  const groupSummary = [...statusCounts.entries()].map(([st, n]) => `${STATUS_SHORT[st]}: ${n}`).join(" · ");
+  const groupSummary = [...statusCounts.entries()].map(([st, n]) => `${statusLabel(st)}: ${n}`).join(" · ");
   const hasMultipleStatus = statusCounts.size > 1;
 
   return (
@@ -521,7 +538,7 @@ function ScanQr() {
                 className={inputClass}
                 disabled={isBulkSubmitting || savingDus}
               >
-                {STATUS_OPTIONS.map((o) => (
+                {statusOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -554,11 +571,13 @@ function ScanQr() {
                   className={inputClass}
                 >
                   <option value="">{groups.length === 0 ? "Belum ada dus" : "— Pilih dus —"}</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id} disabled={g._count.barang >= DUS_CAPACITY}>
-                      {g.nama} — {g._count.barang}/{DUS_CAPACITY}
-                    </option>
-                  ))}
+                  {groups
+                    .filter((g) => !g.isArsip)
+                    .map((g) => (
+                      <option key={g.id} value={g.id} disabled={g._count.barang >= DUS_CAPACITY}>
+                        {g.nama} — {g._count.barang}/{DUS_CAPACITY}
+                      </option>
+                    ))}
                 </select>
                 {activeGroup && (
                   <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
@@ -643,7 +662,7 @@ function ScanQr() {
                 <span className="truncate text-sm font-medium text-slate-600" title={scannedItems[0].variant}>
                   {scannedItems[0].variant} · {scannedItems[0].waktu}
                 </span>
-                <span className={`mt-1 inline-flex w-fit rounded px-2 py-0.5 text-xs font-bold ${STATUS_BADGE[scannedItems[0].targetStatus]}`}>{STATUS_SHORT[scannedItems[0].targetStatus]}</span>
+                <span className={`mt-1 inline-flex w-fit rounded px-2 py-0.5 text-xs font-bold ${statusBadge(scannedItems[0].targetStatus).className}`} style={statusBadge(scannedItems[0].targetStatus).style}>{statusLabel(scannedItems[0].targetStatus)}</span>
               </button>
             )}
 
@@ -803,7 +822,7 @@ function ScanQr() {
                           <td className="max-w-[28vw] truncate px-3 py-3 font-mono text-sm font-bold text-slate-900 sm:max-w-none">{item.kode}</td>
                           <td className="max-w-[30vw] truncate px-3 py-3 text-sm font-medium leading-snug text-slate-700 sm:max-w-none">{item.variant}</td>
                           <td className="px-3 py-3">
-                            <span className={`inline-flex rounded px-2 py-0.5 text-xs font-bold ${STATUS_BADGE[item.targetStatus]}`}>{STATUS_SHORT[item.targetStatus]}</span>
+                            <span className={`inline-flex rounded px-2 py-0.5 text-xs font-bold ${statusBadge(item.targetStatus).className}`} style={statusBadge(item.targetStatus).style}>{statusLabel(item.targetStatus)}</span>
                           </td>
                           <td className="hidden whitespace-nowrap px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-600 sm:table-cell">{item.waktu}</td>
                           <td className="px-3 py-3 text-center">

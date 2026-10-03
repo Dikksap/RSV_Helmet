@@ -5,6 +5,7 @@ const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 export interface BarangGroup {
   id: number;
   nama: string;
+  isArsip: boolean;
   createdAt: string;
   updatedAt: string;
   _count: { barang: number };
@@ -53,11 +54,11 @@ export async function createBarangGroup(nama: string): Promise<BarangGroup> {
   return response.json() as Promise<BarangGroup>;
 }
 
-export async function updateBarangGroup(id: number, nama: string): Promise<BarangGroup> {
+export async function updateBarangGroup(id: number, data: { nama?: string; isArsip?: boolean }): Promise<BarangGroup> {
   const response = await fetch(`${apiUrl}/barang-group/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nama }),
+    body: JSON.stringify(data),
   });
   if (!response.ok) throw await parseApiError(response, "Gagal memperbarui dus");
   return response.json() as Promise<BarangGroup>;

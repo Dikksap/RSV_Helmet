@@ -42,7 +42,7 @@ export async function createBarangGroup(data: { nama: string }) {
   return prisma.barangGroup.create({ data, include: countBarang });
 }
 
-export async function updateBarangGroup(id: number, data: { nama: string }) {
+export async function updateBarangGroup(id: number, data: { nama?: string; isArsip?: boolean }) {
   return prisma.barangGroup.update({ where: { id }, data, include: countBarang });
 }
 

@@ -172,7 +172,6 @@ export function Hangtag({
             <p className="hangtag-material-small">(ACRYLONITRILE BUTADIENE STYRENE)</p>
           </div>
           <a
-            href="https://www.instagram.com/rsvhelmets/"
             target="_blank"
             rel="noopener noreferrer"
             className="hangtag-brand"

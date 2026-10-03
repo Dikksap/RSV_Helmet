@@ -39,7 +39,7 @@ HTTP request -> Express middleware -> route -> auth middleware (jika dipasang)
 - Route mendaftarkan endpoint, middleware, dan controller; query database tidak diletakkan di route.
 - Controller membaca parameter/body/query, melakukan validasi lokal, memanggil model/lib, lalu menentukan status dan response.
 - Model menangani query User, Product, ProductVariant, dan query/list Barang.
-- `src/lib/barang.ts` menangani batch, counter, barcode, transaction, status, histori, dan bulk scan.
+- `src/model/barang/` menangani batch, counter, barcode, transaction, status, histori, dan bulk scan.
 - `src/lib/prisma.ts` membuat satu Prisma client dengan `PrismaMariaDb`.
 - `src/app.ts` mengaktifkan CORS, JSON body, dan URL-encoded body secara global.
 
@@ -47,7 +47,7 @@ HTTP request -> Express middleware -> route -> auth middleware (jika dipasang)
 
 - Product memiliki banyak ProductVariant.
 - ProductVariant mereferensikan Product, Style, Color, dan Size, serta memiliki Barang dan BarangCounter.
-- Barang mereferensikan ProductVariant dan ProductionBatch, serta memiliki RiwayatBarang.
+- Barang mereferensikan ProductVariant, ProductionBatch, dan BarangGroup (dus), serta memiliki RiwayatBarang.
 - ProductionBatch bersifat global, bukan milik Product atau Variant, dan memiliki Barang serta BarangCounter.
 - GET variant standalone membaca SQL view `ViewVariantProduk`.
 - Write product/variant menghapus cache Redis terkait dan menerbitkan event WebSocket setelah database berhasil.
@@ -63,9 +63,18 @@ Model aktual di `prisma/schema.prisma`:
 - `Size`: unique `nama` dan `urutan`.
 - `ProductVariant`: unique `kodeVariant`, foreign key product/style/color/size, dan `tanggal`.
 - `ProductionBatch`: unique `nomorBatch`, `totalProduksi`, `kapasitas` default `5000`, status `AKTIF`/`SELESAI`.
-- `Barang`: unique `kodeBarang`, `variantId`, `batchId`, status default `REGISTER`.
+- `Barang`: unique `kodeBarang`, `variantId`, `batchId`, `groupId`, status default `REGISTER`.
 - `RiwayatBarang`: `barangId`, status, `tanggal`, dan optional `keterangan`.
 - `BarangCounter`: counter per `(batchId, variantId, tanggal)`.
+- `BarangGroup`: dus, `nama` unique, relasi `barang Barang[]`, kapasitas `DUS_CAPACITY = 8`, `isArsip` untuk soft-archive (arsip disembunyikan & tidak dihitung penomoran).
+- `StatusBarang`: master kode status (`kode` unique), dipakai FK dari `Barang.status`.
+- `ProductionOrder`: order produksi, punya `items`, `capacities`, `realisasi`, override jadwal.
+- `ProductionOrderItem`: item variant per order dengan rencana.
+- `ProductionRealization`: aktual pcs per variant per tanggal per order.
+- `ProductionRealizationStage`: aktual per tahap per hari (`stage`: buffing/baseCoat/...).
+- `ProductionCapacity`: kapasitas manual per tahap per order.
+- `ProductionScheduleTargetEdit` / `ProductionScheduleAllocEdit`: override target/alokasi jadwal.
+- `Karyawan`: `nama`, `jabatan`.
 
 Constraint penting:
 
@@ -81,7 +90,7 @@ Constraint penting:
 - `kodeVariant` dibuat backend dengan format `<PREFIX_UPPERCASE><nomor 3 digit>`.
 - Nomor variant berasal dari id variant terakhir milik product lalu ditambah satu.
 - Duplicate kombinasi product/style/color/size menghasilkan `409` pada endpoint yang relevan.
-- Tidak ada endpoint CRUD untuk Style, Color, atau Size; data tersebut dibuat melalui seed dan dipakai sebagai reference.
+- Style, Color, dan Size punya endpoint CRUD penuh (`GET/POST /api/styles`, `/api/colors`, `/api/sizes`, plus `GET/PUT/DELETE /:id`); seed hanya menyediakan data awal.
 
 ### ProductionBatch, Barang, dan barcode
 
@@ -302,7 +311,8 @@ Semua endpoint bisnis berikut saat ini terdaftar tanpa auth middleware, kecuali 
 | GET    | `/api/barang/:id/riwayat`      | id numerik; histori descending dan summary                                                      |
 
 - Secara umum invalid input memakai `400`, not found `404`, duplicate/conflict `409`, dan error tak terduga `500`; detail controller dan test adalah acuan akhir.
-- Tidak ada endpoint CRUD untuk User, Style, Color, atau Size yang ditemukan.
+- Tidak ada endpoint CRUD untuk `User` (hanya `/api/auth/login` dan `/api/auth/logout`).
+- Selain tabel di atas, kumpulan endpoint lain: `GET /api/barang/search|export|hari-ini|stats|summary|status-summary|batch-rentang-tanggal|finishgood-per-bulan`, `POST /api/barang`, `PUT/DELETE /api/barang/:id`, `POST /api/barang/bulk-status`; `/api/barang-group` CRUD (PUT `{ nama?, isArsip? }`) + `assign`/`unassign`; `/api/status-barang` CRUD dengan auth admin; `/api/production-orders` CRUD + items/capacities/schedule/realisasi; `/api/integrasi-jurnal/products|dashboard`; `/api/admin/dashboard`; `/api/karyawan` CRUD.
 - Tidak ada endpoint update status ProductVariant; status ProductVariant sudah dihapus dari schema.
 
 ## Authentication
@@ -349,7 +359,9 @@ Integrasi MQTT, RFID, IoT, dan EPC tidak ditemukan di repository ini. MQTT/RFID 
 - Request validation, status code, dan response: controller serta test endpoint terkait.
 - Product/variant: `src/model/product/product.ts`, `src/model/variantproduk/variantproduk.ts`, dan controller terkait.
 - User/auth: `src/model/user/user.ts`, `src/controller/auth/auth.ts`, `src/lib/jwt.ts`, `src/middleware/auth.ts`, dan `src/lib/tokenBlacklist.ts`.
-- Barang, barcode, batch, status, counter, transaction, dan histori: `src/lib/barang.ts`, `src/model/barang/barang.ts`, schema, dan `tests/barang.test.ts`.
+- Barang, barcode, batch, status, counter, transaction, dan histori: `src/model/barang/`, schema, dan `tests/barang.test.ts`.
+- BarangGroup (dus): `src/model/barangGroup/barangGroup.ts`, `src/controller/barangGroup/barangGroup.ts`.
+- Karyawan: `src/model/karyawan/karyawan.ts`, `src/controller/karyawan/karyawan.ts`, `src/routes/karyawan.ts`.
 - Realtime: `src/websocket/socket.ts` dan pemanggil broadcast.
 - Seed: `prisma/seed.ts`; runtime/deployment: `api/index.ts`, Dockerfile, `docker-compose.yml`, dan `vercel.json`.
 - Jika dokumentasi bertentangan dengan source, schema/migration, atau test, prioritaskan source, schema/migration, dan test. `README.md` saat ini hanya dump struktur direktori. `test_api.http` memiliki request yang tidak konsisten, termasuk create product tanpa `prefix`.

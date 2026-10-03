@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import logoUrl from "../../assets/logo.svg";
 import helmUrl from "../../assets/gambar_helm.svg";
 import { isAdmin, isAuthenticated } from "../../api/auth";
+import { useStatusOptions } from "../../lib/useStatusOptions";
 
 type Module = {
   title: string;
@@ -25,21 +26,22 @@ const PUBLIC_MODULES: Module[] = [
     ),
   },
   {
-    title: "Cetak Label Aset",
-    desc: "Import Excel & cetak label aset",
-    to: "/cetak-label-aset",
+    title: "Scan Barang",
+    desc: "Entry & update status stok",
+    to: "/scan-qr",
     icon: (
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-        <path d="M6 9V4h12v5" />
-        <rect x="6" y="11" width="12" height="8" rx="1" />
-        <path d="M6 14H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2" />
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <path d="M14 14h3v3h-3zM17 17h4M14 20h4M17 20h4" />
       </svg>
     ),
   },
   {
-    title: "Scan Barang",
-    desc: "Entry & update status stok",
-    to: "/scan-qr",
+    title: "Scan Barang V2",
+    desc: "Tampilan baru yang lebih ringan",
+    to: "#",
     icon: (
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
         <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -82,6 +84,21 @@ const CARD_LOCKED =
   "border border-[#E5E7EB] bg-[#F5F7FA] shadow-[0_2px_10px_rgba(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_10px_24px_rgba(15,28,46,0.10)]";
 
 function ModuleCard({ m, locked }: { m: Module; locked: boolean }) {
+  const soon = m.to === "#";
+  if (soon) {
+    return (
+      <div className={`${CARD_BASE} ${CARD_LOCKED} cursor-default`} aria-disabled="true">
+        <span className="mb-5 grid h-11 w-11 place-items-center rounded-lg bg-white text-[#6B7280] shadow-sm">
+          {m.icon}
+        </span>
+        <h3 className="text-[18px] font-semibold leading-[1.4] text-[#1F2937]">{m.title}</h3>
+        <p className="mt-1 flex-1 text-sm leading-[1.5] text-[#6B7280]">{m.desc}</p>
+        <span className="mt-5 inline-flex w-fit rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">
+          Segera hadir
+        </span>
+      </div>
+    );
+  }
   return (
     <Link
       to={locked ? "/login" : m.to}
@@ -134,6 +151,9 @@ function LandingPage() {
   const year = new Date().getFullYear();
   const [admin, setAdmin] = useState(() => isAuthenticated() && isAdmin());
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [v2Mode, setV2Mode] = useState<"semua" | "dus">("semua");
+  const { options: statusOptions, loading: statusLoading, error: statusError } = useStatusOptions();
 
   useEffect(() => {
     const id = window.setInterval(() => setAdmin(isAuthenticated() && isAdmin()), 1000);
@@ -210,17 +230,35 @@ function LandingPage() {
           <div className="mb-4 flex items-baseline justify-between gap-4 border-t border-[#1E3A5F]/10 pt-6">
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#1E3A5F]">Modul</h2>
             <p className="text-[13px] text-[#6B7280]">
-              {admin ? "4 modul tersedia" : "2 modul terbuka · 2 butuh login"}
+              {admin ? "5 modul tersedia" : "3 modul terbuka · 2 butuh login"}
             </p>
           </div>
 
           <nav aria-label="Modul utama" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {PUBLIC_MODULES.map((m) =>
-              m.title === "Scan Barang" ? (
-                <button
+              m.title === "Scan Barang" ? (                <button
                   key={m.title}
                   type="button"
                   onClick={() => setScanModalOpen(true)}
+                  className={`${CARD_BASE} ${CARD_OPEN} cursor-pointer`}
+                >
+                  <span className="mb-5 grid h-11 w-11 place-items-center rounded-lg bg-[#00A8E8]/10 text-[#0088C0] transition-colors duration-200 group-hover:bg-[#00A8E8] group-hover:text-white">
+                    {m.icon}
+                  </span>
+                  <h3 className="text-[18px] font-semibold leading-[1.4] text-[#1E3A5F]">{m.title}</h3>
+                  <p className="mt-1 flex-1 text-sm leading-[1.5] text-[#6B7280]">{m.desc}</p>
+                  <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-[#1E3A5F]">
+                    Buka modul
+                    <span aria-hidden="true" className="text-[#0088C0] transition-transform duration-200 group-hover:translate-x-1">
+                      →
+                    </span>
+                  </span>
+                </button>
+              ) : m.title === "Scan Barang V2" ? (
+                <button
+                  key={m.title}
+                  type="button"
+                  onClick={() => setStatusModalOpen(true)}
                   className={`${CARD_BASE} ${CARD_OPEN} cursor-pointer`}
                 >
                   <span className="mb-5 grid h-11 w-11 place-items-center rounded-lg bg-[#00A8E8]/10 text-[#0088C0] transition-colors duration-200 group-hover:bg-[#00A8E8] group-hover:text-white">
@@ -306,6 +344,75 @@ function LandingPage() {
             <button
               type="button"
               onClick={() => setScanModalOpen(false)}
+              className="mt-5 w-full rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {statusModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="status-choice-title"
+          onClick={() => setStatusModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="status-choice-title" className="text-lg font-bold text-[#1E3A5F]">
+              Pilih Status Tujuan
+            </h2>
+            <p className="mt-1 text-sm text-[#6B7280]">Status ini dibawa ke mode scan. Status valid diambil dari backend.</p>
+            <div className="mt-4 grid grid-cols-2 gap-2" role="group" aria-label="Mode scan">
+              <button
+                type="button"
+                onClick={() => setV2Mode("semua")}
+                aria-pressed={v2Mode === "semua"}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${v2Mode === "semua" ? "bg-[#1E3A5F] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                Semua Barang
+              </button>
+              <button
+                type="button"
+                onClick={() => setV2Mode("dus")}
+                aria-pressed={v2Mode === "dus"}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${v2Mode === "dus" ? "bg-[#1E3A5F] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                Per Dus
+              </button>
+            </div>
+            <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+              {statusLoading && <p className="animate-pulse text-sm text-[#6B7280]">Memuat status...</p>}
+              {statusError && <p role="alert" className="text-sm text-[#EF4444]">{statusError}</p>}
+              {!statusLoading && statusOptions.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => {
+                    setStatusModalOpen(false);
+                    navigate(v2Mode === "dus" ? `/scan-qr?mode=dus&status=${encodeURIComponent(o.value)}` : `/scan-qr?status=${encodeURIComponent(o.value)}`);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#00A8E8] hover:bg-[#00A8E8]/5 focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
+                >
+                  <span
+                    className="h-4 w-4 shrink-0 rounded-full"
+                    style={{ backgroundColor: o.warna ?? "#94A3B8" }}
+                  />
+                  <span className="flex-1">
+                    <span className="block text-[15px] font-semibold text-[#1E3A5F]">{o.label}</span>
+                    <span className="block font-mono text-xs text-[#6B7280]">{o.value}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatusModalOpen(false)}
               className="mt-5 w-full rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
             >
               Batal

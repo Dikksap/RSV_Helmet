@@ -41,7 +41,12 @@ type StatusBadgeProps = {
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const style = STATUS_STYLES[status] ?? STATUS_STYLES.REGISTER;
+  const style = STATUS_STYLES[status] ?? {
+    bg: "bg-slate-100",
+    text: "text-slate-600",
+    dot: "bg-slate-400",
+    border: "border-slate-200",
+  };
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${style.bg} ${style.text} ${style.border}`}

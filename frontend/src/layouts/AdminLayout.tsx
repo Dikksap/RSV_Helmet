@@ -22,10 +22,11 @@ import {
 } from "../api/auth";
 
 import {
-  NAV_MAIN,
-  BARANG_PRODUKSI,
-  MANAJEMEN,
-  WAREHOUSE,
+NAV_MAIN,
+BARANG_PRODUKSI,
+MANAJEMEN,
+WAREHOUSE,
+  KARYAWAN,
   NAV_INTEGRASI,
   NAV_MANAGEMENT,
 } from "./admin/navigation";
@@ -264,6 +265,13 @@ function AdminLayout() {
         location.pathname.startsWith(c.to + "/")
     );
 
+  const inKaryawan =
+    KARYAWAN.children.some(
+      (c) =>
+        location.pathname === c.to ||
+        location.pathname.startsWith(c.to + "/")
+    );
+
   useEffect(() => {
     if (!isAdmin()) {
       navigate("/login", {
@@ -456,6 +464,12 @@ function AdminLayout() {
               />
             )}
 
+            {/* Karyawan */}
+            <NavDropdown
+              item={KARYAWAN}
+              active={inKaryawan}
+            />
+
             {/* Integrasi */}
             <NavDropdown
               item={NAV_INTEGRASI}
@@ -514,6 +528,11 @@ function AdminLayout() {
                 children={WAREHOUSE.children}
               />
             )}
+
+            <MobileGroup
+              label={KARYAWAN.label}
+              children={KARYAWAN.children}
+            />
 
             <MobileGroup
               label={NAV_INTEGRASI.label}

@@ -1,6 +1,6 @@
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
-export type StatusBarang = "REGISTER" | "FINISHGOOD" | "RETUR" | "OUT" | "BAD";
+export type StatusBarang = string;
 
 export interface BarangVariant {
   id: number;

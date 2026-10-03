@@ -6,6 +6,7 @@ import {
   WAREHOUSE,
   NAV_INTEGRASI,
   NAV_MANAGEMENT,
+  KARYAWAN,
 } from "../../layouts/admin/navigation";
 
 function Homepage() {
@@ -53,6 +54,15 @@ function Homepage() {
         title={MANAJEMEN.label}
         description="Kelola data dan kebutuhan operasional"
         items={MANAJEMEN.children}
+      />
+
+      {/* =====================================================
+          KARYAWAN
+      ====================================================== */}
+      <ModuleSection
+        title={KARYAWAN.label}
+        description="Kelola data master karyawan"
+        items={KARYAWAN.children}
       />
 
       {/* =====================================================

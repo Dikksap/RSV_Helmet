@@ -21,16 +21,10 @@ import { RiwayatModal } from "../../components/admin/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../../components/admin/DaftarBarang/BarangImportModal";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
 import { downloadCsv } from "../../lib/csv";
-
-const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
-  { value: "REGISTER", label: "REGISTER" },
-  { value: "FINISHGOOD", label: "FINISHGOOD" },
-  { value: "RETUR", label: "RETUR" },
-  { value: "OUT", label: "OUT" },
-  { value: "BAD", label: "BAD" },
-];
+import { useStatusOptions } from "../../lib/useStatusOptions";
 
 function DaftarBarang() {
+  const { options: statusOptions } = useStatusOptions();
   const [barang, setBarang] = useState<Barang[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -897,7 +891,7 @@ function DaftarBarang() {
                 <label className={labelCls}>
                   <span>Status</span>
                   <select className={inputCls} value={cStatus} onChange={(e) => setCStatus(e.target.value as StatusBarang)}>
-                    {STATUS_OPTIONS.map((o) => (
+                    {statusOptions.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
@@ -1001,7 +995,7 @@ function DaftarBarang() {
                 <label className={labelCls}>
                   <span>Status</span>
                   <select className={inputCls} value={eStatus} onChange={(e) => setEStatus(e.target.value as StatusBarang)}>
-                    {STATUS_OPTIONS.map((o) => (
+                    {statusOptions.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
@@ -1080,7 +1074,7 @@ function DaftarBarang() {
                 <span>Status</span>
                 <select className={inputCls} value={bStatus} onChange={(e) => setBStatus(e.target.value)}>
                   <option value="">— Tidak diubah —</option>
-                  {STATUS_OPTIONS.map((o) => (
+                  {statusOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>

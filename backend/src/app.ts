@@ -13,6 +13,7 @@ import barangGroupRouter from "./routes/barangGroup.js";
 import adminRouter from "./routes/admin.js";
 import authRouter from "./routes/auth.js";
 import integrasiJurnalRouter from "./routes/integrasi-jurnal.js";
+import karyawanRouter from "./routes/karyawan.js";
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.use("/api/sizes", sizesRouter);
 app.use("/api/status-barang", statusBarangRouter);
 app.use("/api/barang-group", barangGroupRouter);
 app.use("/api/integrasi-jurnal", integrasiJurnalRouter);
+app.use("/api/karyawan", karyawanRouter);
 
 
 export default app;

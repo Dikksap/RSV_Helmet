@@ -91,12 +91,18 @@ export async function updateBarangGroupHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (id === null) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const { nama } = req.body;
-    if (nama === undefined) return res.status(400).json({ message: "Tidak ada field untuk diupdate" });
-    if (typeof nama !== "string" || !nama.trim()) {
+    const { nama, isArsip } = req.body;
+    if (nama === undefined && isArsip === undefined) return res.status(400).json({ message: "Tidak ada field untuk diupdate" });
+    if (nama !== undefined && (typeof nama !== "string" || !nama.trim())) {
       return res.status(400).json({ message: "Field 'nama' tidak boleh kosong" });
     }
-    const row = await updateBarangGroup(id, { nama: nama.trim() });
+    if (isArsip !== undefined && typeof isArsip !== "boolean") {
+      return res.status(400).json({ message: "Field 'isArsip' harus boolean" });
+    }
+    const data: { nama?: string; isArsip?: boolean } = {};
+    if (nama !== undefined) data.nama = nama.trim();
+    if (isArsip !== undefined) data.isArsip = isArsip;
+    const row = await updateBarangGroup(id, data);
     res.status(200).json(row);
   } catch (error: any) {
     if (error?.code === "P2002") {

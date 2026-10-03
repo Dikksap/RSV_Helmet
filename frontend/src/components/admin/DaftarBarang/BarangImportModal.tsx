@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { createBarang, type StatusBarang } from "../../../api/barang";
+import { useStatusOptions } from "../../../lib/useStatusOptions";
 
 type Props = {
   open: boolean;
@@ -19,8 +20,6 @@ type ParsedRow = {
   variantId?: number;
   errors: string[];
 };
-
-const STATUSES: StatusBarang[] = ["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"];
 
 function normalizeHeader(h: string): string {
   const k = h.trim().toLowerCase().replace(/[\s-]+/g, "_");
@@ -87,6 +86,8 @@ export function BarangImportModal({ open, onClose, variantOptions, onImported }:
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<{ ok: number; fail: number; fails: { idx: number; reason: string }[] } | null>(null);
+  const { options: statusOptions } = useStatusOptions();
+  const statuses = useMemo(() => statusOptions.map((o) => o.value), [statusOptions]);
 
   const variantMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -147,7 +148,7 @@ export function BarangImportModal({ open, onClose, variantOptions, onImported }:
       }
       if (batchId && !/^\d+$/.test(batchId)) errors.push(`batchId "${batchId}" harus angka`);
       const status = statusRaw || "REGISTER";
-      if (!STATUSES.includes(status as StatusBarang)) errors.push(`status "${statusRaw}" tidak valid (${STATUSES.join("/")})`);
+      if (!statuses.includes(status)) errors.push(`status "${statusRaw}" tidak valid (${statuses.join("/")})`);
       let tanggal = "";
       if (tanggalRaw) {
         const iso = toISODate(tanggalRaw);

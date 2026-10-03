@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from "react";
 import {
   createBarangGroup,
   deleteBarangGroup,
@@ -11,6 +11,7 @@ import {
 } from "../../api/barangGroup";
 import type { StatusBarang } from "../../api/barang";
 import { downloadCsv } from "../../lib/csv";
+import { isDusPengganti } from "../../lib/dus";
 
 const DUS_CAPACITY = 8;
 
@@ -149,16 +150,51 @@ function StokProduksi() {
 
   const filteredGroups = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return groups.filter((g) => {
-      const matchKeyword =
-        g.nama.toLowerCase().includes(keyword) ||
-        (g.barang ?? []).some((b) => b.kodeBarang.toLowerCase().includes(keyword));
-      const isFull = g._count.barang >= DUS_CAPACITY;
-      const matchStatus =
-        statusFilter === "all" || (statusFilter === "penuh" ? isFull : !isFull);
-      return matchKeyword && matchStatus;
-    });
+    return groups
+      .filter((g) => !g.isArsip)
+      .filter((g) => {
+        const matchKeyword =
+          g.nama.toLowerCase().includes(keyword) ||
+          (g.barang ?? []).some((b) => b.kodeBarang.toLowerCase().includes(keyword));
+        const isFull = g._count.barang >= DUS_CAPACITY;
+        const matchStatus =
+          statusFilter === "all" || (statusFilter === "penuh" ? isFull : !isFull);
+        return matchKeyword && matchStatus;
+      });
   }, [groups, search, statusFilter]);
+
+  const normalGroups = useMemo(() => filteredGroups.filter((g) => !isDusPengganti(g)), [filteredGroups]);
+  const penggantiGroups = useMemo(() => filteredGroups.filter((g) => isDusPengganti(g)), [filteredGroups]);
+  const arsipGroups = useMemo(() => groups.filter((g) => g.isArsip), [groups]);
+  const [showArsip, setShowArsip] = useState(false);
+  const [archivingId, setArchivingId] = useState<number | null>(null);
+
+  const handleArsip = async (group: BarangGroup) => {
+    if (!window.confirm(`Arsipkan "${group.nama}"?`)) return;
+    setArchivingId(group.id);
+    try {
+      await updateBarangGroup(group.id, { isArsip: true });
+      toast(`"${group.nama}" diarsipkan`);
+      await fetchGroups();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Gagal mengarsipkan dus", "error");
+    } finally {
+      setArchivingId(null);
+    }
+  };
+
+  const handlePulihkan = async (group: BarangGroup) => {
+    setArchivingId(group.id);
+    try {
+      await updateBarangGroup(group.id, { isArsip: false });
+      toast(`"${group.nama}" dikembalikan ke daftar aktif`);
+      await fetchGroups();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Gagal memulihkan dus", "error");
+    } finally {
+      setArchivingId(null);
+    }
+  };
 
   const openCreate = () => {
     setCrudError(null);
@@ -202,7 +238,7 @@ function StokProduksi() {
     setCrudLoading(true);
     setCrudError(null);
     try {
-      await updateBarangGroup(editingGroup.id, nama);
+      await updateBarangGroup(editingGroup.id, { nama });
       setEditingGroup(null);
       toast(`Dus berhasil diubah menjadi "${nama}"`);
       await fetchGroups();
@@ -266,28 +302,38 @@ function StokProduksi() {
         targets.map(async (g) => ({ group: g, items: await resolveItems(g) })),
       );
       const rows: unknown[][] = [];
-      for (const { group, items } of resolved) {
-        rows.push([`Dus ${group.nama}`]);
+      const sectionRows = (title: string, list: typeof resolved) => {
+        if (list.length === 0) return;
+        rows.push([title]);
         rows.push(["NO", "PRODUCT", "SIZE", "JUMLAH"]);
-        const m = new Map<string, { product: string; size: string; n: number }>();
-        for (const b of items) {
-          const v = b.variant;
-          const product =
-            [v?.product?.nama, v?.style?.nama, v?.color?.nama].filter(Boolean).join(" ") || "-";
-          const size = v?.size?.nama ?? "-";
-          const k = `${product}|||${size}`;
-          const prev = m.get(k);
-          m.set(k, { product, size, n: (prev?.n ?? 0) + 1 });
-        }
-        const entries = [...m.values()].sort(
-          (a, b) =>
-            a.product.localeCompare(b.product, "id") ||
-            a.size.localeCompare(b.size, "id", { numeric: true }),
-        );
-        if (entries.length === 0) rows.push(["Kosong"]);
-        entries.forEach((e, i) => rows.push([i + 1, e.product, e.size, e.n]));
+        let subtotal = 0;
+        list.forEach(({ group, items }) => {
+          rows.push([`${group.nama}`]);
+          const m = new Map<string, { product: string; size: string; n: number }>();
+          for (const b of items) {
+            const v = b.variant;
+            const product =
+              [v?.product?.nama, v?.style?.nama, v?.color?.nama].filter(Boolean).join(" ") || "-";
+            const size = v?.size?.nama ?? "-";
+            const k = `${product}|||${size}`;
+            const prev = m.get(k);
+            m.set(k, { product, size, n: (prev?.n ?? 0) + 1 });
+          }
+          const entries = [...m.values()].sort(
+            (a, b) =>
+              a.product.localeCompare(b.product, "id") ||
+              a.size.localeCompare(b.size, "id", { numeric: true }),
+          );
+          if (entries.length === 0) rows.push(["Kosong"]);
+          entries.forEach((e, i) => rows.push([i + 1, e.product, e.size, e.n]));
+          subtotal += items.length;
+          rows.push([]);
+        });
+        rows.push(["TOTAL", "", "", subtotal]);
         rows.push([]);
-      }
+      };
+      sectionRows("DUS", resolved.filter((r) => !isDusPengganti(r.group)));
+      sectionRows("DUS PENGGANTI", resolved.filter((r) => isDusPengganti(r.group)));
       const stamp = new Date().toISOString().slice(0, 10);
       const suffix = statusFilter === "all" ? "" : `-${statusFilter}`;
       downloadCsv(`stok-produksi-${stamp}${suffix}.csv`, rows);
@@ -326,7 +372,7 @@ function StokProduksi() {
             entries.map(([k, n, label]) => `<tr><td>${escapeHtml(k)}</td><td>x ${n}</td><td>${label}</td></tr>`).join("") +
             `</table><p class="total">Total: ${total} pcs</p>`;
         w.document.write(
-          `<html><head><title>Dus ${escapeHtml(group.nama)}</title>` +
+          `<html><head><title>${escapeHtml(group.nama)}</title>` +
             `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
             `.nama{font-size:42px;font-weight:800;margin:0}` +
             `.sub{font-size:14px;color:#555;margin:4px 0 16px}` +
@@ -334,7 +380,7 @@ function StokProduksi() {
             `td,th{border:1px solid #333;padding:8px;font-size:18px;text-align:left}` +
             `.total{font-size:20px;font-weight:700;margin-top:12px}` +
             `@media print{button{display:none}}</style></head><body>` +
-            `<p class="nama">Dus ${escapeHtml(group.nama)}</p>` +
+            `<p class="nama">${escapeHtml(group.nama)}</p>` +
             `<p class="sub">${total}/${DUS_CAPACITY} barang &middot; ${escapeHtml(formatDate(group.updatedAt))}</p>` +
             body +
             `<script>window.onload=()=>{window.print()}</script>` +
@@ -343,32 +389,41 @@ function StokProduksi() {
         w.document.close();
         return;
       }
-      const grandTotal = resolved.reduce((a, r) => a + (r.items.length || r.group._count.barang), 0);
-      const rows = resolved
-        .map(({ group, items }) => {
-          const entries = summarizeEntries(items);
-          const total = items.length || group._count.barang;
-          const isi = entries.length === 0
-            ? `Kosong`
-            : entries.map(([k, n, label]) => `${escapeHtml(k)} x ${n} ${label}`).join("<br>");
-          return `<tr><td class="dus">Dus ${escapeHtml(group.nama)}</td><td>${isi}</td><td class="num">${total}</td></tr>`;
-        })
-        .join("");
+      const biasa = resolved.filter((r) => !isDusPengganti(r.group));
+      const pengganti = resolved.filter((r) => isDusPengganti(r.group));
+      const sectionRows = (list: typeof resolved) =>
+        list
+          .map(({ group, items }) => {
+            const entries = summarizeEntries(items);
+            const total = items.length || group._count.barang;
+            const isi = entries.length === 0
+              ? `Kosong`
+              : entries.map(([k, n, label]) => `${escapeHtml(k)} x ${n} ${label}`).join("<br>");
+            return `<tr><td class="dus">${escapeHtml(group.nama)}</td><td>${isi}</td><td class="num">${total}</td></tr>`;
+          })
+          .join("");
+      const sectionSubtotal = (list: typeof resolved) =>
+        list.reduce((a, r) => a + (r.items.length || r.group._count.barang), 0);
+      const sections = [
+        biasa.length > 0 ? `<h2>Dus (${biasa.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${sectionRows(biasa)}</table><p class="total">Total: ${sectionSubtotal(biasa)} pcs</p>` : "",
+        pengganti.length > 0 ? `<h2 class="${biasa.length > 0 ? "break" : ""}">Dus Pengganti (${pengganti.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${sectionRows(pengganti)}</table><p class="total">Total: ${sectionSubtotal(pengganti)} pcs</p>` : "",
+      ].filter(Boolean).join("");
       w.document.write(
         `<html><head><title>Rekap ${targets.length} Dus</title>` +
           `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
-          `h1{font-size:22px;margin:0 0 4px}` +
-          `.sub{font-size:13px;color:#555;margin:0 0 12px}` +
-          `table{width:100%;border-collapse:collapse}` +
-          `td,th{border:1px solid #333;padding:6px 8px;font-size:14px;text-align:left;vertical-align:top}` +
-          `.dus{white-space:nowrap;font-weight:700}` +
-          `.num{text-align:center;font-weight:700}` +
-          `.total{font-size:15px;font-weight:700;margin-top:10px}` +
-          `@media print{button{display:none}}</style></head><body>` +
-          `<h1>Rekap ${targets.length} Dus</h1>` +
-          `<p class="sub">${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }))} &middot; Total ${grandTotal} pcs</p>` +
-          `<table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${rows}</table>` +
-          `<p class="total">Total: ${grandTotal} pcs</p>` +
+            `h1{font-size:22px;margin:0 0 4px}` +
+            `h2{font-size:17px;margin:18px 0 8px}` +
+            `.break{break-before:page;page-break-before:always}` +
+            `.sub{font-size:13px;color:#555;margin:0 0 12px}` +
+            `table{width:100%;border-collapse:collapse}` +
+            `td,th{border:1px solid #333;padding:6px 8px;font-size:14px;text-align:left;vertical-align:top}` +
+            `.dus{white-space:nowrap;font-weight:700}` +
+            `.num{text-align:center;font-weight:700}` +
+            `.total{font-size:15px;font-weight:700;margin-top:10px}` +
+            `@media print{button{display:none}}</style></head><body>` +
+            `<h1>Rekap ${targets.length} Dus</h1>` +
+            `<p class="sub">${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }))}</p>` +
+            sections +
           `<script>window.onload=()=>{window.print()}</script>` +
           `</body></html>`,
       );
@@ -582,7 +637,9 @@ function StokProduksi() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredGroups.map((g) => {
+          {[...normalGroups, ...penggantiGroups].map((g, i, arr) => {
+            const showNormalDivider = !isDusPengganti(g) && i === 0 && penggantiGroups.length > 0;
+            const showPenggantiDivider = isDusPengganti(g) && (i === 0 || !isDusPengganti(arr[i - 1]));
             const count = g._count.barang;
             const isFull = count >= DUS_CAPACITY;
             const percentage = Math.round((count / DUS_CAPACITY) * 100);
@@ -590,8 +647,16 @@ function StokProduksi() {
             const ringkasan = summarize(g.barang ?? []);
             const isSelected = selected.has(g.id);
             return (
+              <Fragment key={g.id}>
+                {(showNormalDivider || showPenggantiDivider) && (
+                  <p className="col-span-full mt-2 text-sm font-bold uppercase tracking-wider text-slate-500">
+                    {showPenggantiDivider ? "Dus Pengganti" : "Dus"}{" "}
+                    <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5">
+                      {showPenggantiDivider ? penggantiGroups.length : normalGroups.length}
+                    </span>
+                  </p>
+                )}
               <div
-                key={g.id}
                 role="button"
                 tabIndex={0}
                 onClick={() => void openDetail(g)}
@@ -612,7 +677,7 @@ function StokProduksi() {
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-bold text-slate-900">Dus {g.nama}</p>
+                      <p className="truncate font-bold text-slate-900">{g.nama}</p>
                       <p className="text-[11px] text-slate-400">{formatDate(g.updatedAt)}</p>
                     </div>
                   </div>
@@ -659,11 +724,54 @@ function StokProduksi() {
                   >
                     Hapus
                   </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleArsip(g); }}
+                    disabled={archivingId === g.id}
+                    className="rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {archivingId === g.id ? "..." : "Arsip"}
+                  </button>
                 </div>
               </div>
+              </Fragment>
             );
           })}
         </div>
+      )}
+
+      {arsipGroups.length > 0 && (
+        <section className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setShowArsip((v) => !v)}
+            aria-expanded={showArsip}
+            className="flex w-full items-center justify-between text-sm font-bold text-slate-600"
+          >
+            Arsip ({arsipGroups.length})
+            <span aria-hidden="true">{showArsip ? "▾" : "▸"}</span>
+          </button>
+          {showArsip && (
+            <ul className="mt-3 space-y-2">
+              {arsipGroups.map((g) => (
+                <li key={g.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-700">{g.nama}</p>
+                    <p className="text-[11px] text-slate-400">{g._count.barang}/{DUS_CAPACITY} barang</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePulihkan(g)}
+                    disabled={archivingId === g.id}
+                    className="shrink-0 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    {archivingId === g.id ? "..." : "Pulihkan"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {showCreate &&
@@ -817,7 +925,7 @@ function StokProduksi() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[#00A8E8]">Detail Dus</p>
-                <h3 className="text-lg font-bold text-slate-900">Kelola Isi Dus {detailGroup.nama}</h3>
+                <h3 className="text-lg font-bold text-slate-900">Kelola Isi {detailGroup.nama}</h3>
               </div>
               <button
                 type="button"
@@ -895,7 +1003,7 @@ function StokProduksi() {
                 Selesai
               </button>
             </div>
-          </>, "lg"))}
+          </>), "lg")}
     </div>
   );
 }

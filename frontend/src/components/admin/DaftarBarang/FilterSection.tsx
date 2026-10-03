@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { StatusBarang } from "../../../api/barang";
+import { useStatusOptions } from "../../../lib/useStatusOptions";
 
 const DATE_PRESETS = [
   { label: "Hari Ini", getRange: () => { const d = new Date(); return { start: d, end: d }; } },
@@ -10,14 +11,6 @@ const DATE_PRESETS = [
   { label: "Bulan Ini", getRange: () => { const d = new Date(); return { start: new Date(d.getFullYear(), d.getMonth(), 1), end: new Date(d.getFullYear(), d.getMonth() + 1, 0) }; } },
   { label: "Bulan Lalu", getRange: () => { const d = new Date(); return { start: new Date(d.getFullYear(), d.getMonth() - 1, 1), end: new Date(d.getFullYear(), d.getMonth(), 0) }; } },
 ] as const;
-
-const STATUS_OPTIONS: { value: StatusBarang; label: string }[] = [
-  { value: "REGISTER", label: "Register" },
-  { value: "FINISHGOOD", label: "Finish Good" },
-  { value: "RETUR", label: "Retur" },
-  { value: "OUT", label: "Out" },
-  { value: "BAD", label: "Bad" },
-];
 
 type FilterSectionProps = {
   search: string;
@@ -91,6 +84,7 @@ export function FilterSection({
   onResetFilters,
 }: FilterSectionProps) {
   const [open, setOpen] = useState(false);
+  const { options: statusOptions } = useStatusOptions();
   const inputCls = "h-9 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[14px] text-[#1F2937] outline-none transition placeholder:text-[#6B7280]/60 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
   const labelCls = "flex flex-col gap-1 text-xs font-medium text-[#1F2937]";
   const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur].filter(Boolean).length;
@@ -177,7 +171,7 @@ export function FilterSection({
             <span>Status</span>
             <select className={inputCls} value={statusFilter} onChange={(e) => onStatusChange(e.target.value as StatusBarang)}>
               <option value="">Semua Status</option>
-              {STATUS_OPTIONS.map((opt) => (
+              {statusOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

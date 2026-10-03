@@ -11,6 +11,7 @@ import {
   faHouse,
   faPlug,
   faTags,
+  faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const NAV_MAIN = [
@@ -76,6 +77,19 @@ export const WAREHOUSE: typeof MANAJEMEN = {
   label: "Warehouse",
   icon: faBoxesStacked,
   children: [],
+};
+
+export const KARYAWAN: typeof MANAJEMEN = {
+  label: "Karyawan",
+  icon: faUsers,
+  children: [
+    {
+      to: "/admin/karyawan",
+      label: "Kelola Karyawan",
+      icon: faUsers,
+      end: true,
+    },
+  ],
 };
 
 export const NAV_MANAGEMENT = [
