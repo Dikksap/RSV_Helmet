@@ -446,6 +446,31 @@ function StokProduksi() {
     void printGroups(targets);
   };
 
+  const handleArsipSelected = async () => {
+    const targets = filteredGroups.filter((g) => selected.has(g.id));
+    if (targets.length === 0) {
+      toast("Pilih dus dulu", "error");
+      return;
+    }
+    if (!window.confirm(`Arsipkan ${targets.length} dus yang dipilih?`)) return;
+    setArchivingId(-1);
+    let ok = 0;
+    let firstError = "";
+    for (const g of targets) {
+      try {
+        await updateBarangGroup(g.id, { isArsip: true });
+        ok++;
+      } catch (err) {
+        if (!firstError) firstError = err instanceof Error ? err.message : "Gagal mengarsipkan";
+      }
+    }
+    setArchivingId(null);
+    setSelected(new Set());
+    await fetchGroups();
+    if (ok === targets.length) toast(`${ok} dus diarsipkan`);
+    else toast(`${ok} diarsipkan, ${targets.length - ok} gagal. ${firstError}`, "error");
+  };
+
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -605,6 +630,14 @@ function StokProduksi() {
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
           >
             {isPrinting ? "Menyiapkan..." : `Print ${selected.size > 0 ? `(${selected.size})` : ""}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleArsipSelected()}
+            disabled={selected.size === 0 || archivingId !== null}
+            className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-200 disabled:opacity-50"
+          >
+            {archivingId !== null ? "Mengarsipkan..." : `Arsipkan ${selected.size > 0 ? `(${selected.size})` : ""}`}
           </button>
         </div>
       </div>
