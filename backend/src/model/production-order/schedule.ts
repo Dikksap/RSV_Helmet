@@ -9,9 +9,10 @@
 // - Item diurut priority asc, size diurut urutan asc.
 // - Hari fixed persiapan & QC+packing: tanpa alokasi (Jumlah 0); budget
 //   TOP COAT / PERAKITAN juga tidak diakru di hari itu agar tidak hangus.
-// - Jadwal diekor sampai akhir bulan (param akhirBulan YYYY-MM-DD):
-//   hari tanpa produksi setelah selesai = "Penyesuaian" (cadangan bila
-//   realisasi meleset / ada hutang produksi), tanggal terakhir = "QC & Packing".
+// - Jadwal diekor sampai tanggal `sampai` (param akhirBulan YYYY-MM-DD,
+//   opt-in via ?sampai=): hari tanpa produksi setelah selesai = "Penyesuaian"
+//   (cadangan bila realisasi meleset / ada hutang produksi), tanggal terakhir
+//   = "QC & Packing". Tanpa param: berhenti saat selesai (bisa lewat bulan).
 // - Alokasi per hari dibulatkan ke kelipatan PCS_PER_DUS (1 dus = 8 pcs).
 // - Distribusi tahap berurutan per grup: Buffing/BaseCoat → h+1 kerja Decal
 //   Solid/Motif → h+1 kerja Top Coat/Perakitan/QC. Effective mulai =
@@ -253,7 +254,12 @@ export function buildSchedule(
   // melewati buffing/dst, jadi jangan ikut terpotong.
   const stageQueues: { key: ScheduleStageTake["stage"]; q: TakeQueue }[] = (
     ["buffing", "baseCoat", "decalSolid", "decalMotif", "perakitan", "qc"] as const
-  ).map((key) => ({ key, q: sorted.map((i) => ({ ...i, sisa: i.qty, label: labelOf(i) })) }));
+  ).map((key) => ({
+    key,
+    q: sorted
+      .filter((i) => key === "decalSolid" ? i.style.toUpperCase().includes("SOLID") : key === "decalMotif" ? i.style.toUpperCase().includes("MOTIF") : true)
+      .map((i) => ({ ...i, sisa: i.qty, label: labelOf(i) })),
+  }));
 
   // Alokasi item serentak dibuka pada tanggal mulai produksi order.
   const mulaiGlobal = toDate(mulaiProduksi);
@@ -383,9 +389,6 @@ export function buildSchedule(
     if ((stagesDone && allocDone) || stall >= MAX_STALL_DAYS) break;
   }
 
-  const sisa = queue.reduce((n, i) => n + i.sisa, 0);
-  const dialokasikan = total - sisa;
-
   // Ekor sampai akhir bulan: tanpa produksi = Penyesuaian, hari terakhir QC & Packing.
   // Jangan sampai bulan berikutnya — sisa produksi masuk meta.sisa.
   if (akhirBulan && /^\d{4}-\d{2}-\d{2}$/.test(akhirBulan) && rows.length > 0) {
@@ -490,6 +493,11 @@ export function buildSchedule(
   // hari produksi, menghitung hari "Selesai" yang tanpa alokasi, dan melewatkan
   // hari yang hanya berisi baris pin.
   const hariProduksi = new Set(rows.filter((r) => r.jumlah > 0).map((r) => r.tanggal)).size;
+
+  // Dari baris final (setelah potong sampai + pin manual) agar konsisten
+  // dengan yang ditampilkan — bukan dari sisa antrean.
+  const dialokasikan = rows.reduce((n, r) => n + r.jumlah, 0);
+  const sisa = total - dialokasikan;
 
   return { rows, meta: { dialokasikan, sisa, hariProduksi }, rincian };
 }

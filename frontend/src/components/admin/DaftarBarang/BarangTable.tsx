@@ -170,7 +170,7 @@ export function BarangTable({
                   </div>
 
                   {/* Detail */}
-                  <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                  <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                         Batch
@@ -183,6 +183,16 @@ export function BarangTable({
                               "0"
                             )}`
                           : "No Batch"}
+                      </p>
+                    </div>
+
+                    <div className="text-center">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Dus
+                      </p>
+
+                      <p className="mt-0.5 truncate text-xs font-medium text-slate-700">
+                        {item.group ? item.group.nama : "-"}
                       </p>
                     </div>
 
@@ -289,6 +299,10 @@ export function BarangTable({
 
                 <th className="px-4 py-3.5">
                   Batch
+                </th>
+
+                <th className="px-4 py-3.5">
+                  Nama Dus
                 </th>
 
                 <th className="px-4 py-3.5">
@@ -403,6 +417,17 @@ export function BarangTable({
                         <span className="text-xs text-slate-400">
                           -
                         </span>
+                      )}
+                    </td>
+
+                    {/* Nama Dus */}
+                    <td className="px-4 py-3">
+                      {item.group ? (
+                        <span className="text-xs font-medium text-slate-700">
+                          {item.group.nama}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
                       )}
                     </td>
 

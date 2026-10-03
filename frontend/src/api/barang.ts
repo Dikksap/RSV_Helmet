@@ -35,6 +35,8 @@ export interface Barang {
     kapasitas: number;
     status: string;
   } | null;
+  groupId?: number | null;
+  group?: { id: number; nama: string } | null;
 }
 
 interface BarangPageResponse {

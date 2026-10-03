@@ -186,6 +186,9 @@ export default function ScheduleTab({ orderId }: Props) {
   const [extQty, setExtQty] = useState("");
   const [extBusy, setExtBusy] = useState(false);
 
+  // Batas akhir jadwal (kosong = auto sampai selesai, bisa lewat bulan).
+  const [sampai, setSampai] = useState("");
+
   const reload = (silent = false) => {
     if (orderId === null) return;
 
@@ -194,7 +197,7 @@ export default function ScheduleTab({ orderId }: Props) {
     }
 
     Promise.all([
-      getProductionSchedule(orderId),
+      getProductionSchedule(orderId, sampai || undefined),
       getProductionOrderSummary(orderId),
       getProductionCapacities(orderId),
     ])
@@ -247,7 +250,7 @@ export default function ScheduleTab({ orderId }: Props) {
 
   useEffect(() => {
     reload(false);
-  }, [orderId]);
+  }, [orderId, sampai]);
 
   const saveCell = async (
     raw: string,
@@ -758,12 +761,24 @@ export default function ScheduleTab({ orderId }: Props) {
             </div>
 
             <p className="mt-1 text-xs text-slate-400">
-              {days.length} hari kalender · Klik angka untuk melakukan
+              {days.length} hari kalender
+              {days.length > 0 ? ` · s.d. ${fmtDate(days[days.length - 1].tanggal)}` : ""}
+              {sampai ? "" : " · auto sampai selesai"} · Klik angka untuk melakukan
               penyesuaian
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              Sampai
+              <input
+                type="date"
+                value={sampai}
+                onChange={(e) => setSampai(e.target.value)}
+                title="Kosong = otomatis sampai selesai (bisa lewat bulan)"
+                className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/10"
+              />
+            </label>
             <button
               type="button"
               onClick={() => window.print()}

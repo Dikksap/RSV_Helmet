@@ -139,6 +139,25 @@ describe("ekor akhir bulan", () => {
   });
 });
 
+describe("jadwal multi-bulan (default auto sampai selesai)", () => {
+  const caps = [
+    { stage: "TOP COAT", kapasitasWeekday: 288, kapasitasSabtu: 144, mulai: "2026-10-01", selesai: "2026-12-31" },
+  ];
+  const items = [{ variantId: 1, qty: 10000, priority: 1, style: "S", color: "C", size: "MD", sizeUrutan: 1 }];
+  it("tanpa batas: produksi 10rb pcs jalan sampai November", () => {
+    const { rows, meta } = buildSchedule(items, caps, [], []);
+    expect(rows[rows.length - 1].tanggal.startsWith("2026-11")).toBe(true);
+    expect(meta).toMatchObject({ dialokasikan: 10000, sisa: 0 });
+  });
+  it("dengan batas sampai: kepotong + sisa tercatat", () => {
+    const { rows, meta } = buildSchedule(items, caps, [], [], "2026-10-31");
+    expect(rows[rows.length - 1].tanggal).toBe("2026-10-31");
+    expect(rows.every((r) => r.tanggal <= "2026-10-31")).toBe(true);
+    expect(meta.sisa).toBeGreaterThan(0);
+    expect(meta.dialokasikan + meta.sisa).toBe(10000);
+  });
+});
+
 describe("endOfPeriode", () => {
   it("tanggal terakhir bulan + null bila tak valid", () => {
     expect(endOfPeriode("2026-10")).toBe("2026-10-31");

@@ -1,3 +1,5 @@
+import { clearAuth } from "./auth";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 export interface MasterStyle {
@@ -49,6 +51,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       const body = await res.json();
       if (typeof body?.message === "string") message = body.message;
     } catch { /* ignore */ }
+    if (res.status === 401) {
+      // POST/PUT/DELETE status-barang butuh JWT admin; token expired/invalid
+      // harus pulangkan user ke login, bukan alert mentah.
+      clearAuth();
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?session=expired";
+      }
+      throw new Error("Sesi telah berakhir. Silakan login ulang.");
+    }
     throw new Error(message);
   }
   // 204 or empty body

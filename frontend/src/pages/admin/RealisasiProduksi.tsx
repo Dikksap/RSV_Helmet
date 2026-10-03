@@ -40,7 +40,7 @@ export default function RealisasiProduksi(){
 
   useEffect(()=>{ getProductionOrders().then(res=>{ const aktif=res.filter(o=>o.status==="AKTIF"); setOrders(aktif); if(aktif.length>0) setOrderId(p=>p??aktif[0].id); setOrdersLoaded(true); }).catch(e=>{ setError(e instanceof Error?e.message:"Gagal memuat orders."); setOrdersLoaded(true); }); },[]);
   useEffect(()=>{ const o=orders.find(x=>x.id===orderId)??null; if(!o) return; const [a,b]=monthRange(o.periode); setAwal(a); setAkhir(b); },[orderId,orders]);
-  useEffect(()=>{ if(orderId===null) return; setLoadingOrder(true); Promise.all([getProductionOrderSummary(orderId),getProductionSchedule(orderId)]).then(([summary,schedule])=>setOrderData({summary,schedule})).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat order.")).finally(()=>setLoadingOrder(false)); },[orderId]);
+  useEffect(()=>{ if(orderId===null) return; setLoadingOrder(true); Promise.all([getProductionOrderSummary(orderId),getProductionSchedule(orderId)]).then(([summary,schedule])=>{ setOrderData({summary,schedule}); const dates=schedule.rows.map(r=>r.tanggal).filter(Boolean).sort(); if(dates.length>0){ setAwal(dates[0]); setAkhir(dates[dates.length-1]); } }).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat order.")).finally(()=>setLoadingOrder(false)); },[orderId]);
 
   const loadInput=useCallback(async()=>{
     if(orderId===null || !orderData) return;

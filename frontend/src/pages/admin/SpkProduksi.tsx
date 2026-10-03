@@ -267,6 +267,19 @@ export default function SpkProduksi() {
     return t;
   }, [rows]);
 
+  // SPK Decal: pecah solid vs motif dari rincian jadwal (auto mode).
+  const decalTotals = useMemo(() => {
+    if (divisi !== "Decal" || !autoCache || !autoTanggal) return null;
+    let solid = 0;
+    let motif = 0;
+    for (const r of autoCache.rincian) {
+      if (r.tanggal !== autoTanggal) continue;
+      if (r.stage === "decalSolid") solid += r.jumlah;
+      else if (r.stage === "decalMotif") motif += r.jumlah;
+    }
+    return { solid, motif };
+  }, [divisi, autoCache, autoTanggal]);
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -726,6 +739,11 @@ export default function SpkProduksi() {
                 <p className="mt-2 text-center text-[6pt] text-[#6B7280]">
                   SPK {isAuto ? "otomatis" : "manual"} · Divisi {divisi} · {rows.length} baris · total target {totals.toLocaleString("id-ID")} pcs
                 </p>
+                {decalTotals && (
+                  <p className="mt-1 text-center text-[7pt] font-semibold text-[#1E3A5F]">
+                    Decal Solid: {decalTotals.solid.toLocaleString("id-ID")} pcs · Decal Motif: {decalTotals.motif.toLocaleString("id-ID")} pcs
+                  </p>
+                )}
               </div>
               <p className="mt-2 text-center text-xs text-[#6B7280]">Preview live — ubah form kiri otomatis update kertas. Print → Save as PDF.</p>
             </div>

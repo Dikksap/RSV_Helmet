@@ -28,7 +28,6 @@ import {
 import {
   buildSchedule,
   defaultAnchors,
-  endOfPeriode,
   type ScheduleOverrides,
 } from "../../model/production-order/schedule.js";
 
@@ -203,7 +202,12 @@ export async function getScheduleHandler(req: Request, res: Response) {
     const prepDays = typeof req.query.prep === "string" && req.query.prep ? req.query.prep.split(",") : defaults.prepDays;
     const qcDays = typeof req.query.qc === "string" && req.query.qc ? req.query.qc.split(",") : defaults.qcDays;
     const capacities = await getCapacities(orderId);
-    const akhirBulan = endOfPeriode(order.periode);
+    // Default: auto sampai selesai (tanpa potong akhir bulan). Opt-in
+    // ?sampai=YYYY-MM-DD untuk membatasi + ekor Penyesuaian/QC & Packing.
+    const sampaiRaw = typeof req.query.sampai === "string" ? req.query.sampai : "";
+    const akhirBulan = DAY_RE.test(sampaiRaw) && !Number.isNaN(new Date(`${sampaiRaw}T00:00:00`).getTime())
+      ? sampaiRaw
+      : null;
     // Edit manual dikonsumsi oleh buildSchedule, bukan ditambal ke baris jadi:
     // rincian tahap dan meta ikut konsisten dengan baris yang ditampilkan.
     const [targetEdits, allocEdits] = await Promise.all([

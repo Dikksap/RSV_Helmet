@@ -150,7 +150,9 @@ function StokProduksi() {
   const filteredGroups = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return groups.filter((g) => {
-      const matchKeyword = g.nama.toLowerCase().includes(keyword);
+      const matchKeyword =
+        g.nama.toLowerCase().includes(keyword) ||
+        (g.barang ?? []).some((b) => b.kodeBarang.toLowerCase().includes(keyword));
       const isFull = g._count.barang >= DUS_CAPACITY;
       const matchStatus =
         statusFilter === "all" || (statusFilter === "penuh" ? isFull : !isFull);
@@ -413,14 +415,14 @@ function StokProduksi() {
     });
   };
 
-  const modalShell = (onClose: () => void, children: ReactNode) => (
+  const modalShell = (onClose: () => void, children: ReactNode, size: "md" | "lg" = "md") => (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"
+        className={`w-full ${size === "lg" ? "max-w-2xl" : "max-w-md"} rounded-3xl bg-white p-6 shadow-2xl`}
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
@@ -504,7 +506,7 @@ function StokProduksi() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari nama dus..."
+            placeholder="Cari nama dus atau kode barang..."
             className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/20"
           />
         </div>
@@ -845,7 +847,7 @@ function StokProduksi() {
                   Dus kosong — scan barang lalu simpan ke dus ini lewat halaman Scan QR.
                 </p>
               ) : (
-                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
                   {detailBarang.map((b, i) => (
                     <div
                       key={b.id}
@@ -856,7 +858,7 @@ function StokProduksi() {
                           {i + 1}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-slate-800">{b.kodeBarang}</p>
+                          <p className="break-all font-mono text-[11px] font-bold text-slate-800">{b.kodeBarang}</p>
                           <p className="truncate text-[11px] text-slate-500">{variantName(b)}</p>
                         </div>
                       </div>
@@ -893,8 +895,7 @@ function StokProduksi() {
                 Selesai
               </button>
             </div>
-          </>
-        ))}
+          </>, "lg"))}
     </div>
   );
 }

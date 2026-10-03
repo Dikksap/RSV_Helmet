@@ -70,6 +70,12 @@ export const barangInclude = {
       status: true,
     },
   },
+  group: {
+    select: {
+      id: true,
+      nama: true,
+    },
+  },
 };
 
 export interface BarangListFilter {

@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { login, setAuth, isAuthenticated } from "../../api/auth";
 import logoUrl from "../../assets/logo.png";
 
@@ -13,6 +13,8 @@ function Login() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get("session") === "expired";
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -106,6 +108,11 @@ function Login() {
                     Silakan masuk untuk melanjutkan.
                   </p>
                 </div>
+                {sessionExpired && !error && (
+                  <div className="mb-5 rounded-lg border border-[#00A8E8]/30 bg-sky-50 px-4 py-3 text-sm font-medium text-[#1E3A5F]" role="status">
+                    Sesi Anda telah berakhir. Silakan login ulang.
+                  </div>
+                )}
                 {error && (
                   <div className="mb-5 flex items-start gap-3 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/5 px-4 py-3 text-sm font-medium text-[#1F2937]" role="alert">
                     <span aria-hidden="true" className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#EF4444] text-xs font-bold text-white">!</span>

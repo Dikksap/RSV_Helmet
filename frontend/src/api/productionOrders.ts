@@ -193,8 +193,9 @@ export interface ProductionSchedule {
 
 export type ScheduleStageKey = "buffing" | "baseCoat" | "decalSolid" | "decalMotif" | "topCoat" | "perakitan" | "qc";
 
-export async function getProductionSchedule(orderId: number): Promise<ProductionSchedule> {
-  return request<ProductionSchedule>(`/production-orders/${orderId}/schedule`);
+export async function getProductionSchedule(orderId: number, sampai?: string): Promise<ProductionSchedule> {
+  const q = sampai ? `?sampai=${encodeURIComponent(sampai)}` : "";
+  return request<ProductionSchedule>(`/production-orders/${orderId}/schedule${q}`);
 }
 
 // qty null = hapus edit (kembali ke angka auto).
