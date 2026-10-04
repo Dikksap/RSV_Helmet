@@ -51,6 +51,17 @@ async function main() {
   }
   console.log(`✓ ${statusSeed.length} StatusBarang selesai`);
 
+  // ── Divisi (1:1 dengan tahap jadwal produksi, dipakai SPK) ──────────────
+  const divisiNames = ["Buffing", "Base Coat", "Decal Solid", "Decal Motif", "Top Coat", "Perakitan", "QC"];
+  for (const nama of divisiNames) {
+    await prisma.divisi.upsert({
+      where: { nama },
+      update: {},
+      create: { nama },
+    });
+  }
+  console.log(`✓ ${divisiNames.length} Divisi selesai`);
+
   // ── Product ────────────────────────────────────────────────────────────
   const product = await prisma.product.upsert({
     where: { id: 1 },

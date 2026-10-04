@@ -363,6 +363,8 @@ export async function saveRealisasiHandler(req: Request, res: Response) {
           return res.status(400).json({ message: `Field 'stage' harus salah satu: ${REALISASI_STAGES.join(", ")}` });
         if (!Number.isInteger(t.qty) || t.qty < 0)
           return res.status(400).json({ message: "Field 'qty' tiap tahapan harus bilangan bulat >= 0" });
+        if (t.reject !== undefined && (!Number.isInteger(t.reject) || t.reject < 0))
+          return res.status(400).json({ message: "Field 'reject' tiap tahapan harus bilangan bulat >= 0" });
       }
     }
     if (items.length === 0 && (!Array.isArray(tahapan) || tahapan.length === 0))

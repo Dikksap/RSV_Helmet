@@ -34,15 +34,18 @@ export async function getKaryawanDetail(req: Request, res: Response) {
   }
 }
 
-function parseBody(body: unknown): { nama: string; jabatan: string } | { error: string } {
-  const { nama, jabatan } = (body ?? {}) as { nama?: unknown; jabatan?: unknown };
+function parseBody(body: unknown): { nama: string; jabatan: string; divisiId?: number | null } | { error: string } {
+  const { nama, jabatan, divisiId } = (body ?? {}) as { nama?: unknown; jabatan?: unknown; divisiId?: unknown };
   if (!nama || typeof nama !== "string" || !nama.trim()) {
     return { error: "Field 'nama' wajib diisi" };
   }
   if (!jabatan || typeof jabatan !== "string" || !jabatan.trim()) {
     return { error: "Field 'jabatan' wajib diisi" };
   }
-  return { nama: nama.trim(), jabatan: jabatan.trim() };
+  if (divisiId !== undefined && divisiId !== null && (!Number.isInteger(divisiId) || (divisiId as number) <= 0)) {
+    return { error: "Field 'divisiId' harus angka bulat positif atau null" };
+  }
+  return { nama: nama.trim(), jabatan: jabatan.trim(), ...(divisiId === undefined ? {} : { divisiId: divisiId as number | null }) };
 }
 
 // POST /api/karyawan
@@ -54,7 +57,10 @@ export async function createKaryawanHandler(req: Request, res: Response) {
     }
     const row = await createKaryawan(parsed);
     res.status(201).json(row);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === "P2003") {
+      return res.status(404).json({ message: "Divisi tidak ditemukan" });
+    }
     res.status(500).json({ message: "Gagal membuat karyawan", error });
   }
 }
@@ -75,6 +81,9 @@ export async function updateKaryawanHandler(req: Request, res: Response) {
   } catch (error: any) {
     if (error?.code === "P2025") {
       return res.status(404).json({ message: "Karyawan tidak ditemukan" });
+    }
+    if (error?.code === "P2003") {
+      return res.status(404).json({ message: "Divisi tidak ditemukan" });
     }
     res.status(500).json({ message: "Gagal mengupdate karyawan", error });
   }

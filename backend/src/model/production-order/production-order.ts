@@ -296,7 +296,7 @@ export const REALISASI_STAGES = ["buffing", "baseCoat", "decalSolid", "decalMoti
 
 export type RealisasiStage = (typeof REALISASI_STAGES)[number];
 
-export type RealisasiStageRow = { tanggal: string; stage: string; qty: number };
+export type RealisasiStageRow = { tanggal: string; stage: string; qty: number; reject: number };
 
 export async function getRealisasiStages(
   orderId: number,
@@ -310,13 +310,13 @@ export async function getRealisasiStages(
     },
     orderBy: [{ tanggal: "asc" }, { stage: "asc" }],
   });
-  return rows.map((r) => ({ tanggal: dayKey(r.tanggal), stage: r.stage, qty: r.qty }));
+  return rows.map((r) => ({ tanggal: dayKey(r.tanggal), stage: r.stage, qty: r.qty, reject: r.reject }));
 }
 
 export async function saveRealisasiStages(
   orderId: number,
   tanggal: Date,
-  items: { stage: string; qty: number }[],
+  items: { stage: string; qty: number; reject?: number }[],
 ): Promise<RealisasiStageRow[]> {
   const order = await prisma.productionOrder.findUnique({ where: { id: orderId }, select: { id: true } });
   if (!order) {
@@ -325,7 +325,9 @@ export async function saveRealisasiStages(
   const day = startOfDay(tanggal);
   await prisma.$transaction(async (tx: PrismaTransactionClient) => {
     await tx.productionRealizationStage.deleteMany({ where: { orderId, tanggal: day } });
-    const data = items.filter((it) => it.qty > 0).map((it) => ({ orderId, tanggal: day, stage: it.stage, qty: it.qty }));
+    const data = items
+      .filter((it) => it.qty > 0 || (it.reject ?? 0) > 0)
+      .map((it) => ({ orderId, tanggal: day, stage: it.stage, qty: it.qty, reject: it.reject ?? 0 }));
     if (data.length > 0) await tx.productionRealizationStage.createMany({ data });
   });
   return getRealisasiStages(orderId, day, day);

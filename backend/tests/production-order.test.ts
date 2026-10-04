@@ -387,7 +387,7 @@ describe("PUT /api/production-orders/:id/realisasi", () => {
     expect(mocked.saveRealisasi).not.toHaveBeenCalled();
   });
   it("200 items kosong + tahapan terisi (tanggal tanpa jadwal)", async () => {
-    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "buffing", qty: 100 }]);
+    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "buffing", qty: 100, reject: 0 }]);
     const res = await request(app).put("/api/production-orders/1/realisasi").send({ tanggal: "2026-10-05", items: [], tahapan: [{ stage: "buffing", qty: 100 }] });
     expect(res.status).toBe(200);
     expect(mocked.saveRealisasi).not.toHaveBeenCalled();
@@ -423,11 +423,22 @@ describe("PUT /api/production-orders/:id/realisasi tahapan", () => {
   });
   it("200 sukses + simpan tahapan", async () => {
     mocked.saveRealisasi.mockResolvedValue([{ tanggal: "2026-10-05", variantId: 1, qty: 10 }]);
-    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "topCoat", qty: 200 }]);
+    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "topCoat", qty: 200, reject: 0 }]);
     const res = await request(app).put("/api/production-orders/1/realisasi").send(body);
     expect(res.status).toBe(200);
     expect(res.body.tahapan).toHaveLength(1);
     expect(mocked.saveRealisasiStages).toHaveBeenCalled();
+  });
+  it("400 reject tahapan negatif", async () => {
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ ...body, tahapan: [{ stage: "topCoat", qty: 200, reject: -1 }] });
+    expect(res.status).toBe(400);
+    expect(mocked.saveRealisasiStages).not.toHaveBeenCalled();
+  });
+  it("200 reject tahapan diteruskan", async () => {
+    mocked.saveRealisasiStages.mockResolvedValue([{ tanggal: "2026-10-05", stage: "topCoat", qty: 200, reject: 3 }]);
+    const res = await request(app).put("/api/production-orders/1/realisasi").send({ ...body, tahapan: [{ stage: "topCoat", qty: 200, reject: 3 }] });
+    expect(res.status).toBe(200);
+    expect(mocked.saveRealisasiStages).toHaveBeenCalledWith(1, expect.any(Date), [{ stage: "topCoat", qty: 200, reject: 3 }]);
   });
 });
 

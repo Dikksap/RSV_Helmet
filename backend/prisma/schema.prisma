@@ -52,8 +52,24 @@ model Karyawan {
   id        Int      @id @default(autoincrement())
   nama      String
   jabatan   String
+  divisiId  Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  divisi Divisi? @relation(fields: [divisiId], references: [id], onDelete: SetNull)
+
+  @@index([divisiId])
+}
+
+// Divisi lini produksi (1:1 dengan tahap jadwal: buffing, baseCoat, ...).
+// Dipakai pengelompokan karyawan dan pembuatan SPK per divisi.
+model Divisi {
+  id        Int      @id @default(autoincrement())
+  nama      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  karyawan Karyawan[]
 }
 
 model Size {
@@ -300,6 +316,7 @@ model ProductionRealizationStage {
   tanggal   DateTime
   stage     String
   qty       Int      @default(0)
+  reject    Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
