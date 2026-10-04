@@ -6,7 +6,7 @@ import {
 import JadwalTab from "../../components/admin/RealisasiProduksi/JadwalTab";
 import InputTab from "../../components/admin/RealisasiProduksi/InputTab";
 import RekapTab from "../../components/admin/RealisasiProduksi/RekapTab";
-import { STAGE_KEYS, todayKey, shiftDay, hariOf, monthRange, fmtDate, eachDay, statusOf } from "../../components/admin/RealisasiProduksi/utils";
+import { STAGE_KEYS, todayKey, shiftDay, hariOf, monthRange, fmtDate, eachDay, statusOf, type JadwalRow, type JadwalStage, type JadwalVariant, type UnfilledItem, type AutofillItem } from "../../components/admin/RealisasiProduksi/utils";
 
 type Tab = "jadwal" | "input" | "rekap";
 type Row = { variantId:number; label:string; sub:string; rencana:number; finishgood:number; };
@@ -27,6 +27,7 @@ export default function RealisasiProduksi(){
   const [loadingRekap,setLoadingRekap]=useState(false);
   const [rencanaTahap,setRencanaTahap]=useState<Record<string,number>>({});
   const [tahapInputs,setTahapInputs]=useState<Record<string,number>>({});
+  const [tahapRejectInputs,setTahapRejectInputs]=useState<Record<string,number>>({});
   const [jadwalSaved,setJadwalSaved]=useState<RealisasiRow[]>([]);
   const [jadwalFg,setJadwalFg]=useState<RealisasiRow[]>([]);
   const [jadwalTahap,setJadwalTahap]=useState<RealisasiStageRow[]>([]);
@@ -49,12 +50,15 @@ export default function RealisasiProduksi(){
       const data=await getRealisasi(orderId,tanggal,tanggal);
       const rencana=new Map<number,number>();
       for(const r of orderData.schedule.rows){ if(r.tanggal!==tanggal || r.variantId<=0 || r.jumlah<=0) continue; rencana.set(r.variantId,(rencana.get(r.variantId)??0)+r.jumlah); }
-      const head=orderData.schedule.rows.find(r=>r.tanggal===tanggal);
-      setRencanaTahap({ buffing:head?.buffing??0, baseCoat:head?.baseCoat??0, decalSolid:head?.decalSolid??0, decalMotif:head?.decalMotif??0, topCoat:head?.topCoat??0, perakitan:head?.perakitan??0, qc:head?.qc??0 });
+      const rowsTanggal=orderData.schedule.rows.filter(r=>r.tanggal===tanggal);
+      const aggTahap:Record<string,number>={}; for(const k of STAGE_KEYS) aggTahap[k]=rowsTanggal.reduce((n,r)=>n+(r[k]??0),0);
+      setRencanaTahap(aggTahap);
       const saved=new Map<number,RealisasiRow>(data.realisasi.map((x:RealisasiRow)=>[x.variantId,x]));
       const fg=new Map<number,number>(data.finishgood.map((x:RealisasiRow)=>[x.variantId,x.qty]));
       const savedTahap=new Map((data.tahapan??[]).map(x=>[x.stage,x.qty]));
+      const savedTahapReject=new Map((data.tahapan??[]).map(x=>[x.stage,x.reject??0]));
       const nextTahap:Record<string,number>={}; for(const k of STAGE_KEYS) nextTahap[k]=savedTahap.get(k)??0; setTahapInputs(nextTahap);
+      const nextTahapReject:Record<string,number>={}; for(const k of STAGE_KEYS) nextTahapReject[k]=savedTahapReject.get(k)??0; setTahapRejectInputs(nextTahapReject);
       const next:Row[]=[]; const nextInputs:Record<number,number>={}; const nextReject:Record<number,number>={};
       for(const it of orderData.summary.items){
         const vid=it.variantId, rc=rencana.get(vid)??0, sv=saved.get(vid), f=fg.get(vid)??0;
@@ -84,50 +88,86 @@ export default function RealisasiProduksi(){
   },[orderData,rekapAll]);
   const rekapTotals=useMemo(()=>{ let target=0,baik=0,reject=0; for(const r of rekapRows){ target+=r.target; baik+=r.baik; reject+=r.reject; } return {target,baik,reject,pct:target>0?(baik/target)*100:0}; },[rekapRows]);
 
-  const jadwalRows=useMemo(()=>{
+  const jadwalRows=useMemo(():JadwalRow[]=>{
     if(!orderData) return [];
-    const rencana=new Map<string,number>(); const rencanaVar=new Map<string,{variantId:number;label:string;qty:number}>(); const head=new Map<string,typeof orderData.schedule.rows[number]>();
-    for(const r of orderData.schedule.rows){ if(r.tanggal<awal||r.tanggal>akhir) continue; if(!head.has(r.tanggal)) head.set(r.tanggal,r); if(r.variantId<=0||r.jumlah<=0) continue; rencana.set(r.tanggal,(rencana.get(r.tanggal)??0)+r.jumlah); const key=`${r.tanggal}:${r.variantId}`; const cur=rencanaVar.get(key); if(cur) cur.qty+=r.jumlah; else rencanaVar.set(key,{variantId:r.variantId,label:`${r.item} · Size ${r.size}`,qty:r.jumlah}); }
+    const rencana=new Map<string,number>(); const rencanaVar=new Map<string,{variantId:number;label:string;qty:number}>();
+    const schedByDay=new Map<string,typeof orderData.schedule.rows>();
+    for(const r of orderData.schedule.rows){
+      if(r.tanggal<awal||r.tanggal>akhir) continue;
+      let arr=schedByDay.get(r.tanggal); if(!arr){ arr=[]; schedByDay.set(r.tanggal,arr); } arr.push(r);
+      if(r.variantId<=0||r.jumlah<=0) continue;
+      rencana.set(r.tanggal,(rencana.get(r.tanggal)??0)+r.jumlah);
+      const key=`${r.tanggal}:${r.variantId}`; const cur=rencanaVar.get(key);
+      if(cur) cur.qty+=r.jumlah; else rencanaVar.set(key,{variantId:r.variantId,label:`${r.item} · Size ${r.size}`,qty:r.jumlah});
+    }
     const saved=new Map<string,number>(); const savedVar=new Map<string,number>(); for(const x of jadwalSaved){ saved.set(x.tanggal,(saved.get(x.tanggal)??0)+x.qty); savedVar.set(`${x.tanggal}:${x.variantId}`,x.qty); }
     const savedTahap=new Map<string,number>(); for(const x of jadwalTahap) savedTahap.set(`${x.tanggal}:${x.stage}`,x.qty);
     const fgByDay=new Map<string,{total:number;perVariant:Map<number,number>}>();
     for(const x of jadwalFg){ let e=fgByDay.get(x.tanggal); if(!e){ e={total:0,perVariant:new Map()}; fgByDay.set(x.tanggal,e); } e.total+=x.qty; e.perVariant.set(x.variantId,(e.perVariant.get(x.variantId)??0)+x.qty); }
     const varLabel=new Map<number,string>(); for(const it of orderData.summary.items) varLabel.set(it.variantId,`${it.variant.product.nama} · ${it.variant.style.nama} ${it.variant.color.nama} · Size ${it.variant.size.nama}`);
-    return eachDay(awal,akhir).map((t)=>{
+    const buildVariantRows=(t:string):JadwalVariant[]=>{
       const varMap=new Map<number,{label:string;rencana:number;aktual:number}>();
       for(const [k,v] of rencanaVar) if(k.startsWith(`${t}:`)) varMap.set(v.variantId,{label:varLabel.get(v.variantId)??v.label,rencana:v.qty,aktual:0});
       for(const [k,q] of savedVar) if(k.startsWith(`${t}:`)){ const vid=Number(k.slice(t.length+1)); const cur=varMap.get(vid); if(cur) cur.aktual=q; else varMap.set(vid,{label:varLabel.get(vid)??`Variant #${vid}`,rencana:0,aktual:q}); }
-      const fg=fgByDay.get(t); const unfilled=fg?[...fg.perVariant.entries()].filter(([vid,q])=>q>0 && !savedVar.has(`${t}:${vid}`)).map(([variantId,qty])=>({variantId,qty})):[]; const h=head.get(t);
-      return { tanggal:t, hari:hariOf(t), jam:head.get(t)?.jam??0, rencana:rencana.get(t)??0, aktual:saved.get(t)??0, fgTotal:fg?.total??0, unfilled, unfilledTotal:unfilled.reduce((n,u)=>n+u.qty,0), items:[...varMap.entries()].map(([variantId,v])=>({variantId,...v})), stages: STAGE_KEYS.map(k=>({key:k,label:(head.get(t) as any)?.[k]!==undefined ? (head.get(t) as any)[k] : 0, rencana:(h as any)?.[k]??0, aktual:savedTahap.get(`${t}:${k}`)??0})) as any };
+      return [...varMap.entries()].map(([variantId,v])=>({variantId,...v}));
+    };
+    const buildStageRows=(t:string):JadwalStage[]=>{
+      const dayRows=schedByDay.get(t)??[];
+      return STAGE_KEYS.map(k=>({key:k, rencana:dayRows.reduce((n,r)=>n+(r[k]??0),0), aktual:savedTahap.get(`${t}:${k}`)??0}));
+    };
+    const buildFinishGood=(t:string):{fgTotal:number;unfilled:UnfilledItem[];}=>{
+      const fg=fgByDay.get(t);
+      if(!fg) return {fgTotal:0,unfilled:[]};
+      const unfilled=[...fg.perVariant.entries()].filter(([vid,q])=>q>0 && !savedVar.has(`${t}:${vid}`)).map(([variantId,qty]):UnfilledItem=>({variantId,qty})); return {fgTotal:fg.total,unfilled};
+    };
+    return eachDay(awal,akhir).map((t):JadwalRow=>{
+      const items=buildVariantRows(t); const stages=buildStageRows(t); const {fgTotal,unfilled}=buildFinishGood(t);
+      return { tanggal:t, hari:hariOf(t), jam:schedByDay.get(t)?.[0]?.jam??0, rencana:rencana.get(t)??0, aktual:saved.get(t)??0, fgTotal, unfilled, unfilledTotal:unfilled.reduce((n,u)=>n+u.qty,0), items, stages };
     });
   },[orderData,jadwalSaved,jadwalFg,jadwalTahap,awal,akhir]);
 
-  const jadwalTotals=useMemo(()=>{ let rencana=0,aktual=0; for(const d of jadwalRows){ rencana+= (d as any).rencana; aktual+= (d as any).aktual; } return {rencana,aktual}; },[jadwalRows]);
+  const jadwalTotals=useMemo(()=>{ let rencana=0,aktual=0; for(const d of jadwalRows){ rencana+=d.rencana; aktual+=d.aktual; } return {rencana,aktual}; },[jadwalRows]);
   const totals=useMemo(()=>{ let rencana=0,aktual=0; for(const r of rows){ rencana+=r.rencana; aktual+=inputs[r.variantId]??0; } return {rencana,aktual,selisih:aktual-rencana}; },[rows,inputs]);
 
+  const toQty=(v:number|undefined):number=>{ const n=Math.floor(v??0); return Number.isFinite(n)?Math.max(0,n):0; };
   const save=async()=>{
     if(orderId===null) return;
     setSaving(true); setError(null); setNotice(null);
     try{
-      const items=rows.map(r=>({variantId:r.variantId, qty:Math.max(0,Math.floor(inputs[r.variantId]??0)), reject:Math.max(0,Math.floor(rejectInputs[r.variantId]??0))}));
-      const tahapan=STAGE_KEYS.map(stage=>({stage, qty:Math.max(0,Math.floor(tahapInputs[stage]??0))}));
+      // Sanitasi: non-negatif, integer, NaN/Infinity -> 0.
+      // Tidak ada aturan qty+reject<=rencana di backend (saveRealisasi tidak memvalidasi), jadi tidak dipaksakan di sini.
+      const items=rows.map(r=>({variantId:r.variantId, qty:toQty(inputs[r.variantId]), reject:toQty(rejectInputs[r.variantId])}));
+      const tahapan=STAGE_KEYS.map(stage=>({stage, qty:toQty(tahapInputs[stage]), reject:toQty(tahapRejectInputs[stage])}));
       const saved=await saveRealisasi(orderId,tanggal,items,tahapan);
       const map=new Map(saved.items.map(x=>[x.variantId,x]));
       setInputs(p=>{ const n={...p}; for(const r of rows) n[r.variantId]=map.get(r.variantId)?.qty??0; return n; });
       setRejectInputs(p=>{ const n={...p}; for(const r of rows) n[r.variantId]=map.get(r.variantId)?.reject??0; return n; });
       const tmap=new Map(saved.tahapan.map(x=>[x.stage,x.qty]));
       setTahapInputs(p=>{ const n={...p}; for(const k of STAGE_KEYS) n[k]=tmap.get(k)??0; return n; });
+      const trmap=new Map(saved.tahapan.map(x=>[x.stage,x.reject??0]));
+      setTahapRejectInputs(p=>{ const n={...p}; for(const k of STAGE_KEYS) n[k]=trmap.get(k)??0; return n; });
       setNotice(`Tersimpan untuk ${fmtDate(tanggal)}.`);
     }catch(e){ setError(e instanceof Error?e.message:"Gagal menyimpan realisasi."); } finally{ setSaving(false); }
   };
   const gotoInput=(t:string)=>{ setTanggal(t); setTab("input"); };
-  const autofill=async(t:string,items:{variantId:number;qty:number}[])=>{
+  const autofill=async(t:string,items:AutofillItem[])=>{
     if(orderId===null||items.length===0) return;
     setSaving(true); setError(null); setNotice(null);
-    try{ await saveRealisasi(orderId,t,items); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari finishgood (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
+    // saveRealisasi me-replace seluruh baris tanggal tsb, jadi gabungkan realisasi yang sudah ada
+    // agar variant lain yang sudah tersimpan tidak ikut terhapus. Variant yang sudah terealisasi
+    // tidak dikirim ulang dua kali (unfilled sudah memfilternya) -> tidak double counting.
+    try{
+      const have=new Set(jadwalSaved.filter(x=>x.tanggal===t).map(x=>x.variantId));
+      const existing=jadwalSaved.filter(x=>x.tanggal===t).map(x=>({variantId:x.variantId, qty:x.qty, reject:x.reject}));
+      const merged=[...existing, ...items.filter(i=>!have.has(i.variantId)).map(i=>({variantId:i.variantId, qty:i.qty, reject:0}))];
+      await saveRealisasi(orderId,t,merged); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari finishgood (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
   };
   const dayStatus=rows.length===0?{text:"Belum ada jadwal hari ini",cls:"bg-slate-100 text-slate-500"}:statusOf(totals.rencana,totals.aktual);
-  const today=todayKey(); const locked=false;
+  const today=todayKey();
+  // Auto: tanggal sebelum hari ini terkunci. Bisa di-override manual via tombol Kunci/Buka di InputTab.
+  const [lockOverride,setLockOverride]=useState<boolean|null>(null);
+  useEffect(()=>{ setLockOverride(null); },[tanggal]);
+  const locked=lockOverride??tanggal<today;
 
   return (
     <div className="space-y-6">
@@ -141,7 +181,7 @@ export default function RealisasiProduksi(){
       {ordersLoaded && orders.length===0 && !error && <p role="status" className="rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-[#6B7280]">Belum ada plan produksi berstatus AKTIF.</p>}
       {tab==="jadwal" && <JadwalTab jadwalRows={jadwalRows} jadwalTotals={jadwalTotals} awal={awal} akhir={akhir} setAwal={setAwal} setAkhir={setAkhir} loadingOrder={loadingOrder} loadingJadwal={loadingJadwal} expanded={expanded} setExpanded={setExpanded} saving={saving} today={today} statusOf={statusOf} gotoInput={gotoInput} autofill={autofill} />}
       {tab==="rekap" && <RekapTab rekapRows={rekapRows} rekapTotals={rekapTotals} loadingRekap={loadingRekap} loadingOrder={loadingOrder} />}
-      {tab==="input" && <InputTab tanggal={tanggal} setTanggal={setTanggal} rows={rows} inputs={inputs} setInputs={setInputs} rejectInputs={rejectInputs} setRejectInputs={setRejectInputs} rencanaTahap={rencanaTahap} tahapInputs={tahapInputs} setTahapInputs={setTahapInputs} totals={totals} dayStatus={dayStatus} loading={loading} saving={saving} locked={locked} statusOf={statusOf} save={save} />}
+      {tab==="input" && <InputTab tanggal={tanggal} setTanggal={setTanggal} rows={rows} inputs={inputs} setInputs={setInputs} rejectInputs={rejectInputs} setRejectInputs={setRejectInputs} rencanaTahap={rencanaTahap} tahapInputs={tahapInputs} setTahapInputs={setTahapInputs} tahapRejectInputs={tahapRejectInputs} setTahapRejectInputs={setTahapRejectInputs} totals={totals} dayStatus={dayStatus} loading={loading} saving={saving} locked={locked} onToggleLock={()=>setLockOverride(l=>!(l??tanggal<today))} statusOf={statusOf} save={save} />}
     </div>
   );
 }

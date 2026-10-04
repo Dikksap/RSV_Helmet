@@ -2,37 +2,33 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPen, faTrash, faCirclePlus, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
 import {
-  getKaryawan, createKaryawan, updateKaryawan, deleteKaryawan,
-  type Karyawan,
-} from "../../api/karyawan";
-import { getDivisi, type Divisi } from "../../api/divisi";
+  getDivisi, createDivisi, updateDivisi, deleteDivisi,
+  type Divisi,
+} from "../../api/divisi";
 import { Modal } from "../../components/admin/VariantProduk/Modal";
 import { inputCls, labelCls } from "../../components/admin/VariantProduk/constants";
 
 const primaryBtn = "inline-flex items-center justify-center gap-2 rounded-lg bg-[#00A8E8] px-6 py-3 text-[15px] font-medium text-white transition hover:bg-[#0088C0] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none";
 const secondaryBtn = "inline-flex items-center justify-center gap-2 rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-[15px] font-medium text-[#1F2937] hover:bg-[#F5F7FA]";
 
-export default function KelolaKaryawan() {
+export default function KelolaDivisi() {
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState<Karyawan[]>([]);
-  const [divisiList, setDivisiList] = useState<Divisi[]>([]);
-  const [modal, setModal] = useState<{ open: boolean; editing: Karyawan | null; nama: string; jabatan: string; divisiId: number | ""; busy: boolean }>({
-    open: false, editing: null, nama: "", jabatan: "", divisiId: "", busy: false,
+  const [rows, setRows] = useState<Divisi[]>([]);
+  const [modal, setModal] = useState<{ open: boolean; editing: Divisi | null; nama: string; busy: boolean }>({
+    open: false, editing: null, nama: "", busy: false,
   });
 
   const flash = (msg: string) => { setNotice(msg); window.setTimeout(() => setNotice(null), 3000); };
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [k, d] = await Promise.all([getKaryawan(), getDivisi().catch(() => [] as Divisi[])]);
-      setRows(k);
-      setDivisiList(d);
+      setRows(await getDivisi());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal memuat data karyawan.");
+      setError(e instanceof Error ? e.message : "Gagal memuat data divisi.");
     } finally {
       setLoading(false);
     }
@@ -42,22 +38,19 @@ export default function KelolaKaryawan() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows
-      .filter((r) => !q || r.nama.toLowerCase().includes(q) || r.jabatan.toLowerCase().includes(q) || (r.divisi?.nama ?? "").toLowerCase().includes(q))
+      .filter((r) => !q || r.nama.toLowerCase().includes(q))
       .sort((a, b) => a.nama.localeCompare(b.nama));
   }, [rows, search]);
 
   const submit = async () => {
     const nama = modal.nama.trim();
-    const jabatan = modal.jabatan.trim();
     if (!nama) return window.alert("Field 'nama' wajib diisi");
-    if (!jabatan) return window.alert("Field 'jabatan' wajib diisi");
-    const divisiId = modal.divisiId === "" ? null : modal.divisiId;
     setModal((m) => ({ ...m, busy: true }));
     try {
-      if (modal.editing) await updateKaryawan(modal.editing.id, { nama, jabatan, divisiId });
-      else await createKaryawan({ nama, jabatan, divisiId });
-      flash(modal.editing ? "Karyawan diperbarui." : "Karyawan ditambahkan.");
-      setModal({ open: false, editing: null, nama: "", jabatan: "", divisiId: "", busy: false });
+      if (modal.editing) await updateDivisi(modal.editing.id, { nama });
+      else await createDivisi({ nama });
+      flash(modal.editing ? "Divisi diperbarui." : "Divisi ditambahkan.");
+      setModal({ open: false, editing: null, nama: "", busy: false });
       await load();
     } catch (e) {
       setModal((m) => ({ ...m, busy: false }));
@@ -65,35 +58,36 @@ export default function KelolaKaryawan() {
     }
   };
 
-  const remove = async (row: Karyawan) => {
-    if (!window.confirm(`Hapus karyawan "${row.nama}"?`)) return;
+  const remove = async (row: Divisi) => {
+    const count = row._count?.karyawan ?? 0;
+    if (!window.confirm(`Hapus divisi "${row.nama}"?${count > 0 ? ` (${count} karyawan akan kehilangan divisi)` : ""}`)) return;
     try {
-      await deleteKaryawan(row.id);
-      flash("Karyawan dihapus.");
+      await deleteDivisi(row.id);
+      flash("Divisi dihapus.");
       await load();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Gagal hapus.");
     }
   };
 
-  const openAdd = () => setModal({ open: true, editing: null, nama: "", jabatan: "", divisiId: "", busy: false });
-  const openEdit = (r: Karyawan) => setModal({ open: true, editing: r, nama: r.nama, jabatan: r.jabatan, divisiId: r.divisi?.id ?? r.divisiId ?? "", busy: false });
+  const openAdd = () => setModal({ open: true, editing: null, nama: "", busy: false });
+  const openEdit = (r: Divisi) => setModal({ open: true, editing: r, nama: r.nama, busy: false });
 
   return (
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div className="max-w-2xl">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Karyawan</p>
-          <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Kelola Karyawan</h1>
-          <p className="mt-2 text-base text-[#6B7280]">Data master karyawan: nama, jabatan, dan divisi.</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Divisi</p>
+          <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Kelola Divisi</h1>
+          <p className="mt-2 text-base text-[#6B7280]">Data master divisi lini produksi: dipakai pengelompokan karyawan dan SPK.</p>
         </div>
         <button type="button" onClick={openAdd} className={primaryBtn}>
-          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah Karyawan
+          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah Divisi
         </button>
       </header>
 
       <div aria-live="polite" className="space-y-3">
-        {loading && <p className="animate-pulse text-[15px] text-[#6B7280]">Memuat data karyawan...</p>}
+        {loading && <p className="animate-pulse text-[15px] text-[#6B7280]">Memuat data divisi...</p>}
         {error && <p role="alert" className="rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-[#EF4444]">{error}</p>}
         {notice && <p role="status" className="rounded-lg border border-[#10B981]/30 bg-[#10B981]/10 px-4 py-3 text-[#1F2937]">{notice}</p>}
       </div>
@@ -102,10 +96,10 @@ export default function KelolaKaryawan() {
         <main className="space-y-4">
           <section className="rounded-xl bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
             <div className="w-full lg:max-w-sm">
-              <label htmlFor="karyawan-search" className="mb-1 block text-sm font-medium text-[#1F2937]">Cari karyawan</label>
+              <label htmlFor="divisi-search" className="mb-1 block text-sm font-medium text-[#1F2937]">Cari divisi</label>
               <div className="relative">
                 <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
-                <input id="karyawan-search" type="search" className={`${inputCls} pl-9`} placeholder="ketik nama / jabatan / divisi..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <input id="divisi-search" type="search" className={`${inputCls} pl-9`} placeholder="ketik nama divisi..." value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
             </div>
             <p className="mt-3 text-[13px] text-[#6B7280]">{filtered.length}/{rows.length} tampil</p>
@@ -118,20 +112,18 @@ export default function KelolaKaryawan() {
                   <tr>
                     <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">ID</th>
                     <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Nama</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Jabatan</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Divisi</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider">Karyawan</th>
                     <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={5} className="px-6 py-8 text-center italic text-[#6B7280]">Belum ada karyawan.</td></tr>
+                    <tr><td colSpan={4} className="px-6 py-8 text-center italic text-[#6B7280]">Belum ada divisi.</td></tr>
                   ) : filtered.map((r) => (
                     <tr key={r.id} className="text-[15px] hover:bg-[#F5F7FA]">
                       <td className="px-6 py-4 font-mono text-sm text-[#6B7280]">{r.id}</td>
                       <td className="px-6 py-4 font-medium text-[#1F2937]">{r.nama}</td>
-                      <td className="px-6 py-4 text-[#6B7280]">{r.jabatan}</td>
-                      <td className="px-6 py-4 text-[#6B7280]">{r.divisi?.nama ?? "—"}</td>
+                      <td className="px-6 py-4 text-right tabular-nums text-[#6B7280]">{r._count?.karyawan ?? 0}</td>
                       <td className="px-6 py-4">
                         <div className="flex justify-end gap-1">
                           <button type="button" aria-label={`Edit ${r.nama}`} onClick={() => openEdit(r)} className="rounded-lg p-2 text-[#1E3A5F] hover:bg-[#1E3A5F]/5"><FontAwesomeIcon icon={faPen} className="h-4 w-4" /></button>
@@ -148,19 +140,12 @@ export default function KelolaKaryawan() {
       )}
 
       {modal.open && (
-        <Modal title={`${modal.editing ? "Edit" : "Tambah"} Karyawan`} onClose={() => setModal({ open: false, editing: null, nama: "", jabatan: "", divisiId: "", busy: false })}>
+        <Modal title={`${modal.editing ? "Edit" : "Tambah"} Divisi`} onClose={() => setModal({ open: false, editing: null, nama: "", busy: false })}>
           <div className="space-y-4">
-            <label className={labelCls}><span>Nama *</span><input className={inputCls} placeholder="cth: Budi Santoso" value={modal.nama} onChange={(e) => setModal((m) => ({ ...m, nama: e.target.value }))} /></label>
-            <label className={labelCls}><span>Jabatan *</span><input className={inputCls} placeholder="cth: Operator" value={modal.jabatan} onChange={(e) => setModal((m) => ({ ...m, jabatan: e.target.value }))} /></label>
-            <label className={labelCls}><span>Divisi</span>
-              <select className={inputCls} value={modal.divisiId} onChange={(e) => setModal((m) => ({ ...m, divisiId: e.target.value === "" ? "" : Number(e.target.value) }))}>
-                <option value="">— Tanpa divisi —</option>
-                {divisiList.map((d) => (<option key={d.id} value={d.id}>{d.nama}</option>))}
-              </select>
-            </label>
+            <label className={labelCls}><span>Nama *</span><input className={inputCls} placeholder="cth: Buffing" value={modal.nama} onChange={(e) => setModal((m) => ({ ...m, nama: e.target.value }))} /></label>
             <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => setModal({ open: false, editing: null, nama: "", jabatan: "", divisiId: "", busy: false })} className={secondaryBtn}>Batal</button>
-              <button type="button" disabled={modal.busy || !modal.nama.trim() || !modal.jabatan.trim()} onClick={() => void submit()} className={primaryBtn}>{modal.busy ? "Menyimpan..." : modal.editing ? "Simpan" : "Tambah"}</button>
+              <button type="button" onClick={() => setModal({ open: false, editing: null, nama: "", busy: false })} className={secondaryBtn}>Batal</button>
+              <button type="button" disabled={modal.busy || !modal.nama.trim()} onClick={() => void submit()} className={primaryBtn}>{modal.busy ? "Menyimpan..." : modal.editing ? "Simpan" : "Tambah"}</button>
             </div>
           </div>
         </Modal>

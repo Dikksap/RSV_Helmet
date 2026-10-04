@@ -2,14 +2,13 @@ import { clearAuth } from "./auth";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
-export interface Karyawan {
+export interface Divisi {
   id: number;
   nama: string;
-  jabatan: string;
-  divisiId: number | null;
-  divisi?: { id: number; nama: string } | null;
   createdAt: string;
   updatedAt: string;
+  _count?: { karyawan: number };
+  karyawan?: { id: number; nama: string; jabatan: string }[];
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -42,11 +41,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-export const getKaryawan = () => request<Karyawan[]>("/karyawan");
-export const getKaryawanById = (id: number) => request<Karyawan>(`/karyawan/${id}`);
-export const createKaryawan = (body: { nama: string; jabatan: string; divisiId?: number | null }) =>
-  request<Karyawan>("/karyawan", { method: "POST", body: JSON.stringify(body) });
-export const updateKaryawan = (id: number, body: { nama: string; jabatan: string; divisiId?: number | null }) =>
-  request<Karyawan>(`/karyawan/${id}`, { method: "PUT", body: JSON.stringify(body) });
-export const deleteKaryawan = (id: number) =>
-  request<{ message: string }>(`/karyawan/${id}`, { method: "DELETE" });
+export const getDivisi = () => request<Divisi[]>("/divisi");
+export const getDivisiById = (id: number) => request<Divisi>(`/divisi/${id}`);
+export const createDivisi = (body: { nama: string }) =>
+  request<Divisi>("/divisi", { method: "POST", body: JSON.stringify(body) });
+export const updateDivisi = (id: number, body: { nama: string }) =>
+  request<Divisi>(`/divisi/${id}`, { method: "PUT", body: JSON.stringify(body) });
+export const deleteDivisi = (id: number) =>
+  request<{ message: string }>(`/divisi/${id}`, { method: "DELETE" });

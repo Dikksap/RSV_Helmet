@@ -8,15 +8,32 @@ import {
   type ScheduleStageTake,
 } from "../../api/productionOrders";
 import { WHITE_BATOK } from "../../components/admin/PlanProduction/utils";
+import { getKaryawan, type Karyawan } from "../../api/karyawan";
+
+// Jabatan → field SPK. Cocok substring case-insensitive pada field jabatan.
+const hasJabatan = (k: Karyawan, kw: string) => (k.jabatan ?? "").toLowerCase().includes(kw);
+const firstByJabatan = (rows: Karyawan[], kw: string) => rows.find((k) => hasJabatan(k, kw))?.nama ?? "";
+
+// Karyawan milik divisi SPK yang sedang dipilih.
+// SPK "Decal" mencakup divisi "Decal Solid" dan "Decal Motif".
+const divisiMatch = (namaDivisiKaryawan: string | null | undefined, divisiSpk: string) => {
+  const a = (namaDivisiKaryawan ?? "").trim().toLowerCase();
+  const b = divisiSpk.trim().toLowerCase();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (b === "decal") return a.startsWith("decal");
+  return false;
+};
 
 const DIVISI = ["Buffing", "Base Coat", "Decal", "Top Coat", "Perakitan", "QC"] as const;
 
-// Stage backend per divisi SPK. Decal = gabungan decalSolid + decalMotif.
+// Stage backend per divisi SPK. Decal & Top Coat = gabungan decalSolid + decalMotif
+// (Top Coat mengerjakan unit yang sama dengan Decal → nama & target identik).
 const DIVISI_STAGES: Record<string, ScheduleStageTake["stage"][]> = {
   Buffing: ["buffing"],
   "Base Coat": ["baseCoat"],
   Decal: ["decalSolid", "decalMotif"],
-  "Top Coat": ["topCoat"],
+  "Top Coat": ["decalSolid", "decalMotif"],
   Perakitan: ["perakitan"],
   QC: ["qc"],
 };
@@ -48,13 +65,6 @@ const fmtTanggal = (iso: string) => {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-};
-
-const hariOf = (iso: string) => {
-  if (!iso) return "";
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("id-ID", { weekday: "long" });
 };
 
 interface AutoCache {
@@ -119,8 +129,8 @@ function buildAutoRows(
       warna = batok;
       size = "";
       key = batok;
-    } else if (div === "Decal") {
-      // Decal: Nama = Style + Warna (label jadwal sudah "Style Warna").
+    } else if (div === "Decal" || div === "Top Coat") {
+      // Decal & Top Coat: Nama = Style + Warna (label jadwal sudah "Style Warna").
       const label = labelByVariant.get(variantId) ?? "-";
       const vi = variantInfo.get(variantId);
       model = vi ? `${vi.style} ${vi.warna}` : label;
@@ -169,7 +179,7 @@ export default function SpkProduksi() {
   const [revisi, setRevisi] = useState("00");
   const [periode, setPeriode] = useState("");
   const [orderNo, setOrderNo] = useState("");
-  const [shift, setShift] = useState("Shift 1 (07:00 - 15:00)");
+  const [shift, setShift] = useState("Shift 1 (08:00 - 16:00)");
   const [lini, setLini] = useState<string>(DIVISI[0]);
   const [opr, setOpr] = useState("4 Orang");
   const [pic, setPic] = useState("DIKA H.S");
@@ -180,9 +190,9 @@ export default function SpkProduksi() {
 
   const isSimple = SIMPLIFIED_DIVISI.has(divisi);
   // Buffing/Base Coat proses batok → kolom Warna dihapus (Nama sudah "Batok Putih/Hitam").
-  // Decal sama: Nama sudah "Style Warna".
+  // Decal & Top Coat sama: Nama sudah "Style Warna".
   const isBatok = BATOK_DIVISI.has(divisi);
-  const hideWarna = isBatok || divisi === "Decal";
+  const hideWarna = isBatok || divisi === "Decal" || divisi === "Top Coat";
 
   const paperRef = useRef<HTMLDivElement>(null);
 
@@ -237,6 +247,25 @@ export default function SpkProduksi() {
       .finally(() => setAutoLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOrderId, autoTanggal]);
+
+  // Isi PIC / tanda tangan / jumlah operator dari karyawan di divisi terpilih.
+  // Jalan ulang setiap divisi diganti; divisi tanpa karyawan → field kosong.
+  // Input tetap bisa diubah manual, tertimpa lagi saat divisi diganti.
+  const [karyawanRows, setKaryawanRows] = useState<Karyawan[]>([]);
+  useEffect(() => {
+    getKaryawan()
+      .then((rows) => setKaryawanRows(rows))
+      .catch(() => { /* default manual tetap dipakai */ });
+  }, []);
+  useEffect(() => {
+    const pool = karyawanRows.filter((k) => divisiMatch(k.divisi?.nama, divisi));
+    setPic(firstByJabatan(pool, "pic"));
+    setSig1(firstByJabatan(pool, "admin"));
+    setSig2(firstByJabatan(pool, "kepala regu"));
+    setSig3(firstByJabatan(pool, "manager"));
+    const nOpr = pool.filter((k) => hasJabatan(k, "operator")).length;
+    setOpr(nOpr > 0 ? `${nOpr} Orang` : "");
+  }, [karyawanRows, divisi]);
 
   const changeDivisi = (v: string) => {
     setDivisi(v);
@@ -602,7 +631,7 @@ export default function SpkProduksi() {
                     <div className="flex gap-1">
                       <span className="min-w-[110px] font-bold">Hari / Tanggal</span>
                       <span className="font-bold">:</span>
-                      <span className="font-mono font-bold">{`${hariOf(tanggal) ? `${hariOf(tanggal)}, ` : ""}${fmtTanggal(tanggal)}`}</span>
+                      <span className="font-mono font-bold">{fmtTanggal(tanggal)}</span>
                     </div>
                     <div className="flex gap-1">
                       <span className="min-w-[110px] font-bold">Shift</span>
@@ -715,7 +744,7 @@ export default function SpkProduksi() {
                   <ul className="m-0 list-disc pl-4">
                     <li>Wajib gunakan APD lengkap (masker, sarung tangan, safety shoes, kacamata pelindung)</li>
                     <li>QC mandiri per 20 unit pada shell, visor, dan EPS</li>
-                    <li>Lapor Supervisor jika ada malfungsi mesin atau cacat material berulang</li>
+                    <li>Lapor Manager Produksi jika ada malfungsi mesin atau cacat material berulang</li>
                     <li>Isi formulir dengan hasil aktual, serahkan ke Admin di akhir shift</li>
                     <li>Terapkan 5R (Ringkas, Rapi, Resik, Rawat, Rajin) sebelum serah terima shift</li>
                   </ul>
@@ -723,7 +752,7 @@ export default function SpkProduksi() {
 
                 <div className="mt-3 flex justify-around">
                   {[
-                    { role: "Dibuat Oleh,", name: sig1, title: "Supervisor Produksi" },
+                    { role: "Dibuat Oleh,", name: sig1, title: "Admin Staff" },
                     { role: "Diketahui Oleh,", name: sig2, title: "Kepala Regu" },
                     { role: "Disetujui Oleh,", name: sig3, title: "Manager Produksi" },
                   ].map((s) => (
@@ -736,9 +765,6 @@ export default function SpkProduksi() {
                   ))}
                 </div>
 
-                <p className="mt-2 text-center text-[6pt] text-[#6B7280]">
-                  SPK {isAuto ? "otomatis" : "manual"} · Divisi {divisi} · {rows.length} baris · total target {totals.toLocaleString("id-ID")} pcs
-                </p>
                 {decalTotals && (
                   <p className="mt-1 text-center text-[7pt] font-semibold text-[#1E3A5F]">
                     Decal Solid: {decalTotals.solid.toLocaleString("id-ID")} pcs · Decal Motif: {decalTotals.motif.toLocaleString("id-ID")} pcs

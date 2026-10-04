@@ -1,10 +1,10 @@
 import { Fragment } from "react";
 
 import { REALISASI_STAGE_LABEL } from "../../../api/productionOrders";
-import { STAGE_KEYS } from "./utils";
+import { STAGE_KEYS, type AutofillItem, type JadwalRow, type JadwalStage, type JadwalVariant } from "./utils";
 
 interface Props {
-  jadwalRows: any[];
+  jadwalRows: JadwalRow[];
   jadwalTotals: { rencana: number; aktual: number };
 
   awal: string;
@@ -29,7 +29,7 @@ interface Props {
   ) => { text: string; cls: string };
 
   gotoInput: (t: string) => void;
-  autofill: (t: string, items: any[]) => Promise<void>;
+  autofill: (t: string, items: AutofillItem[]) => Promise<void>;
 }
 
 export default function JadwalTab({
@@ -65,6 +65,19 @@ export default function JadwalTab({
       : 0;
 
   const totalStages = STAGE_KEYS.length;
+
+  const stageTotals: { key: (typeof STAGE_KEYS)[number]; rencana: number; aktual: number }[] =
+    STAGE_KEYS.map((k) => ({
+      key: k,
+      rencana: jadwalRows.reduce(
+        (n, d) => n + (d.stages.find((s) => s.key === k)?.rencana ?? 0),
+        0
+      ),
+      aktual: jadwalRows.reduce(
+        (n, d) => n + (d.stages.find((s) => s.key === k)?.aktual ?? 0),
+        0
+      ),
+    }));
 
   return (
     <div className="space-y-4">
@@ -362,7 +375,7 @@ export default function JadwalTab({
                   TABLE BODY
               ================================================== */}
               <tbody>
-                {jadwalRows.map((d: any) => {
+                {jadwalRows.map((d: JadwalRow) => {
                   const st = statusOf(
                     d.rencana,
                     d.aktual
@@ -464,7 +477,7 @@ export default function JadwalTab({
                         </td>
 
                         {/* Stages */}
-                        {d.stages.map((s: any) => (
+                        {d.stages.map((s: JadwalStage) => (
                           <td
                             key={s.key}
                             className="border-l border-slate-100 px-4 py-3"
@@ -491,7 +504,7 @@ export default function JadwalTab({
                                       0,
                                       3
                                     )
-                                ).map((v: any) => (
+                                ).map((v: JadwalVariant) => (
                                   <li
                                     key={v.variantId}
                                     className="flex items-center justify-between gap-3"
@@ -646,13 +659,24 @@ export default function JadwalTab({
                     </span>
                   </td>
 
-                  <td
-                    colSpan={totalStages}
-                    className="px-4 py-3 text-[10px] text-slate-400"
-                  >
-                    Ringkasan tahapan tersedia pada
-                    masing-masing kolom
-                  </td>
+                  {stageTotals.map((s) => (
+                    <td
+                      key={s.key}
+                      className="border-l border-slate-200 px-4 py-3 text-right tabular-nums"
+                    >
+                      <div className="text-[10px] text-slate-400">
+                        {s.rencana.toLocaleString(
+                          "id-ID"
+                        )}
+                      </div>
+
+                      <div className="mt-0.5 text-[13px] font-bold text-slate-800">
+                        {s.aktual.toLocaleString(
+                          "id-ID"
+                        )}
+                      </div>
+                    </td>
+                  ))}
 
                   <td className="border-l border-slate-200 px-4 py-3 text-right text-[10px] text-slate-400">
                     Total item

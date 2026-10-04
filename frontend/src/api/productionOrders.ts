@@ -232,6 +232,7 @@ export interface RealisasiStageRow {
   tanggal: string;
   stage: string;
   qty: number;
+  reject: number;
 }
 
 export interface RealisasiData {
@@ -260,7 +261,7 @@ export async function saveRealisasi(
   orderId: number,
   tanggal: string,
   items: { variantId: number; qty: number; reject?: number }[],
-  tahapan?: { stage: string; qty: number }[],
+  tahapan?: { stage: string; qty: number; reject?: number }[],
 ): Promise<{ items: RealisasiRow[]; tahapan: RealisasiStageRow[] }> {
   return mutate<{ items: RealisasiRow[]; tahapan: RealisasiStageRow[] }>(
     `/production-orders/${orderId}/realisasi`,

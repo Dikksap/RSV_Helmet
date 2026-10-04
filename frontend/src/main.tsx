@@ -24,6 +24,7 @@ import PrintManager from "./pages/public/PrintManager.tsx";
 import ScanQr from "./pages/public/ScanQr.tsx";
 import StokProduksi from "./pages/admin/StokProduksi.tsx";
 import KelolaKaryawan from "./pages/admin/KelolaKaryawan.tsx";
+import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
 
@@ -50,6 +51,7 @@ const routes = (
       <Route path="/admin/barang" element={<DaftarBarang />} />
       <Route path="/admin/stok-produksi" element={<StokProduksi />} />
       <Route path="/admin/karyawan" element={<KelolaKaryawan />} />
+      <Route path="/admin/divisi" element={<KelolaDivisi />} />
       <Route path="/admin/variant-produk" element={<Navigate to="/admin/pengaturan/variant-produk" replace />} />
       <Route path="/admin/master-data" element={<Navigate to="/admin/pengaturan/master-data" replace />} />
       <Route path="/admin/pengaturan/*" element={<PengaturanBarangProduksi />} />

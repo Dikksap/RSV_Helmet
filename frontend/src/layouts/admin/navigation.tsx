@@ -10,6 +10,7 @@ import {
   faGear,
   faHouse,
   faPlug,
+  faSitemap,
   faTags,
   faUsers,
 } from "@fortawesome/free-solid-svg-icons";
@@ -87,6 +88,12 @@ export const KARYAWAN: typeof MANAJEMEN = {
       to: "/admin/karyawan",
       label: "Kelola Karyawan",
       icon: faUsers,
+      end: true,
+    },
+    {
+      to: "/admin/divisi",
+      label: "Kelola Divisi",
+      icon: faSitemap,
       end: true,
     },
   ],

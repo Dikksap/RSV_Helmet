@@ -1,6 +1,39 @@
-import { REALISASI_STAGE_LABEL } from "../../../api/productionOrders";
+import { REALISASI_STAGE_LABEL, type ScheduleStageKey } from "../../../api/productionOrders";
 
-export const STAGE_KEYS = Object.keys(REALISASI_STAGE_LABEL);
+export const STAGE_KEYS = Object.keys(REALISASI_STAGE_LABEL) as ScheduleStageKey[];
+
+export type JadwalStage = {
+  key: ScheduleStageKey;
+  rencana: number;
+  aktual: number;
+};
+
+export type JadwalVariant = {
+  variantId: number;
+  label: string;
+  rencana: number;
+  aktual: number;
+};
+
+export type UnfilledItem = {
+  variantId: number;
+  qty: number;
+};
+
+export type AutofillItem = UnfilledItem;
+
+export type JadwalRow = {
+  tanggal: string;
+  hari: string;
+  jam: number;
+  rencana: number;
+  aktual: number;
+  fgTotal: number;
+  unfilled: UnfilledItem[];
+  unfilledTotal: number;
+  items: JadwalVariant[];
+  stages: JadwalStage[];
+};
 export const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 export function todayKey(): string {

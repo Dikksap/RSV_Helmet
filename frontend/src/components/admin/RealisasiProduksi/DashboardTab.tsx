@@ -70,7 +70,7 @@ export default function DashboardTab({ orderData, orders, orderId, dashRows, das
   const divisiProgress = useMemo(() => {
     if (!orderData) return [] as { divisi: string; targetHari: number; rak: string; aktual: number; totalRencana: number; hariSelesai: number; totalHari: number; progress: number; status: string }[];
     const rencanaByDayStage = new Map<string, Map<string, number>>();
-    for (const r of orderData.schedule.rows) { if (!rencanaByDayStage.has(r.tanggal)) rencanaByDayStage.set(r.tanggal, new Map()); const m = rencanaByDayStage.get(r.tanggal)!; for (const k of STAGE_KEYS) m.set(k, (r as any)[k] ?? 0); }
+    for (const r of orderData.schedule.rows) { if (!rencanaByDayStage.has(r.tanggal)) rencanaByDayStage.set(r.tanggal, new Map()); const m = rencanaByDayStage.get(r.tanggal)!; for (const k of STAGE_KEYS) m.set(k, r[k] ?? 0); }
     const aktualByDayStage = new Map<string, Map<string, number>>();
     for (const t of dashTahap) { if (!aktualByDayStage.has(t.tanggal)) aktualByDayStage.set(t.tanggal, new Map()); aktualByDayStage.get(t.tanggal)!.set(t.stage, t.qty); }
     const mode = (vals: number[]) => { if (vals.length===0) return 0; const freq = new Map<number,number>(); for (const v of vals) freq.set(v,(freq.get(v)??0)+1); return [...freq.entries()].sort((a,b)=> b[1]-a[1] || b[0]-a[0])[0][0]; };
