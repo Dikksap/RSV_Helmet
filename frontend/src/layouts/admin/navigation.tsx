@@ -9,6 +9,7 @@ import {
   faFileLines,
   faGear,
   faHouse,
+  faLayerGroup,
   faPlug,
   faSitemap,
   faTags,
@@ -63,6 +64,12 @@ export const MANAJEMEN = {
       to: "/admin/spk",
       label: "SPK Produksi",
       icon: faFileLines,
+      end: true,
+    },
+    {
+      to: "/admin/batch",
+      label: "Kelola Batch",
+      icon: faLayerGroup,
       end: true,
     },
     {

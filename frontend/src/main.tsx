@@ -25,6 +25,7 @@ import ScanQr from "./pages/public/ScanQr.tsx";
 import StokProduksi from "./pages/admin/StokProduksi.tsx";
 import KelolaKaryawan from "./pages/admin/KelolaKaryawan.tsx";
 import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
+import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
 
@@ -52,6 +53,7 @@ const routes = (
       <Route path="/admin/stok-produksi" element={<StokProduksi />} />
       <Route path="/admin/karyawan" element={<KelolaKaryawan />} />
       <Route path="/admin/divisi" element={<KelolaDivisi />} />
+      <Route path="/admin/batch" element={<KelolaBatch />} />
       <Route path="/admin/variant-produk" element={<Navigate to="/admin/pengaturan/variant-produk" replace />} />
       <Route path="/admin/master-data" element={<Navigate to="/admin/pengaturan/master-data" replace />} />
       <Route path="/admin/pengaturan/*" element={<PengaturanBarangProduksi />} />
