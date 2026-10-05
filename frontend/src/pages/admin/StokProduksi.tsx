@@ -46,11 +46,25 @@ function kondisiLabel(barang: BarangInGroup): "R" | "FG" {
   return barang.pernahRetur ? "R" : "FG";
 }
 
-function summarizeEntries(barang: BarangInGroup[]): [string, number, "R" | "FG"][] {
+function labelEntries(barang: BarangInGroup[]): { produk: string; size: string; n: number }[] {
+  const m = new Map<string, { produk: string; size: string; n: number }>();
+  for (const b of barang) {
+    const v = b.variant;
+    if (!v?.product || !v?.color || !v?.size) continue;
+    const produk = `${(v.product.prefix ?? v.product.nama).toUpperCase()} ${v.color.nama}`;
+    const size = v.size.nama;
+    const k = `${produk} ${size} ${kondisiLabel(b)}`;
+    const prev = m.get(k);
+    m.set(k, { produk, size, n: (prev?.n ?? 0) + 1 });
+  }
+  return [...m.values()];
+}
+
+function summarizeEntries(barang: BarangInGroup[], nameFn: (b: BarangInGroup) => string = variantName): [string, number, "R" | "FG"][] {
   const m = new Map<string, { name: string; n: number; label: "R" | "FG" }>();
   for (const b of barang) {
     const label = kondisiLabel(b);
-    const name = variantName(b);
+    const name = nameFn(b);
     const k = `${name} ${label}`;
     const prev = m.get(k);
     m.set(k, { name, n: (prev?.n ?? 0) + 1, label });
@@ -349,7 +363,7 @@ function StokProduksi() {
     return getBarangInGroup(group.id);
   };
 
-  const printGroups = async (targets: BarangGroup[]) => {
+  const printGroups = async (targets: BarangGroup[], mode: "label" | "biasa" = "biasa") => {
     if (targets.length === 0) return;
     setIsPrinting(true);
     try {
@@ -362,26 +376,97 @@ function StokProduksi() {
         toast("Popup diblokir, izinkan popup untuk print", "error");
         return;
       }
+      if (mode === "biasa") {
+        if (resolved.length === 1) {
+          const { group, items } = resolved[0]!;
+          const entries = summarizeEntries(items);
+          const total = items.length || group._count.barang;
+          const body = entries.length === 0
+            ? `<p>Kosong</p>`
+            : `<table><tr><th>Isi</th><th>Qty</th><th>R/FG</th></tr>` +
+              entries.map(([k, n, label]) => `<tr><td>${escapeHtml(k)}</td><td>x ${n}</td><td>${label}</td></tr>`).join("") +
+              `</table><p class="total">Total: ${total} pcs</p>`;
+          w.document.write(
+            `<html><head><title>${escapeHtml(group.nama)}</title>` +
+              `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
+              `.nama{font-size:42px;font-weight:800;margin:0}` +
+              `.sub{font-size:14px;color:#555;margin:4px 0 16px}` +
+              `table{width:100%;border-collapse:collapse;margin-top:8px}` +
+              `td,th{border:1px solid #333;padding:8px;font-size:18px;text-align:left}` +
+              `.total{font-size:20px;font-weight:700;margin-top:12px}` +
+              `@media print{button{display:none}}</style></head><body>` +
+              `<p class="nama">${escapeHtml(group.nama)}</p>` +
+              `<p class="sub">${total}/${DUS_CAPACITY} barang &middot; ${escapeHtml(formatDate(group.updatedAt))}</p>` +
+              body +
+              `<script>window.onload=()=>{window.print()}</script>` +
+              `</body></html>`,
+          );
+          w.document.close();
+          return;
+        }
+        const biasa = resolved.filter((r) => !isDusPengganti(r.group));
+        const pengganti = resolved.filter((r) => isDusPengganti(r.group));
+        const sectionRows = (list: typeof resolved) =>
+          list
+            .map(({ group, items }) => {
+              const entries = summarizeEntries(items);
+              const total = items.length || group._count.barang;
+              const isi = entries.length === 0
+                ? `Kosong`
+                : entries.map(([k, n, label]) => `${escapeHtml(k)} x ${n} ${label}`).join("<br>");
+              return `<tr><td class="dus">${escapeHtml(group.nama)}</td><td>${isi}</td><td class="num">${total}</td></tr>`;
+            })
+            .join("");
+        const sectionSubtotal = (list: typeof resolved) =>
+          list.reduce((a, r) => a + (r.items.length || r.group._count.barang), 0);
+        const sections = [
+          biasa.length > 0 ? `<h2>Dus (${biasa.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${sectionRows(biasa)}</table><p class="total">Total: ${sectionSubtotal(biasa)} pcs</p>` : "",
+          pengganti.length > 0 ? `<h2 class="${biasa.length > 0 ? "break" : ""}">Dus Pengganti (${pengganti.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${sectionRows(pengganti)}</table><p class="total">Total: ${sectionSubtotal(pengganti)} pcs</p>` : "",
+        ].filter(Boolean).join("");
+        w.document.write(
+          `<html><head><title>Rekap ${targets.length} Dus</title>` +
+            `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
+              `h1{font-size:22px;margin:0 0 4px}` +
+              `h2{font-size:17px;margin:18px 0 8px}` +
+              `.break{break-before:page;page-break-before:always}` +
+              `.sub{font-size:13px;color:#555;margin:0 0 12px}` +
+              `table{width:100%;border-collapse:collapse}` +
+              `td,th{border:1px solid #333;padding:6px 8px;font-size:14px;text-align:left;vertical-align:top}` +
+              `.dus{white-space:nowrap;font-weight:700}` +
+              `.num{text-align:center;font-weight:700}` +
+              `.total{font-size:15px;font-weight:700;margin-top:10px}` +
+              `@media print{button{display:none}}</style></head><body>` +
+              `<h1>Rekap ${targets.length} Dus</h1>` +
+              `<p class="sub">${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }))}</p>` +
+              sections +
+            `<script>window.onload=()=>{window.print()}</script>` +
+            `</body></html>`,
+        );
+        w.document.close();
+        return;
+      }
       if (resolved.length === 1) {
         const { group, items } = resolved[0]!;
-        const entries = summarizeEntries(items);
-        const total = items.length || group._count.barang;
+        const entries = labelEntries(items);
         const body = entries.length === 0
-          ? `<p>Kosong</p>`
-          : `<table><tr><th>Isi</th><th>Qty</th><th>R/FG</th></tr>` +
-            entries.map(([k, n, label]) => `<tr><td>${escapeHtml(k)}</td><td>x ${n}</td><td>${label}</td></tr>`).join("") +
-            `</table><p class="total">Total: ${total} pcs</p>`;
+          ? `<p class="isi">Kosong</p>`
+          : `<table class="isi">` +
+            entries.map((e) => `<tr><td class="item">${escapeHtml(e.produk)}</td><td class="size">${escapeHtml(e.size)}</td><td class="qty">x ${e.n}</td></tr>`).join("") +
+            `</table>`;
         w.document.write(
           `<html><head><title>${escapeHtml(group.nama)}</title>` +
-            `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
-            `.nama{font-size:42px;font-weight:800;margin:0}` +
-            `.sub{font-size:14px;color:#555;margin:4px 0 16px}` +
-            `table{width:100%;border-collapse:collapse;margin-top:8px}` +
-            `td,th{border:1px solid #333;padding:8px;font-size:18px;text-align:left}` +
-            `.total{font-size:20px;font-weight:700;margin-top:12px}` +
+            `<style>@page{size:100mm 75mm;margin:0}` +
+            `html,body{margin:0}` +
+            `body{font-family:Arial,sans-serif;padding:6mm;color:#111;text-align:center}` +
+            `.nama{font-size:34px;font-weight:800;margin:0 0 10px;line-height:1.1;text-align:center}` +
+            `table.isi{width:100%;border-collapse:collapse;font-size:26px;font-weight:700}` +
+            `table.isi td{border:none;padding:2px 0;line-height:1.25}` +
+            `td.item{text-align:left}` +
+            `td.size{text-align:center;white-space:nowrap;padding:2px 8px}` +
+            `td.qty{text-align:right;white-space:nowrap}` +
+            `p.isi{font-size:26px;font-weight:700}` +
             `@media print{button{display:none}}</style></head><body>` +
             `<p class="nama">${escapeHtml(group.nama)}</p>` +
-            `<p class="sub">${total}/${DUS_CAPACITY} barang &middot; ${escapeHtml(formatDate(group.updatedAt))}</p>` +
             body +
             `<script>window.onload=()=>{window.print()}</script>` +
             `</body></html>`,
@@ -389,41 +474,32 @@ function StokProduksi() {
         w.document.close();
         return;
       }
-      const biasa = resolved.filter((r) => !isDusPengganti(r.group));
-      const pengganti = resolved.filter((r) => isDusPengganti(r.group));
-      const sectionRows = (list: typeof resolved) =>
-        list
-          .map(({ group, items }) => {
-            const entries = summarizeEntries(items);
-            const total = items.length || group._count.barang;
-            const isi = entries.length === 0
-              ? `Kosong`
-              : entries.map(([k, n, label]) => `${escapeHtml(k)} x ${n} ${label}`).join("<br>");
-            return `<tr><td class="dus">${escapeHtml(group.nama)}</td><td>${isi}</td><td class="num">${total}</td></tr>`;
-          })
-          .join("");
-      const sectionSubtotal = (list: typeof resolved) =>
-        list.reduce((a, r) => a + (r.items.length || r.group._count.barang), 0);
-      const sections = [
-        biasa.length > 0 ? `<h2>Dus (${biasa.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${sectionRows(biasa)}</table><p class="total">Total: ${sectionSubtotal(biasa)} pcs</p>` : "",
-        pengganti.length > 0 ? `<h2 class="${biasa.length > 0 ? "break" : ""}">Dus Pengganti (${pengganti.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${sectionRows(pengganti)}</table><p class="total">Total: ${sectionSubtotal(pengganti)} pcs</p>` : "",
-      ].filter(Boolean).join("");
+      const labels = resolved
+        .map(({ group, items }, idx) => {
+          const entries = labelEntries(items);
+          const body = entries.length === 0
+            ? `<p class="isi">Kosong</p>`
+            : `<table class="isi">` +
+              entries.map((e) => `<tr><td class="item">${escapeHtml(e.produk)}</td><td class="size">${escapeHtml(e.size)}</td><td class="qty">x ${e.n}</td></tr>`).join("") +
+              `</table>`;
+          return `<div class="page${idx > 0 ? " break" : ""}"><p class="nama">${escapeHtml(group.nama)}</p>${body}</div>`;
+        })
+        .join("");
       w.document.write(
-        `<html><head><title>Rekap ${targets.length} Dus</title>` +
-          `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}` +
-            `h1{font-size:22px;margin:0 0 4px}` +
-            `h2{font-size:17px;margin:18px 0 8px}` +
+        `<html><head><title>Label ${targets.length} Dus</title>` +
+          `<style>@page{size:100mm 75mm;margin:0}` +
+            `html,body{margin:0}` +
+            `body{font-family:Arial,sans-serif;padding:6mm;color:#111;text-align:center}` +
+            `.nama{font-size:32px;font-weight:800;margin:0 0 10px;line-height:1.1;text-align:center}` +
+            `table.isi{width:100%;border-collapse:collapse;font-size:26px;font-weight:700}` +
+            `table.isi td{border:none;padding:2px 0;line-height:1.25}` +
+            `td.item{text-align:left}` +
+            `td.size{text-align:center;white-space:nowrap;padding:2px 8px}` +
+            `td.qty{text-align:right;white-space:nowrap}` +
+            `p.isi{font-size:26px;font-weight:700}` +
             `.break{break-before:page;page-break-before:always}` +
-            `.sub{font-size:13px;color:#555;margin:0 0 12px}` +
-            `table{width:100%;border-collapse:collapse}` +
-            `td,th{border:1px solid #333;padding:6px 8px;font-size:14px;text-align:left;vertical-align:top}` +
-            `.dus{white-space:nowrap;font-weight:700}` +
-            `.num{text-align:center;font-weight:700}` +
-            `.total{font-size:15px;font-weight:700;margin-top:10px}` +
             `@media print{button{display:none}}</style></head><body>` +
-            `<h1>Rekap ${targets.length} Dus</h1>` +
-            `<p class="sub">${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }))}</p>` +
-            sections +
+            labels +
           `<script>window.onload=()=>{window.print()}</script>` +
           `</body></html>`,
       );
@@ -435,15 +511,15 @@ function StokProduksi() {
     }
   };
 
-  const handlePrint = (group: BarangGroup) => void printGroups([group]);
+  const handlePrint = (group: BarangGroup, mode: "label" | "biasa" = "biasa") => void printGroups([group], mode);
 
-  const handlePrintSelected = () => {
+  const handlePrintSelected = (mode: "label" | "biasa" = "biasa") => {
     const targets = filteredGroups.filter((g) => selected.has(g.id));
     if (targets.length === 0) {
       toast("Pilih dus dulu", "error");
       return;
     }
-    void printGroups(targets);
+    void printGroups(targets, mode);
   };
 
   const handleArsipSelected = async () => {
@@ -625,11 +701,19 @@ function StokProduksi() {
           )}
           <button
             type="button"
-            onClick={handlePrintSelected}
+            onClick={() => handlePrintSelected("biasa")}
             disabled={selected.size === 0 || isPrinting}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
           >
-            {isPrinting ? "Menyiapkan..." : `Print ${selected.size > 0 ? `(${selected.size})` : ""}`}
+            {isPrinting ? "Menyiapkan..." : `Print Biasa ${selected.size > 0 ? `(${selected.size})` : ""}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePrintSelected("label")}
+            disabled={selected.size === 0 || isPrinting}
+            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-50"
+          >
+            {isPrinting ? "Menyiapkan..." : `Print Label ${selected.size > 0 ? `(${selected.size})` : ""}`}
           </button>
           <button
             type="button"
@@ -738,10 +822,17 @@ function StokProduksi() {
                 <div className="mt-3 flex items-center justify-end gap-1.5">
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); void handlePrint(g); }}
+                    onClick={(e) => { e.stopPropagation(); void handlePrint(g, "biasa"); }}
                     className="rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 transition hover:bg-sky-100"
                   >
                     Print
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handlePrint(g, "label"); }}
+                    className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-100"
+                  >
+                    Label
                   </button>
                   <button
                     type="button"

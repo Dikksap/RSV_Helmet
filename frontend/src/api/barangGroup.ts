@@ -20,7 +20,7 @@ export interface BarangInGroup {
   createdAt: string;
   variant: {
     kodeVariant: string;
-    product: { nama: string };
+    product: { nama: string; prefix?: string };
     style: { nama: string };
     color: { nama: string };
     size: { nama: string };
