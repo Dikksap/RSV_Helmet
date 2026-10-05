@@ -448,6 +448,7 @@ function StokProduksi() {
       if (resolved.length === 1) {
         const { group, items } = resolved[0]!;
         const entries = labelEntries(items);
+        const keterangan = isDusPengganti({ nama: group.nama, barang: items }) ? "PENGGANTI" : "FINISHGOOD";
         const body = entries.length === 0
           ? `<p class="isi">Kosong</p>`
           : `<table class="isi">` +
@@ -458,6 +459,7 @@ function StokProduksi() {
             `<style>@page{size:100mm 75mm;margin:0}` +
             `html,body{margin:0}` +
             `body{font-family:Arial,sans-serif;padding:6mm;color:#111;text-align:center}` +
+            `.ket{font-size:20px;font-weight:800;letter-spacing:2px;margin:0 0 4px;text-align:center}` +
             `.nama{font-size:34px;font-weight:800;margin:0 0 10px;line-height:1.1;text-align:center}` +
             `table.isi{width:100%;border-collapse:collapse;font-size:26px;font-weight:700}` +
             `table.isi td{border:none;padding:2px 0;line-height:1.25}` +
@@ -466,6 +468,7 @@ function StokProduksi() {
             `td.qty{text-align:right;white-space:nowrap}` +
             `p.isi{font-size:26px;font-weight:700}` +
             `@media print{button{display:none}}</style></head><body>` +
+            `<p class="ket">${keterangan}</p>` +
             `<p class="nama">${escapeHtml(group.nama)}</p>` +
             body +
             `<script>window.onload=()=>{window.print()}</script>` +
@@ -477,12 +480,13 @@ function StokProduksi() {
       const labels = resolved
         .map(({ group, items }, idx) => {
           const entries = labelEntries(items);
+          const keterangan = isDusPengganti({ nama: group.nama, barang: items }) ? "PENGGANTI" : "FINISHGOOD";
           const body = entries.length === 0
             ? `<p class="isi">Kosong</p>`
             : `<table class="isi">` +
               entries.map((e) => `<tr><td class="item">${escapeHtml(e.produk)}</td><td class="size">${escapeHtml(e.size)}</td><td class="qty">x ${e.n}</td></tr>`).join("") +
               `</table>`;
-          return `<div class="page${idx > 0 ? " break" : ""}"><p class="nama">${escapeHtml(group.nama)}</p>${body}</div>`;
+          return `<div class="page${idx > 0 ? " break" : ""}"><p class="ket">${keterangan}</p><p class="nama">${escapeHtml(group.nama)}</p>${body}</div>`;
         })
         .join("");
       w.document.write(
@@ -491,6 +495,7 @@ function StokProduksi() {
             `html,body{margin:0}` +
             `body{font-family:Arial,sans-serif;padding:6mm;color:#111;text-align:center}` +
             `.nama{font-size:32px;font-weight:800;margin:0 0 10px;line-height:1.1;text-align:center}` +
+            `.ket{font-size:20px;font-weight:800;letter-spacing:2px;margin:0 0 4px;text-align:center}` +
             `table.isi{width:100%;border-collapse:collapse;font-size:26px;font-weight:700}` +
             `table.isi td{border:none;padding:2px 0;line-height:1.25}` +
             `td.item{text-align:left}` +
