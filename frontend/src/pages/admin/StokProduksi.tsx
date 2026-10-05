@@ -547,6 +547,31 @@ function StokProduksi() {
     else toast(`${ok} diarsipkan, ${targets.length - ok} gagal. ${firstError}`, "error");
   };
 
+  const handlePulihkanSelected = async () => {
+    const targets = arsipGroups.filter((g) => selected.has(g.id));
+    if (targets.length === 0) {
+      toast("Pilih arsip dulu", "error");
+      return;
+    }
+    if (!window.confirm(`Pulihkan ${targets.length} arsip yang dipilih?`)) return;
+    setArchivingId(-1);
+    let ok = 0;
+    let firstError = "";
+    for (const g of targets) {
+      try {
+        await updateBarangGroup(g.id, { isArsip: false });
+        ok++;
+      } catch (err) {
+        if (!firstError) firstError = err instanceof Error ? err.message : "Gagal memulihkan";
+      }
+    }
+    setArchivingId(null);
+    setSelected(new Set());
+    await fetchGroups();
+    if (ok === targets.length) toast(`${ok} arsip dipulihkan`);
+    else toast(`${ok} dipulihkan, ${targets.length - ok} gagal. ${firstError}`, "error");
+  };
+
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -876,24 +901,43 @@ function StokProduksi() {
             <span aria-hidden="true">{showArsip ? "▾" : "▸"}</span>
           </button>
           {showArsip && (
-            <ul className="mt-3 space-y-2">
-              {arsipGroups.map((g) => (
-                <li key={g.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-700">{g.nama}</p>
-                    <p className="text-[11px] text-slate-400">{g._count.barang}/{DUS_CAPACITY} barang</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handlePulihkan(g)}
-                    disabled={archivingId === g.id}
-                    className="shrink-0 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
-                  >
-                    {archivingId === g.id ? "..." : "Pulihkan"}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {arsipGroups.some((g) => selected.has(g.id)) && (
+                <button
+                  type="button"
+                  onClick={() => void handlePulihkanSelected()}
+                  disabled={archivingId !== null}
+                  className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {archivingId !== null ? "Memulihkan..." : `Pulihkan Dipilih (${arsipGroups.filter((g) => selected.has(g.id)).length})`}
+                </button>
+              )}
+              <ul className="mt-3 space-y-2">
+                {arsipGroups.map((g) => (
+                  <li key={g.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(g.id)}
+                      onChange={() => toggleSelect(g.id)}
+                      className="h-4 w-4 shrink-0 accent-[#00A8E8]"
+                      aria-label={`Pilih arsip ${g.nama}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-700">{g.nama}</p>
+                      <p className="text-[11px] text-slate-400">{g._count.barang}/{DUS_CAPACITY} barang</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handlePulihkan(g)}
+                      disabled={archivingId === g.id}
+                      className="shrink-0 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      {archivingId === g.id ? "..." : "Pulihkan"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </section>
       )}
