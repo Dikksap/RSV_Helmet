@@ -16,6 +16,7 @@ import integrasiJurnalRouter from "./routes/integrasi-jurnal.js";
 import karyawanRouter from "./routes/karyawan.js";
 import divisiRouter from "./routes/divisi.js";
 import batchesRouter from "./routes/batch.js";
+import userRouter from "./routes/user.js";
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use("/api/integrasi-jurnal", integrasiJurnalRouter);
 app.use("/api/karyawan", karyawanRouter);
 app.use("/api/divisi", divisiRouter);
 app.use("/api/batches", batchesRouter);
+app.use("/api/users", userRouter);
 
 
 export default app;

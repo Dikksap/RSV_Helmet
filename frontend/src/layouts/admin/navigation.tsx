@@ -103,6 +103,12 @@ export const KARYAWAN: typeof MANAJEMEN = {
       icon: faSitemap,
       end: true,
     },
+    {
+      to: "/admin/user",
+      label: "Kelola User",
+      icon: faUsers,
+      end: true,
+    },
   ],
 };
 

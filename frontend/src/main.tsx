@@ -9,6 +9,7 @@ import "@fontsource/inter/800.css";
 import "./index.css";
 import PublicLayout from "./layouts/PublicLayout.tsx";
 import Homepage from "./pages/admin/Homepage.tsx";
+import KelolaUser from "./pages/admin/KelolaUser.tsx";
 import AdminLayout from "./layouts/AdminLayout.tsx";
 import CetakLabel from "./pages/public/CetakLabel.tsx";
 import DaftarBarang from "./pages/admin/DaftarBarang.tsx";
@@ -52,6 +53,7 @@ const routes = (
       <Route path="/admin/barang" element={<DaftarBarang />} />
       <Route path="/admin/stok-produksi" element={<StokProduksi />} />
       <Route path="/admin/karyawan" element={<KelolaKaryawan />} />
+      <Route path="/admin/user" element={<KelolaUser />} />
       <Route path="/admin/divisi" element={<KelolaDivisi />} />
       <Route path="/admin/batch" element={<KelolaBatch />} />
       <Route path="/admin/variant-produk" element={<Navigate to="/admin/pengaturan/variant-produk" replace />} />
