@@ -1,5 +1,4 @@
 import { useRef, useState, type FormEvent } from "react";
-import { useReactToPrint } from "react-to-print";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBuilding,
@@ -8,11 +7,12 @@ import {
   faClipboardList,
   faExclamationTriangle,
   faPlus,
-  faPrint,
   faTrash,
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
+import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { createPermintaan } from "../../api/permintaanBarang";
+import { buildPermintaanPdf, sharePdfFile, whatsappText } from "../../lib/permintaanPdf";
 
 type Baris = {
   nama: string;
@@ -50,32 +50,6 @@ const inputBase =
 const inputCls = inputBase;
 const labelCls = "mb-1.5 block text-[0.82rem] font-semibold uppercase tracking-wide text-[#171717]";
 const req = <span className="text-[#E30613]">*</span>;
-
-/* ---------- Style cetak ---------- */
-const PRINT_STYLE = `
-  @page { size: A4 portrait; margin: 0; }
-  @media print {
-    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-    body * { visibility: hidden !important; }
-    #permintaan-paper, #permintaan-paper * {
-      visibility: visible !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    #permintaan-paper {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 210mm !important;
-      min-height: 0 !important;
-      margin: 0 !important;
-      zoom: 1 !important;
-      box-shadow: none !important;
-    }
-    #permintaan-paper tr, #permintaan-paper .sig-col { break-inside: avoid !important; }
-    #permintaan-paper thead { display: table-header-group !important; }
-  }
-`;
 
 /* ---------- Style layar ---------- */
 const SCREEN_STYLE = `
@@ -134,18 +108,7 @@ function PermintaanBarang() {
   ]);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const paperRef = useRef<HTMLDivElement>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
-
-  const printFn = useReactToPrint({
-    contentRef: paperRef,
-    documentTitle: noPermintaan || "PR-BELUM-DISIMPAN",
-    pageStyle: PRINT_STYLE,
-    onPrintError: (_location, error) => {
-      console.error("Gagal mencetak:", error);
-      notify("error", `Gagal mencetak: ${error.message}`);
-    },
-  });
 
   /* ---------- Notifikasi inline (pengganti window.alert) ---------- */
   function notify(tone: Notice["tone"], text: string) {
@@ -194,6 +157,7 @@ function PermintaanBarang() {
     if (!cekBaris()) return;
     setSaving(true);
     setNotice(null);
+    let nomor = "";
     try {
       const rec = await createPermintaan({
         tanggal,
@@ -211,11 +175,21 @@ function PermintaanBarang() {
         })),
       });
       setNoPermintaan(rec.noPermintaan);
-      notify("success", `Permintaan ${rec.noPermintaan} tersimpan.`);
-      // Commit nomor ke DOM pratinjau dulu, baru buka dialog cetak.
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-      printFn();
+      nomor = rec.noPermintaan;
+      notify("success", `Permintaan ${nomor} tersimpan. Membuat PDF...`);
+      const blob = buildPermintaanPdf(rec);
+      const hasil = await sharePdfFile(blob, `${nomor}.pdf`, whatsappText(rec));
+      notify(
+        "success",
+        hasil === "shared"
+          ? `PDF ${nomor} siap dibagikan.`
+          : `PDF ${nomor} terunduh. Lanjutkan kirim lewat WhatsApp yang terbuka.`,
+      );
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        notify("success", nomor ? `Permintaan ${nomor} tersimpan. Berbagi dibatalkan.` : "Berbagi dibatalkan.");
+        return;
+      }
       notify(
         "error",
         error instanceof Error ? error.message : "Gagal menyimpan permintaan.",
@@ -573,11 +547,10 @@ function PermintaanBarang() {
             </p>
           </Section>
 
-          <Section no="04" title="Pratinjau & Cetak" subtitle="Preview & Print">
+          <Section no="04" title="Pratinjau & Bagikan" subtitle="Preview & Share">
             <p className="mb-4 text-[0.88rem] leading-relaxed text-[#A3A3A3]">
-              Periksa pratinjau dokumen di bawah. Klik <strong className="text-[#171717]">Simpan &amp; Cetak PDF</strong>{" "}
-              untuk menyimpan ke database sekaligus membuka dialog cetak, lalu pilih
-              tujuan <strong className="text-[#171717]">Save as PDF</strong>.
+              Periksa pratinjau dokumen di bawah. Klik <strong className="text-[#171717]">Simpan &amp; Bagikan</strong>{" "}
+              untuk menyimpan ke database, membuat PDF, lalu membagikannya ke WhatsApp.
             </p>
 
             {/* Ringkasan singkat */}
@@ -600,7 +573,6 @@ function PermintaanBarang() {
             <div className="-mx-5 overflow-x-auto border-y border-[#E5E5E5] bg-[#F3F3F3] p-4 sm:-mx-6 sm:p-6">
               <div
                 id="permintaan-paper"
-                ref={paperRef}
                 className="paper-zoom mx-auto flex w-[210mm] flex-col bg-white px-[16mm] py-[14mm] font-[Arial,Helvetica,sans-serif] text-[9.5pt] leading-normal text-[#1f2937] shadow-[0_1px_3px_rgba(0,0,0,0.15)]"
               >
                 <div className="mb-[4mm] flex items-end justify-between">
@@ -753,8 +725,8 @@ function PermintaanBarang() {
                   </>
                 ) : (
                   <>
-                    <FontAwesomeIcon icon={faPrint} className="h-4 w-4" />
-                    Simpan &amp; Cetak PDF
+                    <FontAwesomeIcon icon={faWhatsapp} className="h-4 w-4" />
+                    Simpan &amp; Bagikan WhatsApp
                   </>
                 )}
               </button>
