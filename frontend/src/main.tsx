@@ -16,6 +16,7 @@ import DaftarBarang from "./pages/admin/DaftarBarang.tsx";
 import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
 import LandingPage from "./pages/public/LandingPage.tsx";
 import LiveView from "./pages/public/LiveView.tsx";
+import PermintaanBarang from "./pages/public/PermintaanBarang.tsx";
 import PengaturanBarangProduksi from "./pages/admin/PengaturanBarangProduksi.tsx";
 import PlanProduction from "./pages/admin/PlanProduction.tsx";
 import RealisasiProduksi from "./pages/admin/RealisasiProduksi.tsx";
@@ -27,6 +28,7 @@ import StokProduksi from "./pages/admin/StokProduksi.tsx";
 import KelolaKaryawan from "./pages/admin/KelolaKaryawan.tsx";
 import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
 import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
+import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
 
@@ -36,6 +38,7 @@ const routes = (
       <Route path="/" element={<LandingPage />} />
       <Route path="/cetak-label" element={<CetakLabel />} />
       <Route path="/live-view" element={<LiveView />} />
+      <Route path="/permintaan-barang" element={<PermintaanBarang />} />
       <Route path="/print_manager" element={<PrintManager />} />
       <Route path="/scan-qr" element={<ScanQr />} />
       <Route path="/login" element={<Login />} />
@@ -56,6 +59,7 @@ const routes = (
       <Route path="/admin/user" element={<KelolaUser />} />
       <Route path="/admin/divisi" element={<KelolaDivisi />} />
       <Route path="/admin/batch" element={<KelolaBatch />} />
+      <Route path="/admin/permintaan-barang" element={<DaftarPermintaan />} />
       <Route path="/admin/variant-produk" element={<Navigate to="/admin/pengaturan/variant-produk" replace />} />
       <Route path="/admin/master-data" element={<Navigate to="/admin/pengaturan/master-data" replace />} />
       <Route path="/admin/pengaturan/*" element={<PengaturanBarangProduksi />} />

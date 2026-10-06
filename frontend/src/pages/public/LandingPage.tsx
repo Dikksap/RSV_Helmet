@@ -39,6 +39,16 @@ const PUBLIC_MODULES: Module[] = [
     ),
   },
   {
+    title: "Permintaan Barang",
+    desc: "Ajukan permintaan kebutuhan barang",
+    to: "/permintaan-barang",
+    icon: (
+      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+      </svg>
+    ),
+  },
+  {
     title: "Scan Barang V2",
     desc: "Tampilan baru yang lebih ringan",
     to: "#",
@@ -230,7 +240,7 @@ function LandingPage() {
           <div className="mb-4 flex items-baseline justify-between gap-4 border-t border-[#1E3A5F]/10 pt-6">
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#1E3A5F]">Modul</h2>
             <p className="text-[13px] text-[#6B7280]">
-              {admin ? "5 modul tersedia" : "3 modul terbuka · 2 butuh login"}
+              {admin ? "6 modul tersedia" : "4 modul terbuka · 2 butuh login"}
             </p>
           </div>
 

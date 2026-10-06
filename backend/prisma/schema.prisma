@@ -391,3 +391,46 @@ model ProductionScheduleAllocEdit {
   @@index([orderId, tanggal])
   @@index([variantId], map: "ProductionScheduleAllocEdit_variantId_fkey")
 }
+
+enum StatusApprovalPermintaan {
+  BELUM_DISETUJUI
+  DISETUJUI
+}
+
+// Permintaan barang/bahan baku dari departemen ke gudang (form FRM-PRD-001).
+// Item bebas teks (bukan FK ProductVariant) karena dapat berupa bahan baku
+// yang tidak ada di master variant.
+model PermintaanBarang {
+  id                Int                      @id @default(autoincrement())
+  noPermintaan      String                   @unique
+  tanggal           DateTime
+  departemen        String
+  namaPeminta       String
+  kebutuhanUntuk    String                   @default("Produksi")
+  prioritas         String                   @default("Normal")
+  tanggalDibutuhkan DateTime?
+  alasan            String                   @db.Text
+  approval          StatusApprovalPermintaan @default(BELUM_DISETUJUI)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  items PermintaanBarangItem[]
+
+  @@index([tanggal])
+  @@index([approval])
+}
+
+model PermintaanBarangItem {
+  id           Int      @id @default(autoincrement())
+  permintaanId Int
+  nama         String
+  spesifikasi  String?
+  jumlah       Int
+  satuan       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  permintaan PermintaanBarang @relation(fields: [permintaanId], references: [id], onDelete: Cascade)
+
+  @@index([permintaanId], map: "PermintaanBarangItem_permintaanId_fkey")
+}

@@ -84,7 +84,14 @@ export const MANAJEMEN = {
 export const WAREHOUSE: typeof MANAJEMEN = {
   label: "Warehouse",
   icon: faBoxesStacked,
-  children: [],
+  children: [
+    {
+      to: "/admin/permintaan-barang",
+      label: "Permintaan Barang",
+      icon: faClipboardList,
+      end: true,
+    },
+  ],
 };
 
 export const KARYAWAN: typeof MANAJEMEN = {
