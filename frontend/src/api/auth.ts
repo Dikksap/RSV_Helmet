@@ -42,6 +42,23 @@ export async function logout(token: string): Promise<void> {
   });
 }
 
+export async function checkSession(): Promise<boolean> {
+  const token = getToken();
+  if (!token) return false;
+  try {
+    const response = await fetch(`${apiUrl}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 401) return false;
+    if (!response.ok) return true;
+    const { user } = (await response.json()) as { user: User };
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    return user.role === "admin";
+  } catch {
+    return true;
+  }
+}
+
 const TOKEN_KEY = "rsv_auth_token";
 const USER_KEY = "rsv_auth_user";
 

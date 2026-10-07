@@ -45,6 +45,11 @@ export async function login(req: Request, res: Response) {
   }
 }
 
+export function me(req: Request, res: Response) {
+  const { id, name, email, role, exp } = req.user!;
+  res.status(200).json({ user: { id, name, email, role }, exp });
+}
+
 export async function logout(req: Request, res: Response) {
   const header = req.headers.authorization;
   const token = header!.slice("Bearer ".length).trim();

@@ -270,3 +270,17 @@ describe("POST /api/auth/logout", () => {
     expect(res.body.user.email).toBe("admin@example.com");
   });
 });
+describe("GET /api/auth/me", () => {
+  it("401 jika tanpa token", async () => {
+    const res = await request(app).get("/api/auth/me");
+    expect(res.status).toBe(401);
+  });
+
+  it("200 + user jika token valid", async () => {
+    const token = signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
+    const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.user).toEqual({ id: 1, name: "Admin", email: "admin@example.com", role: "admin" });
+    expect(typeof res.body.exp).toBe("number");
+  });
+});

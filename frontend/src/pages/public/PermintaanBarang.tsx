@@ -209,16 +209,10 @@ function PermintaanBarang() {
           <div className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div>
               <div className="text-[2rem] font-black leading-none tracking-tight">
-                RSV
-              </div>
-              <div className="mt-1 text-[0.8rem] font-bold uppercase tracking-[0.3em] text-white">
-                Helmet Indonesia
+                RSV HELMET
               </div>
               <div className="mt-2 text-[0.78rem] font-medium text-[#A3A3A3]">
-                PT. HELMINDO PRATAMA INDONESIA
-              </div>
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[#A3A3A3]">
-                Inventory / Procurement
+                PT. RMI (RSV MANUFACTURE INDONESIA)
               </div>
             </div>
             <div className="sm:text-right">
@@ -293,24 +287,10 @@ function PermintaanBarang() {
                   className={inputCls}
                 />
               </div>
-              <div>
-                <label htmlFor="f-departemen" className={labelCls}>
-                  <FontAwesomeIcon icon={faBuilding} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
-                  Departemen {req}
-                </label>
-                <input
-                  id="f-departemen"
-                  required
-                  value={departemen}
-                  onChange={(e) => setDepartemen(e.target.value)}
-                  placeholder="Contoh: Produksi"
-                  className={inputCls}
-                />
-              </div>
-              <div>
+               <div>
                 <label htmlFor="f-peminta" className={labelCls}>
                   <FontAwesomeIcon icon={faUser} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
-                  Nama Peminta {req}
+                  Nama {req}
                 </label>
                 <input
                   id="f-peminta"
@@ -321,6 +301,21 @@ function PermintaanBarang() {
                   className={inputCls}
                 />
               </div>
+              <div>
+                <label htmlFor="f-departemen" className={labelCls}>
+                  <FontAwesomeIcon icon={faBuilding} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
+                  DIVISI {req}
+                </label>
+                <input
+                  id="f-departemen"
+                  required
+                  value={departemen}
+                  onChange={(e) => setDepartemen(e.target.value)}
+                  placeholder="Contoh: Produksi"
+                  className={inputCls}
+                />
+              </div>
+             
               <div>
                 <label htmlFor="f-kebutuhan" className={labelCls}>
                   <FontAwesomeIcon icon={faClipboardList} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
@@ -548,10 +543,6 @@ function PermintaanBarang() {
           </Section>
 
           <Section no="04" title="Pratinjau & Bagikan" subtitle="Preview & Share">
-            <p className="mb-4 text-[0.88rem] leading-relaxed text-[#A3A3A3]">
-              Periksa pratinjau dokumen di bawah. Klik <strong className="text-[#171717]">Simpan &amp; Bagikan</strong>{" "}
-              untuk menyimpan ke database, membuat PDF, lalu membagikannya ke WhatsApp.
-            </p>
 
             {/* Ringkasan singkat */}
             <dl className="mb-5 grid grid-cols-2 gap-3 rounded-lg border border-[#E5E5E5] bg-[#F3F3F3] p-4 text-[0.82rem] sm:grid-cols-4">
@@ -584,7 +575,7 @@ function PermintaanBarang() {
                       Helmet Indonesia
                     </div>
                     <div className="mt-[1mm] text-[8pt] text-[#6b7280]">
-                      PT. HELMINDO PRATAMA INDONESIA — Inventory &amp; Procurement System
+                      PT. RSV MANUFACTURE INDONESIA — Inventory &amp; Procurement System
                     </div>
                   </div>
                   <div className="text-right">
@@ -704,10 +695,6 @@ function PermintaanBarang() {
                       </div>
                     </div>
                   ))}
-                </div>
-
-                <div className="mt-[10mm] border-t border-[#e5e7eb] pt-[2mm] text-center text-[7.5pt] text-[#9ca3af]">
-                  Dokumen ini dicetak dari Sistem Inventaris PT. Helmindo Pratama Indonesia
                 </div>
               </div>
             </div>
