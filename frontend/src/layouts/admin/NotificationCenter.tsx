@@ -258,7 +258,9 @@ export function NotificationCenter() {
             .slice(-3)
             .reverse()
             .map((t) => {
-              const isError = /error|gagal|hapus|deleted|bad|retur/i.test(`${t.type} ${t.message}`);
+              const isError =
+                t.type === "error" ||
+                (t.type !== "success" && /error|gagal|hapus|deleted|bad|retur/i.test(`${t.type} ${t.message}`));
               return (
                 <div
                   key={t.id}

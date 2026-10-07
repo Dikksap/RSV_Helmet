@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   bulkStatusBarang,
   createBarang,
@@ -8,7 +8,9 @@ import {
   searchBarang,
   updateBarang,
   type Barang,
+  type CreateBarangPayload,
   type StatusBarang,
+  type UpdateBarangPayload,
 } from "../../api/barang";
 import { getProducts, type Product } from "../../api/products";
 import { getColors, getSizes, getStyles } from "../../api/masterData";
@@ -21,13 +23,173 @@ import { RiwayatModal } from "../../components/admin/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../../components/admin/DaftarBarang/BarangImportModal";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
 import { downloadCsv } from "../../lib/csv";
-import { useStatusOptions } from "../../lib/useStatusOptions";
+import { useStatusOptions, type StatusOption } from "../../lib/useStatusOptions";
+
+type Option = { id: number; nama: string };
+type FormState = {
+  variantId: string;
+  batchId: string;
+  batchDetach: boolean;
+  kodeBarang: string;
+  tanggal: string;
+  status: StatusBarang;
+  keterangan: string;
+};
+type Result = { key: string; rows: Barang[]; totalPages: number; total: number; error: string | null };
+
+const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
+const FIELD =
+  "h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/20 disabled:bg-slate-50 disabled:opacity-60";
+const LABEL = "flex flex-col gap-1.5 text-xs font-semibold text-slate-600";
+const BTN = `inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
+const BTN_PRIMARY = `${BTN} bg-[#1E3A5F] text-white hover:bg-[#162C48]`;
+const BTN_GHOST = `${BTN} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`;
+const BTN_DANGER = `${BTN} bg-[#EF4444] text-white hover:bg-red-600`;
+
+const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+const num = (s: string) => (s ? Number(s) : undefined);
+// Tanggal disimpan sebagai ISO dari tengah malam lokal; baca kembali sebagai tanggal lokal, bukan potongan UTC.
+const toLocalDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("sv-SE") : "");
+const toDateParam = (d: string) => new Date(`${d}T00:00:00`).toISOString();
+const variantLabel = (v: Barang["variant"]) => `${v.product.nama} / ${v.style.nama} / ${v.color.nama} / ${v.size.nama}`;
+
+function toast(message: string, type: "success" | "error" = "success") {
+  window.dispatchEvent(new CustomEvent("app:toast", { detail: { type, message } }));
+}
+
+const formatDate = (date: string) =>
+  new Date(date).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+
+function formatRelativeTime(date: string, nowMs: number) {
+  const minutes = Math.floor((nowMs - new Date(date).getTime()) / 60000);
+  if (minutes < 1) return "baru saja";
+  if (minutes < 60) return `${minutes} menit lalu`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} jam lalu`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} hari lalu`;
+  return `${Math.floor(days / 7)} minggu lalu`;
+}
+
+function Modal({ eyebrow, title, onClose, children, footer, narrow }: { eyebrow?: string; title: ReactNode; onClose: () => void; children?: ReactNode; footer: ReactNode; narrow?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/50 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className={`flex max-h-[92dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl ${narrow ? "sm:max-w-md" : "sm:max-w-lg"}`}
+      >
+        <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div className="min-w-0">
+            {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-wider text-[#0088C0]">{eyebrow}</p>}
+            <h2 className="truncate text-base font-bold text-slate-900">{title}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Tutup" className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 ${FOCUS}`}>
+            ✕
+          </button>
+        </div>
+        {children && <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>}
+        <div className="flex gap-2 border-t border-slate-100 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&>*]:flex-1 sm:justify-end sm:[&>*]:flex-none">
+          {footer}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorBox({ msg }: { msg: string | null }) {
+  return msg ? <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-[#EF4444]">{msg}</p> : null;
+}
+
+function BarangForm({
+  mode,
+  value,
+  onChange,
+  variantOptions,
+  statusOptions,
+  productsError,
+}: {
+  mode: "create" | "edit";
+  value: FormState;
+  onChange: (patch: Partial<FormState>) => void;
+  variantOptions: Option[];
+  statusOptions: StatusOption[];
+  productsError: string | null;
+}) {
+  const create = mode === "create";
+  return (
+    <div className="grid gap-3">
+      <label className={LABEL}>
+        Variant{create && " *"}
+        <select className={FIELD} value={value.variantId} onChange={(e) => onChange({ variantId: e.target.value })}>
+          {create && <option value="">Pilih variant…</option>}
+          {variantOptions.map((o) => (
+            <option key={o.id} value={String(o.id)}>
+              {o.nama}
+            </option>
+          ))}
+        </select>
+        {productsError && <span className="font-normal text-[#EF4444]">{productsError}</span>}
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={LABEL}>
+          Batch ID{create && " (opsional)"}
+          <input
+            type="number"
+            inputMode="numeric"
+            className={FIELD}
+            placeholder={create ? "Kosong = batch aktif" : "ID batch"}
+            value={value.batchId}
+            disabled={value.batchDetach}
+            onChange={(e) => onChange({ batchId: e.target.value })}
+          />
+          {!create && (
+            <span className="flex items-center gap-1.5 font-normal text-slate-500">
+              <input type="checkbox" checked={value.batchDetach} onChange={(e) => onChange({ batchDetach: e.target.checked })} className="accent-[#1E3A5F]" />
+              Lepas dari batch
+            </span>
+          )}
+        </label>
+        <label className={LABEL}>
+          Status
+          <select className={FIELD} value={value.status} onChange={(e) => onChange({ status: e.target.value })}>
+            {statusOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className={LABEL}>
+        Kode barang{create && " (opsional, unik)"}
+        <input className={`${FIELD} font-mono`} placeholder={create ? "Kosong = otomatis BCxxx-…" : ""} value={value.kodeBarang} onChange={(e) => onChange({ kodeBarang: e.target.value })} />
+      </label>
+      <label className={LABEL}>
+        Tanggal{create && " (opsional)"}
+        <input type="date" className={FIELD} value={value.tanggal} onChange={(e) => onChange({ tanggal: e.target.value })} />
+      </label>
+      <label className={LABEL}>
+        Keterangan {create ? "(opsional, masuk riwayat)" : "(hanya jika status diubah)"}
+        <textarea
+          className={`${FIELD} h-auto min-h-[80px] py-2.5`}
+          placeholder={create ? "Barang dibuat (manual)" : "Keterangan riwayat"}
+          value={value.keterangan}
+          onChange={(e) => onChange({ keterangan: e.target.value })}
+        />
+      </label>
+    </div>
+  );
+}
+
+const EMPTY_FORM: FormState = { variantId: "", batchId: "", batchDetach: false, kodeBarang: "", tanggal: "", status: "REGISTER", keterangan: "" };
 
 function DaftarBarang() {
   const { options: statusOptions } = useStatusOptions();
-  const [barang, setBarang] = useState<Barang[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { subscribe } = useLiveSocketContext();
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -35,230 +197,179 @@ function DaftarBarang() {
   const [styleFilter, setStyleFilter] = useState("");
   const [colorFilter, setColorFilter] = useState("");
   const [sizeFilter, setSizeFilter] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
-  const [styleOptions, setStyleOptions] = useState<{ id: number; nama: string }[]>([]);
-  const [colorOptions, setColorOptions] = useState<{ id: number; nama: string }[]>([]);
-  const [sizeOptions, setSizeOptions] = useState<{ id: number; nama: string }[]>([]);
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [hanyaPernahRetur, setHanyaPernahRetur] = useState(false);
   const [datePreset, setDatePreset] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalBarang, setTotalBarang] = useState(0);
-  const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
-  const [riwayatBarang, setRiwayatBarang] = useState<Barang | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [styleOptions, setStyleOptions] = useState<Option[]>([]);
+  const [colorOptions, setColorOptions] = useState<Option[]>([]);
+  const [sizeOptions, setSizeOptions] = useState<Option[]>([]);
+
   const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const [pendingDelete, setPendingDelete] = useState<
-    { kind: "single"; barang: Barang } | { kind: "bulk" } | null
-  >(null);
-  const [showBulkEdit, setShowBulkEdit] = useState(false);
-  const [isBulkEditing, setIsBulkEditing] = useState(false);
-  const [bStatus, setBStatus] = useState("");
-  const [bTanggal, setBTanggal] = useState("");
-  const [bKeterangan, setBKeterangan] = useState("");
-
-  // CRUD modal state
-  const [showCreate, setShowCreate] = useState(false);
+  const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
+  const [riwayatBarang, setRiwayatBarang] = useState<Barang | null>(null);
   const [showImport, setShowImport] = useState(false);
+
+  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [editingBarang, setEditingBarang] = useState<Barang | null>(null);
-  const [crudLoading, setCrudLoading] = useState(false);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [pendingDelete, setPendingDelete] = useState<{ kind: "single"; barang: Barang } | { kind: "bulk" } | null>(null);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [bulk, setBulk] = useState({ status: "", tanggal: "", keterangan: "" });
+  const [busy, setBusy] = useState(false);
   const [crudError, setCrudError] = useState<string | null>(null);
-  const [productsError, setProductsError] = useState<string | null>(null);
 
-  // Create form state
-  const [cVariantId, setCVariantId] = useState("");
-  const [cBatchId, setCBatchId] = useState("");
-  const [cKodeBarang, setCKodeBarang] = useState("");
-  const [cTanggal, setCTanggal] = useState("");
-  const [cStatus, setCStatus] = useState<StatusBarang>("REGISTER");
-  const [cKeterangan, setCKeterangan] = useState("");
-
-  // Edit form state
-  const [eVariantId, setEVariantId] = useState("");
-  const [eBatchId, setEBatchId] = useState("");
-  const [eBatchDetach, setEBatchDetach] = useState(false);
-  const [eKodeBarang, setEKodeBarang] = useState("");
-  const [eTanggal, setETanggal] = useState("");
-  const [eStatus, setEStatus] = useState<StatusBarang>("REGISTER");
-  const [eKeterangan, setEKeterangan] = useState("");
-
-  const { subscribe } = useLiveSocketContext();
-  const currentPageRef = useRef(currentPage);
-  useEffect(() => {
-    currentPageRef.current = currentPage;
-  }, [currentPage]);
+  const reqRef = useRef(0);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(id);
   }, []);
 
-  const hasActiveFilters =
-    Boolean(search) ||
-    Boolean(statusFilter) ||
-    Boolean(variantFilter) ||
-    Boolean(styleFilter) ||
-    Boolean(colorFilter) ||
-    Boolean(sizeFilter) ||
-    Boolean(tanggalAwal) ||
-    Boolean(tanggalAkhir) ||
-    hanyaPernahRetur;
-
-  const isSearchMode =
-    Boolean(debouncedSearch) &&
-    !statusFilter &&
-    !variantFilter &&
-    !styleFilter &&
-    !colorFilter &&
-    !sizeFilter &&
-    !tanggalAwal &&
-    !tanggalAkhir &&
-    !hanyaPernahRetur;
-  const searchLimit = typeof pageSize === "number" ? Math.min(50, pageSize) : 50;
-
-  // Debounce ketikan search 400ms agar tidak hit /barang/search tiap keystroke
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 400);
     return () => window.clearTimeout(t);
   }, [search]);
 
-  const fetchBarang = useCallback(
-    async (page = 1) => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = isSearchMode
-          ? await searchBarang(debouncedSearch, searchLimit)
-          : await getBarangPage({
-              page,
-              limit: pageSize,
-              variantId: variantFilter ? Number(variantFilter) : undefined,
-              status: statusFilter
-                ? (statusFilter as StatusBarang)
-                : undefined,
-              tanggalAwal: tanggalAwal || undefined,
-              tanggalAkhir: tanggalAkhir || undefined,
-              pernahRetur: hanyaPernahRetur || undefined,
-              styleId: styleFilter ? Number(styleFilter) : undefined,
-              colorId: colorFilter ? Number(colorFilter) : undefined,
-              sizeId: sizeFilter ? Number(sizeFilter) : undefined,
-            });
-        setBarang(data.data);
-        setTotalPages("totalPages" in data.meta ? data.meta.totalPages : 1);
-        setTotalBarang(
-          "total" in data.meta ? data.meta.total : data.meta.count,
-        );
-        setCurrentPage(page);
-        // keep only selections that still exist on page
-        setSelectedIds((prev) => {
-          const ids = new Set(data.data.map((b) => b.id));
-          const next = new Set<number>();
-          prev.forEach((id) => { if (ids.has(id)) next.add(id); });
-          // if searching, clear stale; page change also prunes
-          return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Gagal memuat barang");
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [isSearchMode, searchLimit, tanggalAwal, tanggalAkhir, variantFilter, styleFilter, colorFilter, sizeFilter, debouncedSearch, statusFilter, pageSize, hanyaPernahRetur],
-  );
-
-  useEffect(() => {
-    const refreshId = window.setTimeout(() => void fetchBarang(1), 0);
-    return () => window.clearTimeout(refreshId);
-  }, [fetchBarang]);
-
-  // live update: refetch saat ada event barang.* — aman dipakai bareng Homepage karena subscribe = Set multi-subscriber
-  useEffect(() => {
-    return subscribe((payload) => {
-      if (payload.type.startsWith("barang.")) {
-        void fetchBarang(currentPageRef.current);
-      }
-    });
-  }, [subscribe, fetchBarang]);
-
   useEffect(() => {
     getProducts()
       .then(setProducts)
-      .catch(() =>
-        setProductsError("Gagal memuat daftar variant — filter dan form variant tidak tersedia"),
-      );
-    getStyles()
-      .then((rows) => setStyleOptions(rows.map((r) => ({ id: r.id, nama: r.nama }))))
-      .catch(() => setStyleOptions([]));
-    getColors()
-      .then((rows) => setColorOptions(rows.map((r) => ({ id: r.id, nama: r.nama }))))
-      .catch(() => setColorOptions([]));
-    getSizes()
-      .then((rows) => setSizeOptions(rows.map((r) => ({ id: r.id, nama: r.nama }))))
-      .catch(() => setSizeOptions([]));
+      .catch(() => setProductsError("Gagal memuat daftar variant — filter dan form variant tidak tersedia"));
+    const toOptions = (rows: Option[]) => rows.map((r) => ({ id: r.id, nama: r.nama }));
+    getStyles().then((r) => setStyleOptions(toOptions(r))).catch(() => setStyleOptions([]));
+    getColors().then((r) => setColorOptions(toOptions(r))).catch(() => setColorOptions([]));
+    getSizes().then((r) => setSizeOptions(toOptions(r))).catch(() => setSizeOptions([]));
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSelectedBarang(null);
-        setRiwayatBarang(null);
-        setShowCreate(false);
-        setShowImport(false);
-        setEditingBarang(null);
-        setPendingDelete(null);
-        setShowBulkEdit(false);
-      }
-    };
-    if (selectedBarang || riwayatBarang || showCreate || showImport || editingBarang || pendingDelete || showBulkEdit) {
-      window.addEventListener("keydown", handleKeyDown);
-    }
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedBarang, riwayatBarang, showCreate, showImport, editingBarang, pendingDelete, showBulkEdit]);
+  const matchesAttr = useCallback(
+    (v: { styleId: number; colorId: number; sizeId: number }) =>
+      (!styleFilter || String(v.styleId) === styleFilter) &&
+      (!colorFilter || String(v.colorId) === colorFilter) &&
+      (!sizeFilter || String(v.sizeId) === sizeFilter),
+    [styleFilter, colorFilter, sizeFilter],
+  );
 
-  const variantOptions = useMemo(() => {
-    const options = products
-      .flatMap((product) =>
-        product.variants
-          .filter(
-            (variant) =>
-              (!styleFilter || String(variant.styleId) === styleFilter) &&
-              (!colorFilter || String(variant.colorId) === colorFilter) &&
-              (!sizeFilter || String(variant.sizeId) === sizeFilter),
-          )
-          .map((variant) => ({
-            id: variant.id,
-            nama: `${product.nama} / ${variant.style.nama} / ${variant.color.nama} / ${variant.size.nama}`,
-          })),
-      )
+  const filterVariantOptions = useMemo(
+    () =>
+      products
+        .flatMap((p) =>
+          p.variants.filter(matchesAttr).map((v) => ({ id: v.id, nama: `${p.nama} / ${v.style.nama} / ${v.color.nama} / ${v.size.nama}` })),
+        )
+        .sort((a, b) => a.nama.localeCompare(b.nama)),
+    [products, matchesAttr],
+  );
+
+  const formVariantOptions = useMemo(() => {
+    const all = products
+      .flatMap((p) => p.variants.map((v) => ({ id: v.id, nama: `${p.nama} / ${v.style.nama} / ${v.color.nama} / ${v.size.nama}` })))
       .sort((a, b) => a.nama.localeCompare(b.nama));
-    const current = editingBarang?.variant;
-    if (current && !options.some((o) => o.id === current.id)) {
-      options.unshift({
-        id: current.id,
-        nama: `${current.product.nama} / ${current.style.nama} / ${current.color.nama} / ${current.size.nama}`,
-      });
-    }
-    return options;
-  }, [products, editingBarang, styleFilter, colorFilter, sizeFilter]);
+    const cur = editingBarang?.variant;
+    return cur && !all.some((o) => o.id === cur.id) ? [{ id: cur.id, nama: variantLabel(cur) }, ...all] : all;
+  }, [products, editingBarang]);
 
-  // Cascading: variant terpilih yang tak lagi cocok style/warna/size ikut dibersihkan
+  const effectiveVariant = filterVariantOptions.some((o) => String(o.id) === variantFilter) ? variantFilter : "";
+  const hasOtherFilters = Boolean(statusFilter || effectiveVariant || styleFilter || colorFilter || sizeFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur);
+  const hasActiveFilters = Boolean(search) || hasOtherFilters;
+  const isSearchMode = Boolean(debouncedSearch) && !hasOtherFilters;
+  const searchLimit = typeof pageSize === "number" ? Math.min(50, pageSize) : 50;
+
+  const filterParams = useMemo(
+    () => ({
+      variantId: num(effectiveVariant),
+      status: statusFilter || undefined,
+      tanggalAwal: tanggalAwal || undefined,
+      tanggalAkhir: tanggalAkhir || undefined,
+      pernahRetur: hanyaPernahRetur || undefined,
+      styleId: num(styleFilter),
+      colorId: num(colorFilter),
+      sizeId: num(sizeFilter),
+    }),
+    [effectiveVariant, statusFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, styleFilter, colorFilter, sizeFilter],
+  );
+
+  const key = JSON.stringify(isSearchMode ? { q: debouncedSearch, searchLimit } : { ...filterParams, page, pageSize });
+
+  const load = useCallback(() => {
+    const req = ++reqRef.current;
+    const request = isSearchMode ? searchBarang(debouncedSearch, searchLimit) : getBarangPage({ page, limit: pageSize, ...filterParams });
+    request
+      .then((data) => {
+        if (req !== reqRef.current) return;
+        setResult({
+          key,
+          rows: data.data,
+          totalPages: "totalPages" in data.meta ? data.meta.totalPages : 1,
+          total: "total" in data.meta ? data.meta.total : data.meta.count,
+          error: null,
+        });
+      })
+      .catch((e) => {
+        if (req !== reqRef.current) return;
+        setResult((prev) => (prev?.key === key && !prev.error ? prev : { key, rows: [], totalPages: 1, total: 0, error: errMsg(e, "Gagal memuat barang") }));
+      });
+  }, [key, isSearchMode, debouncedSearch, searchLimit, page, pageSize, filterParams]);
+
   useEffect(() => {
-    if (!variantFilter) return;
-    const stillValid = products.some((product) =>
-      product.variants.some(
-        (variant) =>
-          String(variant.id) === variantFilter &&
-          (!styleFilter || String(variant.styleId) === styleFilter) &&
-          (!colorFilter || String(variant.colorId) === colorFilter) &&
-          (!sizeFilter || String(variant.sizeId) === sizeFilter),
-      ),
-    );
-    if (!stillValid) setVariantFilter("");
-  }, [styleFilter, colorFilter, sizeFilter, variantFilter, products]);
+    load();
+  }, [load]);
+
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
+  // Live update: muat ulang diam-diam, digabung per 1 detik agar banjir event scan tidak memicu banyak request.
+  useEffect(() => {
+    let timer: number | undefined;
+    const unsub = subscribe((payload) => {
+      if (!payload.type.startsWith("barang.")) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => loadRef.current(), 1000);
+    });
+    return () => {
+      unsub();
+      window.clearTimeout(timer);
+    };
+  }, [subscribe]);
+
+  const isLoading = result?.key !== key;
+  const barang = useMemo(() => (result && !isLoading ? result.rows : []), [result, isLoading]);
+  const totalBarang = result?.total ?? 0;
+  const totalPages = result?.totalPages ?? 1;
+  const error = !isLoading ? (result?.error ?? null) : null;
+  const visibleSelected = useMemo(() => new Set(barang.filter((b) => selectedIds.has(b.id)).map((b) => b.id)), [barang, selectedIds]);
+  const selectedCount = visibleSelected.size;
+
+  const anyModal = formMode !== null || pendingDelete !== null || showBulkEdit || selectedBarang !== null || riwayatBarang !== null || showImport;
+  const closeAll = useCallback(() => {
+    if (busy) return;
+    setFormMode(null);
+    setPendingDelete(null);
+    setShowBulkEdit(false);
+    setSelectedBarang(null);
+    setRiwayatBarang(null);
+    setShowImport(false);
+  }, [busy]);
+
+  useEffect(() => {
+    if (!anyModal) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeAll();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anyModal, closeAll]);
+
+  const resetPage = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setPage(1);
+  };
 
   const handleResetFilters = () => {
     setSearch("");
@@ -271,113 +382,188 @@ function DaftarBarang() {
     setTanggalAkhir("");
     setDatePreset("");
     setHanyaPernahRetur(false);
+    setPage(1);
   };
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = (id: number) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (!next.delete(id)) next.add(id);
       return next;
     });
+
+  const toggleSelectAll = (checked: boolean) => setSelectedIds(checked ? new Set(barang.map((b) => b.id)) : new Set());
+
+  const afterRemove = (removed: number) => {
+    if (removed >= barang.length && page > 1) setPage(page - 1);
+    else load();
   };
 
-  const toggleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(new Set(barang.map((b) => b.id)));
-    } else {
-      setSelectedIds(new Set());
+  const openCreate = () => {
+    setCrudError(null);
+    setEditingBarang(null);
+    setForm({ ...EMPTY_FORM, variantId: effectiveVariant });
+    setFormMode("create");
+  };
+
+  const openEdit = (item: Barang) => {
+    setCrudError(null);
+    setEditingBarang(item);
+    setForm({
+      variantId: String(item.variantId),
+      batchId: item.batchId ? String(item.batchId) : "",
+      batchDetach: false,
+      kodeBarang: item.kodeBarang,
+      tanggal: toLocalDate(item.tanggal),
+      status: item.status,
+      keterangan: "",
+    });
+    setFormMode("edit");
+  };
+
+  const submitForm = async (e?: FormEvent) => {
+    e?.preventDefault();
+    setCrudError(null);
+    const keterangan = form.keterangan.trim();
+    const kode = form.kodeBarang.trim();
+    try {
+      if (formMode === "create") {
+        if (!form.variantId) return setCrudError("Variant wajib dipilih");
+        const payload: CreateBarangPayload = { variantId: Number(form.variantId), status: form.status };
+        if (form.batchId.trim()) payload.batchId = Number(form.batchId);
+        if (kode) payload.kodeBarang = kode;
+        if (form.tanggal) payload.tanggal = toDateParam(form.tanggal);
+        if (keterangan) payload.keterangan = keterangan;
+        setBusy(true);
+        const created = await createBarang(payload);
+        setFormMode(null);
+        toast(`Barang ${created.kodeBarang} dibuat`);
+        if (page === 1) load();
+        else setPage(1);
+        return;
+      }
+      const orig = editingBarang;
+      if (!orig) return;
+      const payload: UpdateBarangPayload = {};
+      if (form.variantId && Number(form.variantId) !== orig.variantId) payload.variantId = Number(form.variantId);
+      if (form.batchDetach) {
+        if (orig.batchId !== null) payload.batchId = null;
+      } else if (form.batchId.trim() && Number(form.batchId) !== orig.batchId) payload.batchId = Number(form.batchId);
+      if (kode && kode !== orig.kodeBarang) payload.kodeBarang = kode;
+      if (form.tanggal && form.tanggal !== toLocalDate(orig.tanggal)) payload.tanggal = toDateParam(form.tanggal);
+      if (form.status !== orig.status) {
+        payload.status = form.status;
+        if (keterangan) payload.keterangan = keterangan;
+      } else if (keterangan) return setCrudError("Keterangan hanya bisa diisi jika status diubah");
+      if (Object.keys(payload).length === 0) return setCrudError("Tidak ada perubahan untuk disimpan");
+      setBusy(true);
+      const updated = await updateBarang(orig.id, payload);
+      setFormMode(null);
+      toast(`Barang ${updated.kodeBarang} diperbarui`);
+      load();
+    } catch (err) {
+      setCrudError(errMsg(err, "Gagal menyimpan barang"));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const targets = pendingDelete.kind === "single" ? [pendingDelete.barang] : barang.filter((b) => visibleSelected.has(b.id));
+    if (targets.length === 0) return;
+    setBusy(true);
     setCrudError(null);
-    try {
-      const ids = [...selectedIds];
-      for (const id of ids) {
-        await deleteBarang(id);
+    const failed: Barang[] = [];
+    let firstError = "";
+    for (const b of targets) {
+      try {
+        await deleteBarang(b.id);
+      } catch (err) {
+        failed.push(b);
+        firstError ||= errMsg(err, "Gagal menghapus");
       }
+    }
+    setBusy(false);
+    const ok = targets.length - failed.length;
+    if (ok > 0) afterRemove(ok);
+    if (failed.length === 0) {
+      setPendingDelete(null);
       setSelectedIds(new Set());
-      const nextPage = barang.length === ids.length && currentPage > 1 ? currentPage - 1 : currentPage;
-      await fetchBarang(nextPage);
-    } catch (err) {
-      setCrudError(err instanceof Error ? err.message : "Gagal hapus massal");
+      toast(targets.length === 1 ? `Barang ${targets[0].kodeBarang} dihapus` : `${ok} barang dihapus`);
+    } else {
+      setSelectedIds(new Set(failed.map((b) => b.id)));
+      if (pendingDelete.kind === "single") setCrudError(firstError);
+      else {
+        setPendingDelete({ kind: "bulk" });
+        setCrudError(`${ok} terhapus, ${failed.length} gagal. Contoh: ${firstError}`);
+      }
     }
   };
 
   const openBulkEdit = () => {
     setCrudError(null);
-    setBStatus("");
-    setBTanggal("");
-    setBKeterangan("");
+    setBulk({ status: "", tanggal: "", keterangan: "" });
     setShowBulkEdit(true);
   };
 
-  const handleBulkEdit = async () => {
-    if (selectedIds.size === 0) return;
-    if (!bStatus && !bTanggal) {
-      setCrudError("Pilih status dan/atau isi tanggal");
-      return;
-    }
-    if (bKeterangan.trim() && !bStatus) {
-      setCrudError("Keterangan hanya bisa diisi jika status diubah");
-      return;
-    }
-    const payload: { status?: StatusBarang; tanggal?: string; keterangan?: string } = {};
-    if (bStatus) payload.status = bStatus as StatusBarang;
-    if (bTanggal) {
-      const d = new Date(bTanggal + "T00:00:00");
-      if (Number.isNaN(d.getTime())) {
-        setCrudError("Field 'tanggal' harus tanggal valid");
-        return;
-      }
-      payload.tanggal = d.toISOString();
-    }
-    if (bKeterangan.trim()) payload.keterangan = bKeterangan.trim();
+  const handleBulkEdit = async (e: FormEvent) => {
+    e.preventDefault();
+    const ids = [...visibleSelected];
+    if (ids.length === 0) return;
+    const keterangan = bulk.keterangan.trim();
+    if (!bulk.status && !bulk.tanggal) return setCrudError("Pilih status dan/atau isi tanggal");
+    if (keterangan && !bulk.status) return setCrudError("Keterangan hanya bisa diisi jika status diubah");
+    const payload: UpdateBarangPayload = {};
+    if (bulk.status) payload.status = bulk.status;
+    if (bulk.tanggal) payload.tanggal = toDateParam(bulk.tanggal);
+    if (keterangan) payload.keterangan = keterangan;
 
-    setIsBulkEditing(true);
+    setBusy(true);
     setCrudError(null);
+    const failedIds: number[] = [];
+    let firstError = "";
     try {
-      const ids = [...selectedIds];
-      const failedIds: number[] = [];
-      let firstError = "";
       if (payload.tanggal) {
         for (const id of ids) {
           try {
             await updateBarang(id, payload);
           } catch (err) {
             failedIds.push(id);
-            if (!firstError) firstError = err instanceof Error ? err.message : "Gagal memperbarui";
+            firstError ||= errMsg(err, "Gagal memperbarui");
           }
         }
       } else {
-        const items = ids.map((id) => ({ id, status: payload.status!, keterangan: payload.keterangan }));
+        const items = ids.map((id) => ({ id, status: bulk.status, keterangan: payload.keterangan }));
         for (let i = 0; i < items.length; i += 500) {
           const res = await bulkStatusBarang(items.slice(i, i + 500));
           failedIds.push(...res.failed.map((f) => f.id));
-          if (!firstError) firstError = res.failed[0]?.error ?? "Gagal memperbarui";
+          firstError ||= res.failed[0]?.error ?? "";
         }
       }
-      const ok = ids.length - failedIds.length;
-      await fetchBarang(currentPage);
-      if (failedIds.length === 0) {
-        setSelectedIds(new Set());
-        setShowBulkEdit(false);
-        window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `${ok} barang berhasil diperbarui` } }));
-      } else {
-        setSelectedIds(new Set(failedIds));
-        setCrudError(`${ok} berhasil, ${failedIds.length} gagal. Contoh: ${firstError}`);
-      }
-    } finally {
-      setIsBulkEditing(false);
+    } catch (err) {
+      setCrudError(errMsg(err, "Gagal memperbarui barang"));
+      setBusy(false);
+      load();
+      return;
+    }
+    setBusy(false);
+    load();
+    const ok = ids.length - failedIds.length;
+    if (failedIds.length === 0) {
+      setSelectedIds(new Set());
+      setShowBulkEdit(false);
+      toast(`${ok} barang diperbarui`);
+    } else {
+      setSelectedIds(new Set(failedIds));
+      setCrudError(`${ok} berhasil, ${failedIds.length} gagal. Contoh: ${firstError || "tidak diketahui"}`);
     }
   };
 
   const handleBulkExport = () => {
-    if (selectedIds.size === 0) return;
-    const selected = barang.filter((b) => selectedIds.has(b.id));
-    const rows: unknown[][] = [
+    const selected = barang.filter((b) => visibleSelected.has(b.id));
+    if (selected.length === 0) return;
+    downloadCsv(`barang-selected-${new Date().toISOString().slice(0, 10)}.csv`, [
       ["id", "kodeBarang", "status", "produk", "varian", "batch", "createdAt"],
       ...selected.map((b) => [
         b.id,
@@ -386,27 +572,16 @@ function DaftarBarang() {
         b.variant.product.nama,
         `${b.variant.style.nama} ${b.variant.color.nama} ${b.variant.size.nama}`,
         b.batch ? `BC${String(b.batch.nomorBatch).padStart(3, "0")}` : "",
-        b.createdAt.slice(0, 10),
+        toLocalDate(b.createdAt),
       ]),
-    ];
-    downloadCsv(`barang-selected-${new Date().toISOString().slice(0, 10)}.csv`, rows);
-    window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `Export ${selected.length} barang terpilih ke CSV` } }));
+    ]);
+    toast(`Export ${selected.length} barang terpilih ke CSV`);
   };
 
   const handleExport = async (format: "json" | "csv") => {
     setIsExporting(true);
     try {
-      const blob = await exportBarang({
-        format,
-        variantId: variantFilter ? Number(variantFilter) : undefined,
-        status: statusFilter ? (statusFilter as StatusBarang) : undefined,
-        tanggalAwal: tanggalAwal || undefined,
-        tanggalAkhir: tanggalAkhir || undefined,
-        pernahRetur: hanyaPernahRetur || undefined,
-        styleId: styleFilter ? Number(styleFilter) : undefined,
-        colorId: colorFilter ? Number(colorFilter) : undefined,
-        sizeId: sizeFilter ? Number(sizeFilter) : undefined,
-      });
+      const blob = await exportBarang({ format, ...filterParams });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -415,205 +590,13 @@ function DaftarBarang() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `Export ${format.toUpperCase()} berhasil` } }));
+      toast(`Export ${format.toUpperCase()} berhasil`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal export barang");
+      toast(errMsg(err, "Gagal export barang"), "error");
     } finally {
       setIsExporting(false);
     }
   };
-
-  // CRUD handlers
-  const openCreate = () => {
-    setCrudError(null);
-    setCVariantId(variantFilter || "");
-    setCBatchId("");
-    setCKodeBarang("");
-    setCTanggal("");
-    setCStatus("REGISTER");
-    setCKeterangan("");
-    setShowCreate(true);
-  };
-
-  const handleCreate = async () => {
-    if (!cVariantId) {
-      setCrudError("Field 'variantId' wajib diisi");
-      return;
-    }
-    setCrudLoading(true);
-    setCrudError(null);
-    try {
-      const payload: {
-        variantId: number;
-        batchId?: number | null;
-        kodeBarang?: string;
-        tanggal?: string;
-        status?: StatusBarang;
-        keterangan?: string;
-      } = {
-        variantId: Number(cVariantId),
-      };
-      if (cBatchId.trim()) payload.batchId = Number(cBatchId);
-      if (cKodeBarang.trim()) payload.kodeBarang = cKodeBarang.trim();
-      if (cTanggal) {
-        const d = new Date(cTanggal + "T00:00:00");
-        if (Number.isNaN(d.getTime())) {
-          setCrudError("Field 'tanggal' harus tanggal valid");
-          setCrudLoading(false);
-          return;
-        }
-        payload.tanggal = d.toISOString();
-      }
-      if (cStatus) payload.status = cStatus;
-      if (cKeterangan.trim()) payload.keterangan = cKeterangan.trim();
-
-      const created = await createBarang(payload);
-      setShowCreate(false);
-      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.created", message: `Barang ${created.kodeBarang} berhasil dibuat` } }));
-      await fetchBarang(1);
-    } catch (err) {
-      setCrudError(err instanceof Error ? err.message : "Gagal membuat barang");
-    } finally {
-      setCrudLoading(false);
-    }
-  };
-
-  const openEdit = (item: Barang) => {
-    setCrudError(null);
-    setEditingBarang(item);
-    setEVariantId(String(item.variantId));
-    setEBatchId(item.batchId ? String(item.batchId) : "");
-    setEBatchDetach(false);
-    setEKodeBarang(item.kodeBarang);
-    setETanggal(item.tanggal ? item.tanggal.slice(0, 10) : "");
-    setEStatus(item.status);
-    setEKeterangan("");
-  };
-
-  const handleUpdate = async () => {
-    if (!editingBarang) return;
-    setCrudLoading(true);
-    setCrudError(null);
-    try {
-      const payload: {
-        variantId?: number;
-        batchId?: number | null;
-        kodeBarang?: string;
-        tanggal?: string;
-        status?: StatusBarang;
-        keterangan?: string;
-      } = {};
-
-      if (eVariantId) {
-        const vNum = Number(eVariantId);
-        if (!Number.isNaN(vNum) && vNum !== editingBarang.variantId) payload.variantId = vNum;
-        else if (Number.isNaN(vNum)) {
-          setCrudError("Field 'variantId' harus angka");
-          setCrudLoading(false);
-          return;
-        }
-      }
-      if (eBatchDetach) payload.batchId = null;
-      else if (eBatchId.trim()) {
-        const n = Number(eBatchId);
-        if (Number.isNaN(n)) {
-          setCrudError("Field 'batchId' harus angka");
-          setCrudLoading(false);
-          return;
-        }
-        if (n !== editingBarang.batchId) payload.batchId = n;
-      }
-      if (eKodeBarang.trim() && eKodeBarang.trim() !== editingBarang.kodeBarang) payload.kodeBarang = eKodeBarang.trim();
-      // tanggal: compare YYYY-MM-DD strings to avoid timezone shift
-      if (eTanggal) {
-        const originalSlice = editingBarang.tanggal ? editingBarang.tanggal.slice(0, 10) : "";
-        if (eTanggal !== originalSlice) {
-          // send as ISO at midnight local -> backend parses to Date
-          const d = new Date(eTanggal + "T00:00:00");
-          if (Number.isNaN(d.getTime())) {
-            setCrudError("Field 'tanggal' harus tanggal valid");
-            setCrudLoading(false);
-            return;
-          }
-          payload.tanggal = d.toISOString();
-        }
-      }
-      if (eStatus !== editingBarang.status) {
-        payload.status = eStatus;
-        if (eKeterangan.trim()) payload.keterangan = eKeterangan.trim();
-      } else if (eKeterangan.trim()) {
-        // keterangan tanpa ganti status tidak valid (backend butuh minimal 1 field dari 5 utama)
-        setCrudError("Keterangan hanya bisa diisi jika status diubah");
-        setCrudLoading(false);
-        return;
-      }
-
-      const hasChanges = Object.keys(payload).length > 0;
-      if (!hasChanges) {
-        setCrudError("Tidak ada perubahan untuk disimpan");
-        setCrudLoading(false);
-        return;
-      }
-
-      const updated = await updateBarang(editingBarang.id, payload);
-      setEditingBarang(null);
-      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.updated", message: `Barang ${updated.kodeBarang} berhasil diperbarui` } }));
-      await fetchBarang(currentPage);
-    } catch (err) {
-      setCrudError(err instanceof Error ? err.message : "Gagal memperbarui barang");
-    } finally {
-      setCrudLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!pendingDelete) return;
-    if (pendingDelete.kind === "bulk") {
-      setPendingDelete(null);
-      await handleBulkDelete();
-      return;
-    }
-    const target = pendingDelete.barang;
-    setCrudLoading(true);
-    setCrudError(null);
-    try {
-      await deleteBarang(target.id);
-      setPendingDelete(null);
-      window.dispatchEvent(new CustomEvent("app:toast", { detail: { type: "barang.deleted", message: `Barang ${target.kodeBarang} berhasil dihapus` } }));
-      // if last item on page, go prev page
-      const nextPage = barang.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
-      await fetchBarang(nextPage);
-    } catch (err) {
-      setCrudError(err instanceof Error ? err.message : "Gagal menghapus barang");
-    } finally {
-      setCrudLoading(false);
-    }
-  };
-
-  const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-
-  const formatRelativeTime = (date: string, nowMs: number) => {
-    const diffMs = nowMs - new Date(date).getTime();
-    const minutes = Math.floor(diffMs / 60000);
-    if (minutes < 1) return "baru saja";
-    if (minutes < 60) return `${minutes} menit lalu`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} jam lalu`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days} hari lalu`;
-    return `${Math.floor(days / 7)} minggu lalu`;
-  };
-
-  const inputCls =
-    "h-12 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
-  const labelCls = "flex flex-col gap-1.5 text-sm font-medium text-[#1F2937]";
-  const textareaCls =
-    "min-h-[88px] w-full rounded-lg border border-[#D1D5DB] bg-white px-3 py-2.5 text-[15px] text-[#1F2937] outline-none transition duration-200 ease placeholder:text-[#6B7280]/70 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
 
   return (
     <div className="w-full space-y-3">
@@ -622,8 +605,8 @@ function DaftarBarang() {
         isExporting={isExporting}
         exportDisabled={isSearchMode}
         exportDisabledReason="Export tidak mendukung pencarian — gunakan filter"
-        onExportCSV={() => handleExport("csv")}
-        onExportJSON={() => handleExport("json")}
+        onExportCSV={() => void handleExport("csv")}
+        onExportJSON={() => void handleExport("json")}
         onCreate={openCreate}
         onImport={() => setShowImport(true)}
       />
@@ -631,192 +614,135 @@ function DaftarBarang() {
       <FilterSection
         search={search}
         statusFilter={statusFilter}
-        variantFilter={variantFilter}
+        variantFilter={effectiveVariant}
         styleFilter={styleFilter}
         colorFilter={colorFilter}
         sizeFilter={sizeFilter}
         tanggalAwal={tanggalAwal}
         tanggalAkhir={tanggalAkhir}
         datePreset={datePreset}
-        variantOptions={variantOptions}
+        variantOptions={filterVariantOptions}
         styleOptions={styleOptions}
         colorOptions={colorOptions}
         sizeOptions={sizeOptions}
-        currentPage={currentPage}
+        currentPage={page}
         totalPages={totalPages}
         hasActiveFilters={hasActiveFilters}
         hanyaPernahRetur={hanyaPernahRetur}
-        onPernahReturChange={setHanyaPernahRetur}
-        searchDisabled={Boolean(statusFilter || variantFilter || styleFilter || colorFilter || sizeFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur)}
+        onPernahReturChange={resetPage(setHanyaPernahRetur)}
+        searchDisabled={hasOtherFilters}
         searchHint="Pencarian dinonaktifkan saat filter lain dipakai"
         variantError={productsError}
-        onSearchChange={setSearch}
-        onStatusChange={setStatusFilter}
-        onVariantChange={setVariantFilter}
-        onStyleChange={setStyleFilter}
-        onColorChange={setColorFilter}
-        onSizeChange={setSizeFilter}
+        onSearchChange={resetPage(setSearch)}
+        onStatusChange={resetPage(setStatusFilter)}
+        onVariantChange={resetPage(setVariantFilter)}
+        onStyleChange={resetPage(setStyleFilter)}
+        onColorChange={resetPage(setColorFilter)}
+        onSizeChange={resetPage(setSizeFilter)}
         onDatePresetChange={setDatePreset}
-        onTanggalAwalChange={setTanggalAwal}
-        onTanggalAkhirChange={setTanggalAkhir}
+        onTanggalAwalChange={resetPage(setTanggalAwal)}
+        onTanggalAkhirChange={resetPage(setTanggalAkhir)}
         onResetFilters={handleResetFilters}
       />
 
-      {isLoading && (
-        <div className="space-y-3" aria-label="Memuat data barang">
-          {/* Mobile skeleton cards */}
-          <div className="grid gap-3 lg:hidden">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-6">
-                <div className="h-3 w-2/5 rounded bg-slate-200" />
-                <div className="mt-2 h-4 w-3/5 rounded bg-slate-200" />
-                <div className="mt-2 h-3 w-4/5 rounded bg-slate-100" />
-              </div>
-            ))}
-          </div>
-          {/* Desktop skeleton */}
-          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)] lg:block">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex animate-pulse gap-4 border-b border-slate-100 py-3 last:border-0">
-                <div className="h-4 w-8 rounded bg-slate-200" />
-                <div className="h-4 flex-1 rounded bg-slate-200" />
-                <div className="h-4 w-24 rounded bg-slate-100" />
-              </div>
-            ))}
-            <p className="pt-2 text-center text-sm text-[#6B7280]">Memuat data barang...</p>
+      {selectedCount > 0 && (
+        <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-[#00A8E8]/30 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur sm:top-16">
+          <span className="text-sm font-semibold text-[#1E3A5F]">{selectedCount} dipilih</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button type="button" onClick={() => setSelectedIds(new Set())} className={`${BTN_GHOST} h-9`}>
+              Batal
+            </button>
+            <button type="button" onClick={handleBulkExport} className={`${BTN_GHOST} h-9`}>
+              Export
+            </button>
+            <button type="button" onClick={openBulkEdit} className={`${BTN_PRIMARY} h-9`}>
+              Edit massal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCrudError(null);
+                setPendingDelete({ kind: "bulk" });
+              }}
+              className={`${BTN_DANGER} h-9`}
+            >
+              Hapus
+            </button>
           </div>
         </div>
       )}
 
-      {error && !isLoading && (
-        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-4 text-[15px] text-[#EF4444]">
-          <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-          <span>{error}</span>
-        </div>
-      )}
-
-      {!isLoading && !error && (
-        <section className="space-y-3 sm:space-y-4">
-          {barang.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#D1D5DB] bg-white p-8 text-center shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-12">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5F7FA] text-[#1E3A5F]">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
-              </div>
-              <p className="mt-3 text-base font-semibold text-[#1F2937]">
-                {hasActiveFilters ? "Tidak ada hasil" : "Belum ada data barang"}
-              </p>
-              <p className="mx-auto mt-1 max-w-xs text-sm text-[#6B7280]">
-                {hasActiveFilters
-                  ? "Coba ubah kata kunci atau reset filter untuk melihat data lain."
-                  : "Tambahkan barang pertama untuk mulai mengelola inventory."}
-              </p>
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className="mt-4 inline-flex min-h-[48px] items-center rounded-lg border-2 border-[#1E3A5F] bg-transparent px-6 py-3 text-sm font-medium text-[#1E3A5F] transition duration-200 ease hover:bg-[#1E3A5F]/5 active:scale-[0.98]"
-                >
-                  Reset Filter
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={openCreate}
-                  className="mt-4 inline-flex min-h-[48px] items-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white transition duration-200 ease hover:bg-[#0088C0] active:scale-[0.98]"
-                >
-                  + Tambah Barang
-                </button>
-              )}
+      {isLoading ? (
+        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Memuat data barang">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="flex animate-pulse gap-4 py-2">
+              <div className="h-4 w-8 rounded bg-slate-200" />
+              <div className="h-4 flex-1 rounded bg-slate-200" />
+              <div className="h-4 w-24 rounded bg-slate-100" />
             </div>
-          ) : (
-            <>
-              {selectedIds.size > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#00A8E8]/30 bg-sky-50 px-3 py-2.5">
-                  <span className="text-sm font-semibold text-[#1E3A5F]">{selectedIds.size} dipilih</span>
-                  <span className="hidden text-slate-300 sm:inline">|</span>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleBulkExport}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#1E3A5F] bg-white px-3 text-xs font-medium text-[#1E3A5F] hover:bg-[#1E3A5F]/5"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                      Export ({selectedIds.size})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={openBulkEdit}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#00A8E8] bg-white px-3 text-xs font-medium text-[#0088C0] hover:bg-sky-50"
-                    >
-                      Edit ({selectedIds.size})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setCrudError(null); setPendingDelete({ kind: "bulk" }); }}
-                      disabled={crudLoading}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#EF4444] px-3 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50"
-                    >
-                      Hapus ({selectedIds.size})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedIds(new Set())}
-                      className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-[#6B7280] hover:text-[#1F2937]"
-                    >
-                      Batal
-                    </button>
-                  </div>
-                </div>
-              )}
-              <BarangTable
-                barang={barang}
-                currentPage={currentPage}
-                pageSize={isSearchMode ? barang.length : pageSize}
-                caption={
-                  isSearchMode
-                    ? `Pencarian "${debouncedSearch}" — ${barang.length} dari maks ${searchLimit} hasil, tanpa paginasi`
-                    : undefined
-                }
-                totalBarang={totalBarang}
-                now={now}
-                selectedIds={selectedIds}
-                onToggle={toggleSelect}
-                onToggleAll={toggleSelectAll}
-                onRowClick={setSelectedBarang}
-                onEdit={openEdit}
-                onDelete={(b) => { setCrudError(null); setPendingDelete({ kind: "single", barang: b }); }}
-                onRiwayat={setRiwayatBarang}
-                formatDate={formatDate}
-                formatRelativeTime={formatRelativeTime}
-              />
-              {!isSearchMode && totalPages > 1 && (
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={fetchBarang}
-                />
-              )}
-              {!isSearchMode && (
-              <div className="flex items-center justify-center gap-2 text-sm text-[#6B7280]">
-                <label htmlFor="page-size">Tampil per halaman</label>
+          ))}
+        </div>
+      ) : error ? (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-[#EF4444]">
+          {error}
+          <button type="button" onClick={load} className={`${BTN_GHOST} h-9`}>
+            Coba lagi
+          </button>
+        </div>
+      ) : barang.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+          <p className="font-semibold text-slate-700">{hasActiveFilters ? "Tidak ada hasil" : "Belum ada data barang"}</p>
+          <p className="mx-auto mt-1 max-w-xs text-sm text-slate-500">
+            {hasActiveFilters ? "Ubah kata kunci atau reset filter." : "Tambahkan barang pertama untuk mulai mengelola inventory."}
+          </p>
+          <button type="button" onClick={hasActiveFilters ? handleResetFilters : openCreate} className={`${hasActiveFilters ? BTN_GHOST : BTN_PRIMARY} mt-4`}>
+            {hasActiveFilters ? "Reset filter" : "+ Tambah barang"}
+          </button>
+        </div>
+      ) : (
+        <section className="space-y-3">
+          <BarangTable
+            barang={barang}
+            currentPage={page}
+            pageSize={isSearchMode ? barang.length : pageSize}
+            caption={isSearchMode ? `Pencarian "${debouncedSearch}" — ${barang.length} dari maks ${searchLimit} hasil` : undefined}
+            totalBarang={totalBarang}
+            now={now}
+            selectedIds={visibleSelected}
+            onToggle={toggleSelect}
+            onToggleAll={toggleSelectAll}
+            onRowClick={setSelectedBarang}
+            onEdit={openEdit}
+            onDelete={(b) => {
+              setCrudError(null);
+              setPendingDelete({ kind: "single", barang: b });
+            }}
+            onRiwayat={setRiwayatBarang}
+            formatDate={formatDate}
+            formatRelativeTime={formatRelativeTime}
+          />
+          {!isSearchMode && (
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+              <label className="flex items-center gap-2 text-sm text-slate-500">
+                Per halaman
                 <select
-                  id="page-size"
                   value={String(pageSize)}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    setPageSize(v === "all" ? "all" : Number(v));
-                    setCurrentPage(1);
+                    setPageSize(e.target.value === "all" ? "all" : Number(e.target.value));
+                    setPage(1);
                   }}
-                  className="rounded-lg border border-[#D1D5DB] bg-white px-2 py-2 focus:outline-2 focus:outline-[#00A8E8]"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:border-[#00A8E8] focus:outline-none"
                 >
                   {[20, 50, 100].map((n) => (
-                    <option key={n} value={String(n)}>{n}</option>
+                    <option key={n} value={String(n)}>
+                      {n}
+                    </option>
                   ))}
                   <option value="all">Semua ({totalBarang.toLocaleString("id-ID")})</option>
                 </select>
-              </div>
-              )}
-            </>
+              </label>
+              {totalPages > 1 && <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
+            </div>
           )}
         </section>
       )}
@@ -826,338 +752,124 @@ function DaftarBarang() {
           barang={selectedBarang}
           products={products}
           onClose={() => setSelectedBarang(null)}
-          onRiwayat={() => { setRiwayatBarang(selectedBarang); setSelectedBarang(null); }}
+          onRiwayat={() => {
+            setRiwayatBarang(selectedBarang);
+            setSelectedBarang(null);
+          }}
         />
       )}
 
-      {riwayatBarang && (
-        <RiwayatModal barangId={riwayatBarang.id} kodeBarang={riwayatBarang.kodeBarang} onClose={() => setRiwayatBarang(null)} />
-      )}
+      {riwayatBarang && <RiwayatModal barangId={riwayatBarang.id} kodeBarang={riwayatBarang.kodeBarang} onClose={() => setRiwayatBarang(null)} />}
 
-      <BarangImportModal
-        open={showImport}
-        onClose={() => setShowImport(false)}
-        variantOptions={variantOptions}
-        onImported={() => void fetchBarang(1)}
-      />
+      <BarangImportModal open={showImport} onClose={() => setShowImport(false)} variantOptions={formVariantOptions} onImported={() => (page === 1 ? load() : setPage(1))} />
 
-      {/* CREATE MODAL — bottom sheet on mobile */}
-      {showCreate && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
-          role="presentation"
-          onClick={() => setShowCreate(false)}
-        >
-          <div
-            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-lg sm:rounded-xl"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={() => setShowCreate(false)}
-              aria-label="Tutup"
-              className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
-            >
-              ✕
-            </button>
-            <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Tambah Barang</p>
-            <h2 className="mt-1 text-xl font-bold text-[#1E3A5F]">Buat Barang Baru</h2>
-            <p className="mt-1 text-sm text-[#6B7280]">Kode otomatis jika kosong. Batch kosong = pakai batch AKTIF.</p>
-
-            {crudError && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
-            )}
-
-            <div className="mt-4 grid gap-3">
-              <label className={labelCls}>
-                <span>Variant *</span>
-                <select className={inputCls} value={cVariantId} onChange={(e) => setCVariantId(e.target.value)}>
-                  <option value="">Pilih variant...</option>
-                  {variantOptions.map((opt) => (
-                    <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
-                  ))}
-                </select>
-                {productsError && <span className="text-xs text-[#EF4444]">{productsError}</span>}
-              </label>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className={labelCls}>
-                  <span>Batch ID (opsional)</span>
-                  <input type="number" inputMode="numeric" className={inputCls} placeholder="Kosong = auto" value={cBatchId} onChange={(e) => setCBatchId(e.target.value)} />
-                </label>
-                <label className={labelCls}>
-                  <span>Status</span>
-                  <select className={inputCls} value={cStatus} onChange={(e) => setCStatus(e.target.value as StatusBarang)}>
-                    {statusOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className={labelCls}>
-                <span>Kode Barang (opsional, unik)</span>
-                <input className={inputCls} placeholder="Kosong = auto-generate BCxxx-..." value={cKodeBarang} onChange={(e) => setCKodeBarang(e.target.value)} />
-              </label>
-
-              <label className={labelCls}>
-                <span>Tanggal (opsional)</span>
-                <input type="date" className={inputCls} value={cTanggal} onChange={(e) => setCTanggal(e.target.value)} />
-              </label>
-
-              <label className={labelCls}>
-                <span>Keterangan (opsional, masuk RiwayatBarang)</span>
-                <textarea className={textareaCls} placeholder="Barang dibuat (manual)" value={cKeterangan} onChange={(e) => setCKeterangan(e.target.value)} />
-              </label>
-            </div>
-
-            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-slate-200 bg-white/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none"
-              >
+      {formMode && (
+        <Modal
+          eyebrow={formMode === "create" ? "Tambah barang" : "Edit barang"}
+          title={formMode === "create" ? "Buat barang baru" : <span className="font-mono">{editingBarang?.kodeBarang}</span>}
+          onClose={closeAll}
+          footer={
+            <>
+              <button type="button" onClick={closeAll} disabled={busy} className={BTN_GHOST}>
                 Batal
               </button>
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={crudLoading}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
-              >
-                {crudLoading ? "Menyimpan..." : "Simpan"}
+              <button type="submit" form="barang-form" disabled={busy} className={BTN_PRIMARY}>
+                {busy ? "Menyimpan…" : "Simpan"}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT MODAL — bottom sheet on mobile */}
-      {editingBarang && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
-          role="presentation"
-          onClick={() => setEditingBarang(null)}
+            </>
+          }
         >
-          <div
-            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-lg sm:rounded-xl"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={() => setEditingBarang(null)}
-              aria-label="Tutup"
-              className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
-            >
-              ✕
-            </button>
-            <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Edit Barang</p>
-            <h2 className="mt-1 font-mono text-sm font-bold text-[#1E3A5F]">{editingBarang.kodeBarang}</h2>
-
-            {crudError && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
-            )}
-
-            <div className="mt-4 grid gap-3">
-              <label className={labelCls}>
-                <span>Variant</span>
-                <select className={inputCls} value={eVariantId} onChange={(e) => setEVariantId(e.target.value)}>
-                  {variantOptions.map((opt) => (
-                    <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
-                  ))}
-                </select>
-                {productsError && <span className="text-xs text-[#EF4444]">{productsError}</span>}
-              </label>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className={labelCls}>
-                  <span>Batch ID</span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    className={inputCls}
-                    placeholder="ID batch"
-                    value={eBatchId}
-                    onChange={(e) => setEBatchId(e.target.value)}
-                    disabled={eBatchDetach}
-                  />
-                  <label className="mt-1 flex items-center gap-1.5 text-xs font-normal text-[#6B7280]">
-                    <input type="checkbox" checked={eBatchDetach} onChange={(e) => setEBatchDetach(e.target.checked)} />
-                    Lepas dari batch (null)
-                  </label>
-                </label>
-                <label className={labelCls}>
-                  <span>Status</span>
-                  <select className={inputCls} value={eStatus} onChange={(e) => setEStatus(e.target.value as StatusBarang)}>
-                    {statusOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className={labelCls}>
-                <span>Kode Barang</span>
-                <input className={inputCls} value={eKodeBarang} onChange={(e) => setEKodeBarang(e.target.value)} />
-              </label>
-
-              <label className={labelCls}>
-                <span>Tanggal</span>
-                <input type="date" className={inputCls} value={eTanggal} onChange={(e) => setETanggal(e.target.value)} />
-              </label>
-
-              <label className={labelCls}>
-                <span>Keterangan</span>
-                <textarea className={textareaCls} placeholder="Tambahkan keterangan jika diperlukan" value={eKeterangan} onChange={(e) => setEKeterangan(e.target.value)} />
-              </label>
-            </div>
-
-            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-slate-200 bg-white/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
-              <button
-                type="button"
-                onClick={() => setEditingBarang(null)}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleUpdate}
-                disabled={crudLoading}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
-              >
-                {crudLoading ? "Menyimpan..." : "Update"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <form id="barang-form" onSubmit={(e) => void submitForm(e)}>
+            <ErrorBox msg={crudError} />
+            {formMode === "create" && <p className="mb-3 text-sm text-slate-500">Kode otomatis jika kosong. Batch kosong = batch AKTIF.</p>}
+            <BarangForm
+              mode={formMode}
+              value={form}
+              onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+              variantOptions={formVariantOptions}
+              statusOptions={statusOptions}
+              productsError={productsError}
+            />
+          </form>
+        </Modal>
       )}
 
-      {/* BULK EDIT MODAL — bottom sheet on mobile */}
       {showBulkEdit && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
-          role="presentation"
-          onClick={() => setShowBulkEdit(false)}
-        >
-          <div
-            className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-lg sm:rounded-xl"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={() => setShowBulkEdit(false)}
-              aria-label="Tutup"
-              className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-lg text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
-            >
-              ✕
-            </button>
-            <p className="text-xs font-bold uppercase tracking-widest text-[#00A8E8]">Edit Massal</p>
-            <h2 className="mt-1 text-xl font-bold text-[#1E3A5F]">{selectedIds.size} barang terpilih</h2>
-            <p className="mt-1 text-sm text-[#6B7280]">Perubahan diterapkan ke semua barang terpilih, satu per satu.</p>
-
-            {crudError && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
-            )}
-
-            <div className="mt-4 grid gap-3">
-              <label className={labelCls}>
-                <span>Status</span>
-                <select className={inputCls} value={bStatus} onChange={(e) => setBStatus(e.target.value)}>
-                  <option value="">— Tidak diubah —</option>
-                  {statusOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className={labelCls}>
-                <span>Tanggal (opsional)</span>
-                <input type="date" className={inputCls} value={bTanggal} onChange={(e) => setBTanggal(e.target.value)} />
-              </label>
-
-              <label className={labelCls}>
-                <span>Keterangan (opsional, wajib ganti status)</span>
-                <textarea className={textareaCls} placeholder="Keterangan riwayat" value={bKeterangan} onChange={(e) => setBKeterangan(e.target.value)} />
-              </label>
-            </div>
-
-            <div className="sticky bottom-0 -mx-5 mt-6 flex gap-2 border-t border-slate-200 bg-white/95 px-5 pb-[max(0px,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
-              <button
-                type="button"
-                onClick={() => setShowBulkEdit(false)}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none"
-              >
+        <Modal
+          eyebrow="Edit massal"
+          title={`${selectedCount} barang terpilih`}
+          onClose={closeAll}
+          footer={
+            <>
+              <button type="button" onClick={closeAll} disabled={busy} className={BTN_GHOST}>
                 Batal
               </button>
-              <button
-                type="button"
-                onClick={handleBulkEdit}
-                disabled={isBulkEditing}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#00A8E8] px-6 py-3 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-50 sm:flex-none"
-              >
-                {isBulkEditing ? "Menyimpan..." : `Update ${selectedIds.size} barang`}
+              <button type="submit" form="bulk-form" disabled={busy || selectedCount === 0} className={BTN_PRIMARY}>
+                {busy ? "Menyimpan…" : `Perbarui ${selectedCount} barang`}
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <form id="bulk-form" onSubmit={(e) => void handleBulkEdit(e)} className="grid gap-3">
+            <ErrorBox msg={crudError} />
+            <label className={LABEL}>
+              Status
+              <select className={FIELD} value={bulk.status} onChange={(e) => setBulk((b) => ({ ...b, status: e.target.value }))}>
+                <option value="">— Tidak diubah —</option>
+                {statusOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={LABEL}>
+              Tanggal (opsional)
+              <input type="date" className={FIELD} value={bulk.tanggal} onChange={(e) => setBulk((b) => ({ ...b, tanggal: e.target.value }))} />
+            </label>
+            <label className={LABEL}>
+              Keterangan (hanya jika status diubah)
+              <textarea
+                className={`${FIELD} h-auto min-h-[80px] py-2.5`}
+                placeholder="Keterangan riwayat"
+                value={bulk.keterangan}
+                onChange={(e) => setBulk((b) => ({ ...b, keterangan: e.target.value }))}
+              />
+            </label>
+          </form>
+        </Modal>
       )}
 
-      {/* DELETE CONFIRM — bottom sheet on mobile */}
       {pendingDelete && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0F1C2E]/60 backdrop-blur-sm sm:items-center sm:p-4"
-          role="presentation"
-          onClick={() => setPendingDelete(null)}
-        >
-          <div
-            className="relative w-full rounded-t-xl border border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_4px_20px_rgba(0,0,0,0.12)] sm:max-w-md sm:rounded-xl"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
-            <h2 className="pr-8 text-lg font-bold text-[#1E3A5F]">
-              {pendingDelete.kind === "bulk" ? `Hapus ${selectedIds.size} Barang?` : "Hapus Barang?"}
-            </h2>
-            <p className="mt-2 text-[15px] text-[#6B7280]">
-              {pendingDelete.kind === "bulk" ? (
-                <>Yakin hapus <span className="font-bold text-[#1E3A5F]">{selectedIds.size} barang</span> terpilih? Tindakan ini tidak dapat dibatalkan.</>
-              ) : (
-                <>Yakin hapus <span className="font-mono font-bold text-[#1E3A5F]">{pendingDelete.barang.kodeBarang}</span>? Tindakan ini tidak dapat dibatalkan.</>
-              )}
-            </p>
-            {crudError && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-[#EF4444]">{crudError}</div>
-            )}
-            <div className="mt-6 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPendingDelete(null)}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-sm font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:flex-none sm:px-6"
-              >
+        <Modal
+          narrow
+          title={pendingDelete.kind === "bulk" ? `Hapus ${selectedCount} barang?` : "Hapus barang?"}
+          onClose={closeAll}
+          footer={
+            <>
+              <button type="button" onClick={closeAll} disabled={busy} className={BTN_GHOST}>
                 Batal
               </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={crudLoading}
-                className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-[#EF4444] px-6 py-3 text-sm font-medium text-white hover:brightness-95 disabled:opacity-50 sm:flex-none"
-              >
-                {crudLoading ? "Menghapus..." : "Ya, Hapus"}
+              <button type="button" onClick={() => void handleDelete()} disabled={busy} className={BTN_DANGER}>
+                {busy ? "Menghapus…" : "Ya, hapus"}
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <ErrorBox msg={crudError} />
+          <p className="text-sm text-slate-600">
+            {pendingDelete.kind === "bulk" ? (
+              <>
+                Yakin hapus <span className="font-semibold text-slate-900">{selectedCount} barang</span> terpilih?
+              </>
+            ) : (
+              <>
+                Yakin hapus <span className="font-mono font-semibold text-slate-900">{pendingDelete.barang.kodeBarang}</span>?
+              </>
+            )}{" "}
+            Tindakan ini tidak dapat dibatalkan.
+          </p>
+        </Modal>
       )}
     </div>
   );

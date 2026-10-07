@@ -2,254 +2,106 @@ import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   BARANG_PRODUKSI,
-  MANAJEMEN,
-  WAREHOUSE,
-  NAV_INTEGRASI,
-  NAV_MANAGEMENT,
   KARYAWAN,
+  MANAJEMEN,
+  NAV_INTEGRASI,
+  NAV_MAIN,
+  NAV_MANAGEMENT,
+  WAREHOUSE,
 } from "../../layouts/admin/navigation";
+
+type NavItem = (typeof NAV_MAIN)[number];
+
+const SECTIONS: { title: string; description: string; items: NavItem[] }[] = [
+  { title: BARANG_PRODUKSI.label, description: "Kelola aktivitas dan proses produksi", items: BARANG_PRODUKSI.children },
+  { title: MANAJEMEN.label, description: "Kelola data dan kebutuhan operasional", items: MANAJEMEN.children },
+  { title: KARYAWAN.label, description: "Kelola data master karyawan", items: KARYAWAN.children },
+  { title: WAREHOUSE.label, description: "Kelola aktivitas dan persediaan warehouse", items: WAREHOUSE.children },
+  { title: NAV_INTEGRASI.label, description: "Hubungkan sistem dengan layanan dan perangkat lain", items: NAV_INTEGRASI.children },
+  { title: "Lainnya", description: "Pengaturan dan modul pendukung", items: NAV_MANAGEMENT },
+];
 
 function Homepage() {
   return (
-    <div className="w-full space-y-7">
-      {/* =====================================================
-          WELCOME
-      ====================================================== */}
-      <header className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="relative px-6 py-6 sm:px-7">
-          <div className="max-w-2xl">
-            <div className="mb-3 inline-flex items-center rounded-full bg-[#1E3A5F]/[0.06] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#1E3A5F]">
-              RSV Management System
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-8">
+        {/* Header Section */}
+        <header className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg">
+          <div className="relative px-8 py-12 sm:px-10">
+            <div className="max-w-3xl">
+              <div className="mb-4 inline-flex items-center rounded-full bg-gradient-to-r from-[#1E3A5F]/10 to-[#00A8E8]/10 px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#1E3A5F]">
+               RSV Management System
+              </div>
+              <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Selamat Datang
+              </h1>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                Kelola aktivitas produksi, manajemen, warehouse, integrasi, dan modul lainnya dari satu dashboard terpusat.
+              </p>
             </div>
-
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-              Selamat Datang
-            </h1>
-
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              Kelola aktivitas produksi, manajemen, warehouse,
-              integrasi, dan modul lainnya dari satu tempat.
-            </p>
+            {/* Decorative Elements */}
+            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#1E3A5F]/[0.04] blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 right-10 h-40 w-40 rounded-full bg-[#00A8E8]/[0.04] blur-3xl" />
           </div>
+        </header>
 
-          {/* Decorative element */}
-          <div className="pointer-events-none absolute -right-10 -top-14 hidden h-48 w-48 rounded-full bg-[#1E3A5F]/[0.035] sm:block" />
-          <div className="pointer-events-none absolute -bottom-16 right-24 hidden h-32 w-32 rounded-full bg-[#00A8E8]/[0.035] sm:block" />
+        {/* Sections */}
+        <div className="space-y-10">
+          {SECTIONS.map((s) => (
+            <ModuleSection key={s.title} {...s} />
+          ))}
         </div>
-      </header>
-
-      {/* =====================================================
-          BARANG PRODUKSI
-      ====================================================== */}
-      <ModuleSection
-        title={BARANG_PRODUKSI.label}
-        description="Kelola aktivitas dan proses produksi"
-        items={BARANG_PRODUKSI.children}
-      />
-
-      {/* =====================================================
-          MANAJEMEN
-      ====================================================== */}
-      <ModuleSection
-        title={MANAJEMEN.label}
-        description="Kelola data dan kebutuhan operasional"
-        items={MANAJEMEN.children}
-      />
-
-      {/* =====================================================
-          KARYAWAN
-      ====================================================== */}
-      <ModuleSection
-        title={KARYAWAN.label}
-        description="Kelola data master karyawan"
-        items={KARYAWAN.children}
-      />
-
-      {/* =====================================================
-          WAREHOUSE
-      ====================================================== */}
-      <section>
-        <SectionHeader
-          title={WAREHOUSE.label}
-          description="Kelola aktivitas dan persediaan warehouse"
-        />
-
-        {WAREHOUSE.children.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-              <span className="text-lg">—</span>
-            </div>
-
-            <p className="mt-3 text-sm font-semibold text-slate-600">
-              Belum ada modul
-            </p>
-
-            <p className="mt-1 text-xs text-slate-400">
-              Modul warehouse akan tersedia di sini.
-            </p>
-          </div>
-        ) : (
-          <MenuGrid items={WAREHOUSE.children} />
-        )}
-      </section>
-
-      {/* =====================================================
-          INTEGRASI
-      ====================================================== */}
-      <ModuleSection
-        title={NAV_INTEGRASI.label}
-        description="Hubungkan sistem dengan layanan dan perangkat lain"
-        items={NAV_INTEGRASI.children}
-      />
-
-      {/* =====================================================
-          LAINNYA
-      ====================================================== */}
-      <ModuleSection
-        title="Lainnya"
-        description="Pengaturan dan modul pendukung"
-        items={NAV_MANAGEMENT}
-      />
-    </div>
-  );
-}
-
-/* =========================================================
-   SECTION
-========================================================= */
-
-function ModuleSection({
-  title,
-  description,
-  items,
-}: {
-  title: string;
-  description: string;
-  items: any[];
-}) {
-  return (
-    <section aria-label={title}>
-      <SectionHeader
-        title={title}
-        description={description}
-      />
-
-      <MenuGrid items={items} />
-    </section>
-  );
-}
-
-/* =========================================================
-   SECTION HEADER
-========================================================= */
-
-function SectionHeader({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h2 className="text-sm font-bold text-slate-900">
-          {title}
-        </h2>
-
-        <p className="mt-0.5 text-xs text-slate-400">
-          {description}
-        </p>
       </div>
     </div>
   );
 }
 
-/* =========================================================
-   MENU GRID
-========================================================= */
-
-function MenuGrid({
-  items,
-}: {
-  items: any[];
-}) {
+function ModuleSection({ title, description, items }: { title: string; description: string; items: NavItem[] }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {items.map((item) => (
-        <MenuCard
-          key={item.to}
-          to={item.to}
-          label={item.label}
-          icon={item.icon}
-        />
-      ))}
-    </div>
+    <section aria-label={title} className="space-y-4">
+      <div className="border-l-4 border-[#00A8E8] pl-4">
+        <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+        <p className="mt-1.5 text-sm text-slate-500">{description}</p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-8 py-12 text-center">
+          <div className="inline-block rounded-full bg-slate-200 p-3 text-slate-400 mb-3">
+            <FontAwesomeIcon icon="inbox" className="h-6 w-6" />
+          </div>
+          <p className="font-semibold text-slate-600">Belum ada modul</p>
+          <p className="mt-1 text-sm text-slate-500">Modul {title.toLowerCase()} akan tersedia di sini.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {items.map((item) => (
+            <MenuTile key={item.to} item={item} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
-/* =========================================================
-   MENU CARD
-========================================================= */
-
-function MenuCard({
-  to,
-  label,
-  icon,
-}: {
-  to: string;
-  label: string;
-  icon: React.ComponentProps<
-    typeof FontAwesomeIcon
-  >["icon"];
-}) {
+function MenuTile({ item }: { item: NavItem }) {
   return (
     <Link
-      to={to}
-      className={[
-        "group relative flex min-h-[82px] items-center gap-4",
-        "rounded-2xl border border-slate-200/90 bg-white px-4 py-4",
-        "shadow-sm transition-all duration-150",
-        "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40",
-      ].join(" ")}
+      to={item.to}
+      title={item.label}
+      className="group relative flex flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-center no-underline shadow-sm transition-all duration-200 hover:border-[#00A8E8] hover:shadow-xl hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8] focus-visible:ring-offset-2"
     >
-      {/* Icon */}
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1E3A5F]/[0.06] text-[#1E3A5F] transition-colors duration-150 group-hover:bg-[#1E3A5F] group-hover:text-white">
-        <FontAwesomeIcon
-          icon={icon}
-          className="h-4.5 w-4.5"
-        />
-      </span>
+      {/* Icon Container */}
+      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#1E3A5F]/[0.08] to-[#00A8E8]/[0.08] text-[#1E3A5F] transition-all duration-200 group-hover:from-[#1E3A5F] group-hover:to-[#00A8E8] group-hover:text-white group-hover:shadow-md">
+        <FontAwesomeIcon icon={item.icon} className="h-6 w-6" />
+      </div>
 
       {/* Label */}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-slate-800 transition-colors group-hover:text-[#1E3A5F]">
-          {label}
-        </span>
-
-        <span className="mt-0.5 block text-[11px] text-slate-400">
-          Buka modul
-        </span>
+      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-700 transition-colors duration-200 group-hover:text-[#1E3A5F]">
+        {item.label}
       </span>
 
-      {/* Arrow */}
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-all duration-150 group-hover:translate-x-0.5 group-hover:bg-slate-100 group-hover:text-[#1E3A5F]">
-        <svg
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          className="h-4 w-4"
-          aria-hidden="true"
-        >
-          <path
-            d="M4 10h11M11 6l4 4-4 4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
+      {/* Subtle underline on hover */}
+      <div className="absolute bottom-0 h-0.5 w-8 rounded-full bg-gradient-to-r from-[#1E3A5F] to-[#00A8E8] transition-all duration-200 opacity-0 group-hover:opacity-100" />
     </Link>
   );
 }

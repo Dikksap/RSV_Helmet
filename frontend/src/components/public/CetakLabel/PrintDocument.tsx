@@ -1,39 +1,27 @@
 import type { RefObject } from "react";
-import type { Product } from "../../../api/products";
-import type { GenerateInfo } from "../../../api/barang";
-import type { ProductSize } from "../../../api/products";
 import type { ProductVariant } from "../../../api/products";
 import type { LabelSize, CustomLabelMm } from "../../../lib/print";
 import { Hangtag, HangtagFit } from "../Hangtag/Hangtag";
 import { resolveLabelMm } from "../../../lib/print";
 
-type PrintDocumentProps = {
-  contentRef: RefObject<HTMLDivElement | null>;
-  generatedCodes: string[];
-  selectedVariant: ProductVariant | undefined;
-  selectedProduct: Product | undefined;
-  sizes: ProductSize[];
-  sizeId: string;
-  generateInfo: GenerateInfo | null;
-  printSize: LabelSize;
-  customMm: CustomLabelMm;
-  formatDate: (date: string) => string;
+// Salinan data saat generate, supaya cetak ulang tetap memakai varian yang benar
+// walau pilihan di layar sudah berubah.
+export type PrintJob = {
+  codes: string[];
+  productName: string;
+  variant: ProductVariant;
+  sizes: { id: number; nama: string }[];
   barcodeValue?: string;
 };
 
-export function PrintDocument({
-  contentRef,
-  generatedCodes,
-  selectedVariant,
-  selectedProduct,
-  sizes,
-  sizeId,
-  generateInfo,
-  printSize,
-  customMm,
-  formatDate,
-  barcodeValue,
-}: PrintDocumentProps) {
+type PrintDocumentProps = {
+  contentRef: RefObject<HTMLDivElement | null>;
+  job: PrintJob | null;
+  printSize: LabelSize;
+  customMm: CustomLabelMm;
+};
+
+export function PrintDocument({ contentRef, job, printSize, customMm }: PrintDocumentProps) {
   const labelMm = resolveLabelMm(printSize, customMm);
   return (
     <div
@@ -41,36 +29,23 @@ export function PrintDocument({
       className="print-document pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0 print:static print:flex print:h-auto print:w-full print:items-center print:justify-center print:overflow-visible print:opacity-100"
       aria-hidden="true"
     >
-      {generatedCodes.length > 0 && selectedVariant && (
-        <>
-          {generatedCodes.map((code) => (
-            <div key={code} className="print-sheet">
-              <HangtagFit
-                widthMm={labelMm.width}
-                heightMm={labelMm.height}
-              >
-                <Hangtag
-                  productName={selectedProduct?.nama ?? "-"}
-                  styleName={selectedVariant.style.nama}
-                  colorName={selectedVariant.color.nama}
-                  sizeName={selectedVariant.size.nama}
-                  sizes={sizes.map((size) => ({ id: size.id, nama: size.nama }))}
-                  selectedSizeId={Number(sizeId)}
-                  kodeVariant={
-                    selectedVariant.kodeVariant ?? `Variant #${selectedVariant.id}`
-                  }
-                  kodeBatch={generateInfo?.batch.kodeBatch}
-                  tanggal={
-                    generateInfo ? formatDate(generateInfo.tanggal) : undefined
-                  }
-                  qrValue={code}
-                  barcodeValue={barcodeValue}
-                />
-              </HangtagFit>
-            </div>
-          ))}
-        </>
-      )}
+      {job?.codes.map((code) => (
+        <div key={code} className="print-sheet">
+          <HangtagFit widthMm={labelMm.width} heightMm={labelMm.height}>
+            <Hangtag
+              productName={job.productName}
+              styleName={job.variant.style.nama}
+              colorName={job.variant.color.nama}
+              sizeName={job.variant.size.nama}
+              sizes={job.sizes}
+              selectedSizeId={job.variant.sizeId}
+              kodeVariant={job.variant.kodeVariant ?? `Variant #${job.variant.id}`}
+              qrValue={code}
+              barcodeValue={job.barcodeValue}
+            />
+          </HangtagFit>
+        </div>
+      ))}
     </div>
   );
 }

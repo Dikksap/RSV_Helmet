@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { bulkScanBarang, getScanBarang, type BulkScanItemResult, type StatusBarang } from "../../api/barang";
-import { familyOfDus, nextDusName } from "../../lib/dus";
+import { bulkScanBarang, getScanBarang, type Barang, type BulkScanItemResult, type StatusBarang } from "../../api/barang";
+import { DUS_CAPACITY, familyOfDus, nextDusName } from "../../lib/dus";
 import { useStatusOptions } from "../../lib/useStatusOptions";
-import {
-  assignBarangToGroup,
-  createBarangGroup,
-  getBarangGroups,
-  type BarangGroup,
-} from "../../api/barangGroup";
-
-const DUS_CAPACITY = 8; // 1 dus = 8 kode barang
+import { beep } from "../../lib/beep";
+import { assignBarangToGroup, createBarangGroup, getBarangGroups, type BarangGroup } from "../../api/barangGroup";
 
 type ScannedItem = {
   id: number;
@@ -20,90 +14,75 @@ type ScannedItem = {
   loading: boolean;
   targetStatus: StatusBarang;
   pernahRetur?: boolean;
+  statusSaved?: boolean;
 };
 
-type FailedItem = BulkScanItemResult;
+type Toast = { type: "success" | "error"; msg: string };
 
-const inputClass =
-  "w-full rounded-md border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-800 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30";
+const MAX_PARALLEL = 5;
+const MAX_UPLOAD_CODES = 2000;
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]";
+const CARD = "rounded-xl border border-[#E5E9F0] bg-white";
+const FIELD = `h-11 w-full rounded-lg border border-[#E5E9F0] bg-white px-3 text-sm font-medium text-[#0F1C2E] placeholder:text-[#94A3B8] focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/25 disabled:opacity-60`;
+const PRIMARY_BTN = `flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#10B981] px-6 text-base font-bold text-white shadow-sm transition hover:bg-[#059669] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none ${FOCUS}`;
 
-let sharedAudio: AudioContext | null = null;
-
-function beep(ok: boolean) {
-  try {
-    const Ctx =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!Ctx) return;
-    if (!sharedAudio || sharedAudio.state === "closed") sharedAudio = new Ctx();
-    const ctx = sharedAudio;
-    void ctx.resume();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = ok ? 880 : 220;
-    osc.type = ok ? "sine" : "square";
-    gain.gain.value = 0.08;
-    osc.start();
-    osc.stop(ctx.currentTime + (ok ? 0.12 : 0.25));
-    osc.onended = () => void ctx.close();
-  } catch {
-    /* suara opsional */
-  }
-  try {
-    navigator.vibrate?.(ok ? 30 : [80, 40, 80]);
-  } catch {
-    /* abaikan */
-  }
+function groupByStatus(items: ScannedItem[]): [StatusBarang, string[]][] {
+  const m = new Map<StatusBarang, string[]>();
+  for (const it of items) m.set(it.targetStatus, [...(m.get(it.targetStatus) ?? []), it.kode]);
+  return [...m.entries()];
 }
 
-function groupByStatus<T extends { targetStatus: StatusBarang; kode: string }>(items: T[]): [StatusBarang, string[]][] {
-  const m = new Map<StatusBarang, string[]>();
-  for (const it of items) {
-    const arr = m.get(it.targetStatus) ?? [];
-    arr.push(it.kode);
-    m.set(it.targetStatus, arr);
-  }
-  return [...m.entries()];
+const keyOf = (kode: string) => kode.trim().toLowerCase();
+const nowTime = () => new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+
+function variantName(b: Barang) {
+  const v = b.variant;
+  return v?.product && v.style && v.color && v.size
+    ? `${v.product.nama} ${v.style.nama} ${v.color.nama} ${v.size.nama}`
+    : "-";
+}
+
+function firstAvailable(groups: BarangGroup[]) {
+  return groups.find((g) => !g.isArsip && g._count.barang < DUS_CAPACITY)?.id ?? null;
 }
 
 function ScanQr() {
   const [searchParams] = useSearchParams();
   const isDusMode = searchParams.get("mode") === "dus";
-  const { options: statusOptions } = useStatusOptions();
-  const statusLabel = (kode: string) => statusOptions.find((o) => o.value === kode)?.label ?? kode;
-  const statusBadge = (kode: string) => {
-    const opt = statusOptions.find((o) => o.value === kode);
-    return opt?.warna
-      ? { className: "", style: { backgroundColor: opt.warna, color: "#fff" } as CSSProperties }
-      : { className: "bg-slate-100 text-slate-600", style: undefined as CSSProperties | undefined };
-  };
+  const { options: statusOptions, loading: statusLoading } = useStatusOptions();
+
+  const [rawStatus, setRawStatus] = useState<StatusBarang>(
+    () => searchParams.get("status")?.trim().toUpperCase() || "FINISHGOOD",
+  );
+  const status =
+    statusLoading || statusOptions.some((o) => o.value === rawStatus)
+      ? rawStatus
+      : (statusOptions.find((o) => o.value === "FINISHGOOD") ?? statusOptions[0]).value;
+  const statusOpt = (kode: string) => statusOptions.find((o) => o.value === kode);
+  const statusLabel = (kode: string) => statusOpt(kode)?.label ?? kode;
 
   const [groups, setGroups] = useState<BarangGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
-  const [savingDus, setSavingDus] = useState(false);
 
   const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [status, setStatus] = useState<StatusBarang>(() => searchParams.get("status")?.trim() || "FINISHGOOD");
   const [keterangan, setKeterangan] = useState("");
-  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [failedItems, setFailedItems] = useState<BulkScanItemResult[]>([]);
+  const [showFailed, setShowFailed] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  const [submitProgress, setSubmitProgress] = useState(0);
-  const [failedItems, setFailedItems] = useState<FailedItem[]>([]);
-  const [showFailedDetail, setShowFailedDetail] = useState(false);
   const [resetArmed, setResetArmed] = useState(false);
-  const resetArmTimer = useRef<number | null>(null);
 
-  const bulkInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<ScannedItem[]>([]);
   const statusRef = useRef(status);
+  const inFlight = useRef(new Set<number>());
 
   useEffect(() => {
     listRef.current = scannedItems;
@@ -111,7 +90,6 @@ function ScanQr() {
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
-
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -120,56 +98,178 @@ function ScanQr() {
     const id = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(id);
   }, [toast]);
+  useEffect(() => {
+    if (!resetArmed) return;
+    const id = window.setTimeout(() => setResetArmed(false), 3000);
+    return () => window.clearTimeout(id);
+  }, [resetArmed]);
 
-  const notify = useCallback((type: "success" | "error", msg: string) => setToast({ type, msg }), []);
+  const notify = useCallback((type: Toast["type"], msg: string) => setToast({ type, msg }), []);
+  const focusInput = () => inputRef.current?.focus();
 
-  // --- Mode dus: 1 dus = BarangGroup, muat 8 kode barang ---
-  const refreshGroups = useCallback(async () => {
-    if (!isDusMode) return;
-    const data = await getBarangGroups();
+  const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
+  const dusFree = activeGroup ? DUS_CAPACITY - activeGroup._count.barang : 0;
+  const slotsLeft = isDusMode ? Math.max(0, dusFree - scannedItems.length) : Infinity;
+  const scanBlocked = isDusMode && slotsLeft === 0;
+  const blockReason = !activeGroup
+    ? "Pilih atau buat dus dulu."
+    : `${activeGroup.nama} penuh (${DUS_CAPACITY}) — simpan dulu atau buat dus baru.`;
+  const needsPengganti = scannedItems.some((it) => it.pernahRetur);
+  const dusProblem = !isDusMode
+    ? null
+    : !activeGroup
+      ? "Pilih atau buat dus dulu."
+      : scannedItems.length > dusFree
+        ? `${activeGroup.nama} hanya muat ${dusFree} lagi — hapus ${scannedItems.length - dusFree} item atau ganti dus.`
+        : (familyOfDus(activeGroup.nama) === "pengganti") !== needsPengganti
+          ? needsPengganti
+            ? "Ada barang pernah retur — pilih atau buat DUS PENGGANTI."
+            : "DUS PENGGANTI hanya untuk barang pernah retur — pilih dus biasa."
+          : null;
+
+  const applyGroups = useCallback((data: BarangGroup[]) => {
     setGroups(data);
-  }, [isDusMode]);
+    setActiveGroupId((prev) => {
+      const cur = data.find((g) => g.id === prev);
+      return cur && !cur.isArsip ? prev : firstAvailable(data);
+    });
+  }, []);
+  const refreshGroups = () => getBarangGroups().then(applyGroups);
 
   useEffect(() => {
     if (!isDusMode) return;
-    let cancelled = false;
     getBarangGroups()
-      .then(async (data) => {
-        if (cancelled) return;
-        setGroups(data);
-        const available = data.filter((g) => !g.isArsip && g._count.barang < DUS_CAPACITY);
-        if (available.length === 0) {
-          try {
-            const created = await createBarangGroup(nextDusName(data, false));
-            if (cancelled) return;
-            setGroups((prev) => [...prev, created]);
-            setActiveGroupId((prev) => prev ?? created.id);
-            notify("success", `Dus "${created.nama}" dibuat otomatis.`);
-          } catch (e) {
-            if (!cancelled) notify("error", e instanceof Error ? e.message : "Gagal membuat dus otomatis.");
-          }
-          return;
-        }
-        setActiveGroupId((prev) => prev ?? available[0]?.id ?? null);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        notify("error", e instanceof Error ? e.message : "Gagal memuat daftar dus.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isDusMode, notify]);
+      .then(applyGroups)
+      .catch((e) => notify("error", errMsg(e, "Gagal memuat daftar dus.")));
+  }, [isDusMode, applyGroups, notify]);
 
-  const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
-  const remainingCapacity = DUS_CAPACITY - (activeGroup?._count.barang ?? 0);
+  const validateOne = useCallback(
+    async (item: ScannedItem) => {
+      const barang = await getScanBarang(item.kode).catch(() => null);
+      inFlight.current.delete(item.id);
+      const drop = (msg: string) => {
+        setScannedItems((prev) => prev.filter((it) => it.id !== item.id));
+        notify("error", msg);
+        beep(false);
+      };
+      if (!barang) return drop(`Kode ${item.kode} tidak ditemukan.`);
+      if (String(barang.status).toUpperCase() === item.targetStatus.toUpperCase()) {
+        return drop(`Kode ${item.kode} dilewati — statusnya sudah ${barang.status}.`);
+      }
+      const kode = barang.kodeBarang;
+      const dup = listRef.current.some((it) => it.id !== item.id && !it.loading && keyOf(it.kode) === keyOf(kode));
+      if (dup) return drop(`Kode ${item.kode} duplikat — tidak dimasukkan.`);
+      const found = barang;
+      setScannedItems((prev) =>
+        prev.map((it) =>
+          it.id === item.id
+            ? { ...it, id: found.id ?? it.id, kode, variant: variantName(found), loading: false, pernahRetur: found.pernahRetur }
+            : it,
+        ),
+      );
+      beep(true);
+    },
+    [notify],
+  );
 
-  const handleCreateGroup = async () => {
-    const nama = newGroupName.trim();
-    if (!nama) {
-      notify("error", "Nama dus wajib diisi.");
+  useEffect(() => {
+    const slots = MAX_PARALLEL - inFlight.current.size;
+    if (slots <= 0) return;
+    const busy = new Set(scannedItems.filter((it) => inFlight.current.has(it.id)).map((it) => keyOf(it.kode)));
+    const batch: ScannedItem[] = [];
+    for (const it of [...scannedItems].reverse()) {
+      if (batch.length >= slots) break;
+      if (!it.loading || inFlight.current.has(it.id) || busy.has(keyOf(it.kode))) continue;
+      busy.add(keyOf(it.kode));
+      batch.push(it);
+    }
+    for (const it of batch) {
+      inFlight.current.add(it.id);
+      void validateOne(it);
+    }
+  }, [scannedItems, validateOne]);
+
+  const enqueue = (kodes: string[]) =>
+    kodes.map<ScannedItem>((kode) => ({
+      id: Date.now() + Math.random(),
+      kode,
+      variant: "Memeriksa...",
+      waktu: nowTime(),
+      loading: true,
+      targetStatus: statusRef.current,
+    }));
+
+  const handleSubmit = (e?: FormEvent) => {
+    e?.preventDefault();
+    const kode = inputValue.trim();
+    setInputValue("");
+    focusInput();
+    if (!kode) {
+      notify("error", "Kode kosong — scan ulang.");
+      beep(false);
       return;
     }
+    if (scanBlocked) {
+      notify("error", blockReason);
+      beep(false);
+      return;
+    }
+    if (listRef.current.some((it) => keyOf(it.kode) === keyOf(kode))) {
+      notify("error", `Kode ${kode} sudah ada di daftar.`);
+      beep(false);
+      return;
+    }
+    setScannedItems((prev) => [...enqueue([kode]), ...prev]);
+  };
+
+  const handleUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    try {
+      if (!file) return;
+      if (scanBlocked) {
+        notify("error", blockReason);
+        return;
+      }
+      if (file.size > 1024 * 1024) {
+        notify("error", "File terlalu besar — maksimal 1 MB.");
+        return;
+      }
+      const text = (await file.text()).trim();
+      let codes: string[] = [];
+      if (text.startsWith("[") && text.endsWith("]")) {
+        try {
+          const parsed: unknown = JSON.parse(text);
+          if (Array.isArray(parsed)) codes = parsed.map((v) => String(v).trim()).filter(Boolean);
+        } catch {
+          codes = [];
+        }
+      }
+      if (codes.length === 0) codes = text.split(/[\r\n,;]+/).map((s) => s.trim()).filter(Boolean);
+      const seen = new Set(listRef.current.map((it) => keyOf(it.kode)));
+      const fresh = codes.filter((k) => !seen.has(keyOf(k)) && seen.add(keyOf(k)));
+      if (fresh.length === 0) {
+        notify("error", "Tidak ada kode baru di file.");
+        return;
+      }
+      const limit = Math.min(MAX_UPLOAD_CODES, slotsLeft);
+      const taken = fresh.slice(0, limit);
+      setScannedItems((prev) => [...enqueue(taken), ...prev]);
+      notify(
+        "success",
+        fresh.length > limit
+          ? `${taken.length} kode masuk antre (batas ${isDusMode ? "sisa dus" : "upload"} ${limit}; ${fresh.length - taken.length} diabaikan).`
+          : `${taken.length} kode masuk antre validasi.`,
+      );
+    } catch {
+      notify("error", "Gagal membaca file.");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleCreateGroup = async (custom: boolean) => {
+    const nama = custom ? newGroupName.trim() : nextDusName(groups, needsPengganti);
+    if (!nama) return;
     setCreatingGroup(true);
     try {
       const created = await createBarangGroup(nama);
@@ -179,211 +279,81 @@ function ScanQr() {
       notify("success", `Dus "${created.nama}" dibuat.`);
       beep(true);
     } catch (e) {
-      notify("error", e instanceof Error ? e.message : "Gagal membuat dus.");
+      notify("error", errMsg(e, "Gagal membuat dus."));
       beep(false);
     } finally {
       setCreatingGroup(false);
     }
   };
 
-  const handleSaveDus = async () => {
-    const validItems = scannedItems.filter((it) => !it.loading);
-    if (validItems.length === 0) {
-      notify("error", "Belum ada data — scan barang dulu.");
+  const saveStatuses = async (items: ScannedItem[], onStep: () => void) => {
+    const ok = new Set<string>();
+    const failed: BulkScanItemResult[] = [];
+    for (const [st, kodes] of groupByStatus(items)) {
+      const result = await bulkScanBarang(kodes, st, keterangan.trim() || undefined);
+      result.success.forEach((s) => ok.add(keyOf(s.kodeBarang)));
+      failed.push(...result.failed);
+      onStep();
+    }
+    setFailedItems(failed);
+    setShowFailed(failed.length > 0);
+    return { ok, failed };
+  };
+
+  const handleSave = async () => {
+    const items = scannedItems.filter((it) => !it.loading);
+    if (items.length === 0 || saving) return;
+    if (dusProblem) {
+      notify("error", dusProblem);
+      beep(false);
       return;
     }
-    const needsPengganti = validItems.some((it) => it.pernahRetur);
-    const familyOf = (nama: string) => (familyOfDus(nama) === "pengganti") === needsPengganti;
-    let target = activeGroup;
-    if (!target || !familyOf(target.nama) || validItems.length > remainingCapacity) {
-      const candidate = groups.find(
-        (g) => !g.isArsip && familyOf(g.nama) && DUS_CAPACITY - g._count.barang >= validItems.length,
-      );
-      if (candidate) {
-        target = candidate;
-        setActiveGroupId(candidate.id);
-        notify("success", target.id !== activeGroup?.id ? `Otomatis masuk "${target.nama}".` : `Disimpan ke "${target.nama}".`);
-      } else {
-        try {
-          const created = await createBarangGroup(nextDusName(groups, needsPengganti));
-          setGroups((prev) => [...prev, created]);
-          setActiveGroupId(created.id);
-          target = created;
-          beep(true);
-        } catch (e) {
-          notify("error", e instanceof Error ? e.message : "Gagal membuat dus otomatis.");
-          beep(false);
-          return;
-        }
-      }
-    }
-    setSavingDus(true);
-    setSubmitProgress(0);
+    const target = activeGroup;
+    setSaving(true);
+    setProgress(0);
     setFailedItems([]);
-    setShowFailedDetail(false);
-    const failed: FailedItem[] = [];
     try {
-      const successKodes = new Set<string>();
-      for (const [st, kodes] of groupByStatus(validItems)) {
-        const result = await bulkScanBarang(kodes, st, keterangan.trim() || undefined);
-        for (const s of result.success) successKodes.add(s.kodeBarang.toLowerCase());
-        failed.push(...result.failed);
+      const pending = items.filter((it) => !it.statusSaved);
+      let step = 0;
+      const total = groupByStatus(pending).length + (isDusMode ? 1 : 0);
+      const tick = () => setProgress(Math.round((++step / Math.max(total, 1)) * 100));
+
+      const { ok, failed } = await saveStatuses(pending, tick);
+
+      if (!isDusMode) {
+        setScannedItems((prev) => prev.filter((it) => it.loading || !ok.has(keyOf(it.kode))));
+        if (failed.length === 0) notify("success", `${ok.size} item tersimpan.`);
+        else if (ok.size === 0) notify("error", failed[0].reason ?? failed[0].error ?? `${failed.length} item gagal diproses.`);
+        else notify("error", `${ok.size} tersimpan, ${failed.length} gagal — perbaiki lalu simpan ulang.`);
+        beep(failed.length === 0);
+        return;
       }
-      setFailedItems(failed);
-      if (failed.length > 0) setShowFailedDetail(true);
-      const successItems = validItems.filter((it) => successKodes.has(it.kode.toLowerCase()));
-      if (successItems.length === 0) {
+
+      setScannedItems((prev) => prev.map((it) => (ok.has(keyOf(it.kode)) ? { ...it, statusSaved: true } : it)));
+      const ready = items.filter((it) => it.statusSaved || ok.has(keyOf(it.kode)));
+      if (ready.length === 0 || !target) {
         notify("error", "Tidak ada item yang berhasil disimpan.");
-        return;
-      }
-      let assigned: number;
-      try {
-        assigned = (await assignBarangToGroup(target.id, successItems.map((it) => it.id))).updated;
-      } catch {
-        notify("error", `${successItems.length} item sudah berstatus baru, tapi gagal masuk dus — coba simpan lagi.`);
         beep(false);
         return;
       }
-      if (assigned < successItems.length) {
-        notify("error", `${successItems.length - assigned} item tidak masuk dus (kode tidak ditemukan di server).`);
-        return;
-      }
-      setScannedItems((prev) => prev.filter((it) => it.loading || !successKodes.has(it.kode.toLowerCase())));
-      await refreshGroups();
-      notify("success", target ? `${successItems.length} item tersimpan ke dus "${target.nama}".` : `${successItems.length} item tersimpan.`);
-      beep(true);
+
+      await assignBarangToGroup(target.id, ready.map((it) => it.id));
+      const keys = new Set(ready.map((it) => keyOf(it.kode)));
+      setScannedItems((prev) => prev.filter((it) => !keys.has(keyOf(it.kode))));
+      tick();
+      notify(
+        failed.length ? "error" : "success",
+        `${ready.length} item masuk ${target.nama}${failed.length ? ` · ${failed.length} gagal` : ""}.`,
+      );
+      beep(failed.length === 0);
     } catch (e) {
-      notify("error", e instanceof Error ? e.message : "Gagal menyimpan dus.");
+      notify("error", `${errMsg(e, "Gagal menyimpan.")} Item tetap di daftar — tekan Simpan lagi.`);
       beep(false);
     } finally {
-      setSavingDus(false);
-      setSubmitProgress(0);
-      inputRef.current?.focus();
-    }
-  };
-
-  const removeItem = (id: number) => {
-    setScannedItems((prev) => prev.filter((it) => it.id !== id));
-    inputRef.current?.focus();
-  };
-
-  const handleSubmit = (e?: FormEvent) => {
-    if (e) e.preventDefault();
-    const kode = inputValue.trim();
-    if (!kode) {
-      notify("error", "Kode kosong — scan ulang.");
-      setInputValue("");
-      if (inputRef.current) inputRef.current.value = "";
-      inputRef.current?.focus();
-      beep(false);
-      return;
-    }
-    const newItem: ScannedItem = {
-      id: Date.now() + Math.random(),
-      kode,
-      variant: "Memeriksa...",
-      waktu: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      loading: true,
-      targetStatus: statusRef.current,
-    };
-    setScannedItems((prev) => [newItem, ...prev]);
-    setInputValue("");
-    if (inputRef.current) inputRef.current.value = "";
-    inputRef.current?.focus();
-  };
-
-  const validateOne = useCallback(
-    async (item: ScannedItem) => {
-      try {
-        const barang = await getScanBarang(item.kode);
-        if (String(barang.status).toUpperCase() === item.targetStatus) {
-          setScannedItems((prev) => prev.filter((it) => it.id !== item.id));
-          notify("error", `Kode ${item.kode} dilewati — statusnya sudah ${barang.status}.`);
-          beep(false);
-          return;
-        }
-        const dup = listRef.current.some(
-          (it) => it.id !== item.id && !it.loading && it.kode.toLowerCase() === barang.kodeBarang.toLowerCase(),
-        );
-        if (dup) {
-          setScannedItems((prev) => prev.filter((it) => it.id !== item.id));
-          notify("error", `Kode ${item.kode} duplikat — tidak dimasukkan.`);
-          beep(false);
-          return;
-        }
-        const variantName =
-          barang.variant?.product && barang.variant?.style && barang.variant?.color && barang.variant?.size
-            ? `${barang.variant.product.nama} ${barang.variant.style.nama} ${barang.variant.color.nama} ${barang.variant.size.nama}`
-            : "-";
-        setScannedItems((prev) =>
-          prev.map((it) =>
-            it.id === item.id ? { ...it, id: barang.id ?? it.id, kode: barang.kodeBarang, variant: variantName, loading: false, pernahRetur: barang.pernahRetur } : it,
-          ),
-        );
-        beep(true);
-      } catch {
-        setScannedItems((prev) => prev.filter((it) => it.id !== item.id));
-        notify("error", `Kode ${item.kode} tidak ditemukan.`);
-        beep(false);
-      }
-    },
-    [notify],
-  );
-
-  useEffect(() => {
-    const pending = [...listRef.current].reverse().filter((it) => it.loading);
-    if (pending.length === 0) return;
-    const seen = new Set<string>();
-    const batch = pending
-      .filter((it) => {
-        const key = it.kode.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 5);
-    void Promise.allSettled(batch.map((it) => validateOne(it)));
-  }, [scannedItems, validateOne]);
-
-  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) {
-      notify("error", "File terlalu besar — maksimal 1 MB.");
-      return;
-    }
-    try {
-      const text = await file.text();
-      let codes: string[] = [];
-      const trimmed = text.trim();
-      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (Array.isArray(parsed)) codes = parsed.map((v) => String(v).trim()).filter(Boolean);
-        } catch {
-          /* fallback */
-        }
-      }
-      if (codes.length === 0) codes = text.split(/[\r\n,;]+/).map((s) => s.trim()).filter(Boolean);
-      if (codes.length === 0) {
-        notify("error", "File kosong atau format tidak valid.");
-        return;
-      }
-      const now = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      const seen = new Set(listRef.current.map((it) => it.kode.toLowerCase()));
-      const newItems: ScannedItem[] = [];
-      for (const kode of codes) {
-        const key = kode.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        newItems.push({ id: Date.now() + Math.random(), kode, variant: "Memeriksa...", waktu: now, loading: true, targetStatus: statusRef.current });
-      }
-      setScannedItems((prev) => [...newItems, ...prev]);
-      notify("success", `${newItems.length} kode masuk antre validasi.`);
-    } catch {
-      notify("error", "Gagal membaca file bulk.");
-    } finally {
-      if (bulkInputRef.current) bulkInputRef.current.value = "";
+      if (isDusMode) await refreshGroups().catch(() => undefined);
+      setSaving(false);
+      setProgress(0);
+      focusInput();
     }
   };
 
@@ -391,176 +361,133 @@ function ScanQr() {
     if (scannedItems.length === 0) return;
     if (!resetArmed) {
       setResetArmed(true);
-      if (resetArmTimer.current) window.clearTimeout(resetArmTimer.current);
-      resetArmTimer.current = window.setTimeout(() => setResetArmed(false), 3000);
       return;
     }
-    if (resetArmTimer.current) window.clearTimeout(resetArmTimer.current);
     setResetArmed(false);
     setScannedItems([]);
     setFailedItems([]);
-    setShowFailedDetail(false);
-    setSubmitProgress(0);
-    inputRef.current?.focus();
-    beep(true);
-  };
-
-  const handleBulkSubmit = async () => {
-    const validItems = scannedItems.filter((it) => !it.loading);
-    if (validItems.length === 0) {
-      notify("error", "Belum ada data — scan barang dulu.");
-      return;
-    }
-    setIsBulkSubmitting(true);
-    setSubmitProgress(0);
-    setFailedItems([]);
-    setShowFailedDetail(false);
-
-    const total = validItems.length;
-    let done = 0;
-    const allSuccess: string[] = [];
-    const allFailed: FailedItem[] = [];
-
-    try {
-      for (const [st, kodes] of groupByStatus(validItems)) {
-        const result = await bulkScanBarang(kodes, st, keterangan.trim() || undefined);
-        allSuccess.push(...result.success.map((s) => s.kodeBarang));
-        allFailed.push(...result.failed);
-        done += kodes.length;
-        setSubmitProgress(Math.round((done / total) * 100));
-      }
-      setSubmitProgress(100);
-      const successSet = new Set(allSuccess.map((k) => k.toLowerCase()));
-      if (successSet.size > 0) {
-        setScannedItems((prev) => prev.filter((it) => it.loading || !successSet.has(it.kode.toLowerCase())));
-      }
-      setFailedItems(allFailed);
-      if (allFailed.length > 0) setShowFailedDetail(true);
-
-      if (allFailed.length === 0) {
-        notify("success", `${allSuccess.length} item tersimpan.`);
-        beep(true);
-      } else if (allSuccess.length === 0) {
-        const first = allFailed[0] as { error?: string; reason?: string };
-        notify("error", first.error ?? first.reason ?? `${allFailed.length} item gagal diproses.`);
-        beep(false);
-      } else {
-        notify("error", `${allSuccess.length} tersimpan, ${allFailed.length} gagal — sisa di tabel bisa diperbaiki lalu simpan ulang.`);
-        beep(false);
-      }
-    } catch (reqErr) {
-      const msg = reqErr instanceof Error ? reqErr.message : "Sistem gagal mengirim data.";
-      notify("error", msg);
-      beep(false);
-    } finally {
-      setIsBulkSubmitting(false);
-      setTimeout(() => setSubmitProgress(0), 1000);
-      inputRef.current?.focus();
-    }
+    focusInput();
   };
 
   useEffect(() => {
-    const handleGlobalKeydown = (event: KeyboardEvent) => {
+    const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const input = inputRef.current;
+      if (!input || input.disabled) return;
       const target = event.target as HTMLElement | null;
-      const interactive =
-        target &&
-        (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(target.tagName) || target.isContentEditable);
-      if (interactive) return;
-      if (event.key === "Enter") {
-        inputRef.current?.focus();
-        return;
-      }
+      if (target && (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(target.tagName) || target.isContentEditable)) return;
+      if (event.key === "Enter") return input.focus();
       if (event.key.length === 1) {
         event.preventDefault();
-        inputRef.current?.focus();
-        if (inputRef.current) {
-          inputRef.current.value += event.key;
-          setInputValue(inputRef.current.value);
-        }
+        input.focus();
+        setInputValue((v) => v + event.key);
       }
     };
-    window.addEventListener("keydown", handleGlobalKeydown);
-    return () => window.removeEventListener("keydown", handleGlobalKeydown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const scannedItemsCount = scannedItems.length;
-  const itemsPerVariant = scannedItems
-    .filter((it) => !it.loading)
-    .reduce((acc, item) => {
-      acc[item.variant] = (acc[item.variant] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
   const loadingCount = scannedItems.filter((it) => it.loading).length;
-  const validItemsCount = scannedItemsCount - loadingCount;
-  const statusCounts = new Map<StatusBarang, number>();
-  for (const it of scannedItems) {
-    if (!it.loading) statusCounts.set(it.targetStatus, (statusCounts.get(it.targetStatus) ?? 0) + 1);
-  }
-  const groupSummary = [...statusCounts.entries()].map(([st, n]) => `${statusLabel(st)}: ${n}`).join(" · ");
-  const hasMultipleStatus = statusCounts.size > 1;
+  const validItems = scannedItems.filter((it) => !it.loading);
+  const validCount = validItems.length;
+  const visibleGroups = groups.filter((g) => !g.isArsip);
+  const perVariant = Object.entries(
+    validItems.reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.variant]: (acc[it.variant] ?? 0) + 1 }), {}),
+  );
+  const last = scannedItems[0];
+
+  const statusBadge = (kode: string) => {
+    const warna = statusOpt(kode)?.warna;
+    return (
+      <span
+        className={`inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${warna ? "text-white" : "bg-slate-100 text-slate-600"}`}
+        style={warna ? { backgroundColor: warna } : undefined}
+      >
+        {statusLabel(kode)}
+      </span>
+    );
+  };
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-transparent font-[Inter,sans-serif] text-slate-800 lg:h-[calc(100dvh-3.5rem)] lg:overflow-hidden">
+    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#F6F8FB] pb-28 font-[Inter,sans-serif] text-[#0F1C2E] antialiased lg:h-[calc(100dvh-3.5rem)] lg:overflow-hidden lg:pb-0">
       {toast && (
         <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-4">
           <div
             role={toast.type === "error" ? "alert" : "status"}
             aria-live={toast.type === "error" ? "assertive" : "polite"}
-            className={`pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-4 rounded-md border bg-white p-4 text-sm font-bold shadow-2xl ${toast.type === "error" ? "border-red-600 text-red-700" : "border-emerald-600 text-emerald-700"}`}
+            className={`pointer-events-auto flex w-full max-w-xl items-center gap-3 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-[0_12px_32px_rgba(15,28,46,0.15)] ${
+              toast.type === "error" ? "border-[#EF4444]/40" : "border-[#10B981]/40"
+            }`}
           >
-            <div className="flex items-center gap-3">
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded text-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
-                {toast.type === "error" ? "!" : "✓"}
-              </span>
-              <span className="leading-snug">{toast.msg}</span>
-            </div>
-            <button type="button" onClick={() => setToast(null)} className="shrink-0 rounded border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500">
-              Tutup
+            <span
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-bold text-white ${
+                toast.type === "error" ? "bg-[#EF4444]" : "bg-[#10B981]"
+              }`}
+              aria-hidden="true"
+            >
+              {toast.type === "error" ? "!" : "✓"}
+            </span>
+            <span className="flex-1 leading-snug">{toast.msg}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Tutup notifikasi"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 ${FOCUS}`}
+            >
+              ✕
             </button>
           </div>
         </div>
       )}
 
-      <main className="flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
-        <section className="w-full min-w-0 border-r border-slate-200 bg-white p-3 sm:p-6 lg:w-2/5 lg:flex-none lg:overflow-y-auto xl:w-1/3">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-3">
-            <h2 className="text-lg font-bold text-slate-800">Area Scan</h2>
-            <span className="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-bold text-white tabular-nums">{scannedItemsCount} item</span>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Status tujuan</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as StatusBarang)}
-                className={inputClass}
-                disabled={isBulkSubmitting || savingDus}
-              >
-                {statusOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-xs font-medium text-slate-500">Berlaku untuk scan berikutnya. Tabel boleh berisi beberapa status — akan disimpan per grup.</p>
+      <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <aside className="flex flex-col border-[#E5E9F0] bg-white lg:w-[400px] lg:shrink-0 lg:border-r">
+          <div className="flex-1 space-y-5 p-4 sm:p-5 lg:overflow-y-auto">
+            <div className="flex items-center justify-between gap-2">
+              <h1 className="text-lg font-bold">Scan Barang</h1>
+              <span className="rounded-full bg-[#00A8E8]/10 px-2.5 py-1 text-xs font-semibold text-[#0088C0]">
+                {isDusMode ? `Per Dus · ${DUS_CAPACITY}/dus` : "Semua Barang"}
+              </span>
             </div>
 
-            {isDusMode && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="dus-select" className="text-sm font-semibold text-slate-700">
-                    Dus tujuan
-                  </label>
-                  {activeGroup && (
-                    <span
-                      className={`text-xs font-bold ${
-                        remainingCapacity === 0 ? "text-red-600" : "text-slate-600"
+            <section>
+              <p id="status-label" className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#64748B]">
+                Status tujuan
+              </p>
+              <div role="radiogroup" aria-labelledby="status-label" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5 lg:mx-0 lg:flex-wrap lg:px-0">
+                {statusOptions.map((o) => {
+                  const on = o.value === status;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      disabled={saving}
+                      onClick={() => setRawStatus(o.value)}
+                      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition disabled:opacity-50 ${FOCUS} ${
+                        on ? "border-[#1E3A5F] bg-[#1E3A5F] text-white" : "border-[#E5E9F0] bg-white text-[#475569] hover:border-[#1E3A5F]/40"
                       }`}
                     >
-                      {activeGroup._count.barang}/{DUS_CAPACITY}
-                      {remainingCapacity === 0 && " · PENUH"}
+                      <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white/60" style={{ backgroundColor: o.warna ?? "#94A3B8" }} />
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs text-[#64748B]">Berlaku untuk scan berikutnya.</p>
+            </section>
+
+            {isDusMode && (
+              <section className={`${CARD} p-3.5`}>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="dus-select" className="text-xs font-semibold uppercase tracking-[0.1em] text-[#64748B]">
+                    Dus aktif
+                  </label>
+                  {activeGroup && (
+                    <span className={`text-xs font-semibold tabular-nums ${slotsLeft === 0 ? "text-[#EF4444]" : "text-[#475569]"}`}>
+                      {activeGroup._count.barang + scannedItems.length}/{DUS_CAPACITY}
+                      {slotsLeft === 0 && " · PENUH"}
                     </span>
                   )}
                 </div>
@@ -568,296 +495,312 @@ function ScanQr() {
                   id="dus-select"
                   value={activeGroupId ?? ""}
                   onChange={(e) => setActiveGroupId(e.target.value ? Number(e.target.value) : null)}
-                  className={inputClass}
+                  disabled={saving}
+                  className={`${FIELD} mt-2`}
                 >
-                  <option value="">{groups.length === 0 ? "Belum ada dus" : "— Pilih dus —"}</option>
-                  {groups
-                    .filter((g) => !g.isArsip)
-                    .map((g) => (
-                      <option key={g.id} value={g.id} disabled={g._count.barang >= DUS_CAPACITY}>
-                        {g.nama} — {g._count.barang}/{DUS_CAPACITY}
-                      </option>
-                    ))}
+                  <option value="">{visibleGroups.length === 0 ? "Belum ada dus — buat dulu" : "— Pilih dus —"}</option>
+                  {visibleGroups.map((g) => (
+                    <option key={g.id} value={g.id} disabled={g._count.barang >= DUS_CAPACITY && g.id !== activeGroupId}>
+                      {g.nama} — {g._count.barang}/{DUS_CAPACITY}
+                    </option>
+                  ))}
                 </select>
                 {activeGroup && (
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                    <div
-                      className={`h-full transition-all ${remainingCapacity === 0 ? "bg-red-500" : "bg-emerald-600"}`}
-                      style={{ width: `${(activeGroup._count.barang / DUS_CAPACITY) * 100}%` }}
-                    />
-                  </div>
+                  <>
+                    <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                      <div className="h-full bg-[#1E3A5F]" style={{ width: `${(activeGroup._count.barang / DUS_CAPACITY) * 100}%` }} />
+                      <div
+                        className="h-full bg-[#10B981] transition-all"
+                        style={{ width: `${(Math.min(scannedItems.length, dusFree) / DUS_CAPACITY) * 100}%` }}
+                      />
+                    </div>
+                    <p className="mt-1.5 text-xs text-[#64748B]">
+                      {activeGroup._count.barang} sudah di dus · {scannedItems.length} di daftar ·{" "}
+                      <span className="font-semibold text-[#0F1C2E]">sisa {slotsLeft}</span>
+                    </p>
+                  </>
                 )}
-                <div className="mt-2 flex gap-2">
-                  <input
-                    type="text"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    placeholder="Nama dus baru"
-                    aria-label="Nama dus baru"
-                    className={inputClass}
-                  />
+                {(!activeGroup || slotsLeft === 0) && (
                   <button
                     type="button"
-                    onClick={handleCreateGroup}
-                    disabled={creatingGroup || !newGroupName.trim()}
-                    className="shrink-0 rounded-md bg-slate-800 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => handleCreateGroup(false)}
+                    disabled={creatingGroup || saving || (activeGroup !== null && scannedItems.length > 0)}
+                    title={activeGroup && scannedItems.length > 0 ? "Simpan daftar ke dus ini dulu" : undefined}
+                    className={`mt-3 h-10 w-full rounded-lg bg-[#1E3A5F] text-sm font-semibold text-white transition hover:bg-[#162C48] disabled:opacity-40 ${FOCUS}`}
                   >
-                    {creatingGroup ? "..." : "Dus Baru"}
+                    {creatingGroup ? "Membuat…" : `+ Dus baru (${nextDusName(groups, needsPengganti)})`}
                   </button>
-                </div>
-              </div>
+                )}
+                <details className="group mt-3">
+                  <summary className={`cursor-pointer list-none rounded text-xs font-semibold text-[#0088C0] [&::-webkit-details-marker]:hidden ${FOCUS}`}>
+                    + Buat dus dengan nama sendiri
+                  </summary>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="Nama dus"
+                      aria-label="Nama dus baru"
+                      className={FIELD}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCreateGroup(true)}
+                      disabled={creatingGroup || !newGroupName.trim()}
+                      className={`h-11 shrink-0 rounded-lg bg-[#1E3A5F] px-4 text-sm font-semibold text-white transition hover:bg-[#162C48] disabled:opacity-40 ${FOCUS}`}
+                    >
+                      {creatingGroup ? "..." : "Buat"}
+                    </button>
+                  </div>
+                </details>
+              </section>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Scan QR / Kode barang</label>
+            <form onSubmit={handleSubmit}>
+              <label htmlFor="scan-input" className="mb-2 block text-xs font-semibold uppercase tracking-[0.1em] text-[#64748B]">
+                Scan QR / kode barang
+              </label>
+              <div className="relative">
                 <input
+                  id="scan-input"
                   ref={inputRef}
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Arahkan scanner ke sini..."
+                  placeholder={scanBlocked ? blockReason : "Arahkan scanner ke sini…"}
                   autoComplete="off"
                   enterKeyHint="enter"
-                  disabled={isBulkSubmitting || savingDus}
-                  className="w-full rounded-lg border-2 border-slate-800 bg-white px-4 py-4 text-center font-mono text-2xl font-bold text-slate-900 shadow-sm placeholder:font-sans placeholder:text-base placeholder:font-medium placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-4 focus:ring-sky-500/20 sm:py-5 sm:text-3xl"
+                  disabled={saving || scanBlocked}
+                  className="h-16 w-full rounded-xl border-2 border-[#1E3A5F]/20 bg-[#F8FAFC] px-4 pr-14 text-center font-mono text-xl font-bold tracking-wide text-[#0F1C2E] placeholder:font-sans placeholder:text-sm placeholder:font-medium placeholder:tracking-normal placeholder:text-[#94A3B8] focus:border-[#00A8E8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00A8E8]/15 disabled:opacity-60 sm:text-2xl"
                 />
+                <button
+                  type="submit"
+                  disabled={saving || scanBlocked}
+                  aria-label="Tambah item"
+                  className={`absolute right-2 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-lg bg-[#1E3A5F] text-xl font-bold text-white transition hover:bg-[#162C48] disabled:opacity-40 ${FOCUS}`}
+                >
+                  ↵
+                </button>
               </div>
-              <button
-                type="submit"
-                disabled={isBulkSubmitting || savingDus}
-                className="w-full rounded-md bg-slate-800 py-3.5 text-base font-bold text-white transition-colors hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Tambah item (Enter)
-              </button>
-              <p className="text-center text-xs font-medium text-slate-500">Scanner hardware otomatis masuk ke input di atas — Enter untuk tambah</p>
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-[#64748B]">
+                <span
+                  className={`h-2 w-2 rounded-full ${saving ? "bg-amber-400" : scanBlocked ? "bg-[#EF4444]" : "animate-pulse bg-[#10B981]"}`}
+                  aria-hidden="true"
+                />
+                <span className={scanBlocked && !saving ? "font-semibold text-[#EF4444]" : undefined}>
+                  {saving ? "Sedang menyimpan…" : scanBlocked ? blockReason : "Siap scan — scanner otomatis masuk, Enter untuk tambah"}
+                </span>
+              </p>
             </form>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-lg bg-slate-800 p-3 text-center text-white">
-                <p className="text-2xl font-black tabular-nums">{scannedItemsCount}</p>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Total</p>
-              </div>
-              <div className="rounded-lg bg-emerald-600 p-3 text-center text-white">
-                <p className="text-2xl font-black tabular-nums">{validItemsCount}</p>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">Siap</p>
-              </div>
-              <div className="rounded-lg bg-sky-600 p-3 text-center text-white">
-                <p className="text-2xl font-black tabular-nums">{loadingCount}</p>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-sky-100">Antre</p>
-              </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                { n: scannedItems.length, label: "Total", cls: "text-[#0F1C2E]" },
+                { n: validCount, label: "Siap", cls: "text-[#10B981]" },
+                { n: loadingCount, label: "Antre", cls: "text-[#0088C0]" },
+              ].map((s) => (
+                <div key={s.label} className={`${CARD} py-2.5`}>
+                  <p className={`text-xl font-bold tabular-nums ${s.cls}`}>{s.n}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-[#64748B]">{s.label}</p>
+                </div>
+              ))}
             </div>
-            {groupSummary && <p className="text-center text-xs font-medium text-slate-500">{groupSummary}</p>}
 
-            {scannedItemsCount > 0 && (
-              <button
-                type="button"
-                onClick={() => document.getElementById("scan-table-top")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="flex w-full flex-col rounded-md border border-emerald-200 bg-emerald-50 p-4 text-left transition-colors hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600"
-              >
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Terakhir masuk — ketuk untuk lihat</span>
-                <span className="mt-1 truncate font-mono text-lg font-black text-slate-900" title={scannedItems[0].kode}>
-                  {scannedItems[0].kode}
-                </span>
-                <span className="truncate text-sm font-medium text-slate-600" title={scannedItems[0].variant}>
-                  {scannedItems[0].variant} · {scannedItems[0].waktu}
-                </span>
-                <span className={`mt-1 inline-flex w-fit rounded px-2 py-0.5 text-xs font-bold ${statusBadge(scannedItems[0].targetStatus).className}`} style={statusBadge(scannedItems[0].targetStatus).style}>{statusLabel(scannedItems[0].targetStatus)}</span>
-              </button>
+            {last && (
+              <div className="rounded-xl border border-[#10B981]/30 bg-[#10B981]/5 px-3.5 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#059669]">Terakhir masuk</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-base font-bold" title={last.kode}>
+                    {last.kode}
+                  </span>
+                  {statusBadge(last.targetStatus)}
+                </div>
+                <p className="truncate text-xs text-[#64748B]" title={last.variant}>
+                  {last.variant} · {last.waktu}
+                </p>
+              </div>
             )}
 
-            <details className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              <summary className="cursor-pointer list-none text-sm font-bold text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 [&::-webkit-details-marker]:hidden">
-                Catatan & opsi lain
+            <details className={`${CARD} px-3.5 py-3`}>
+              <summary className={`cursor-pointer list-none rounded text-sm font-semibold text-[#475569] [&::-webkit-details-marker]:hidden ${FOCUS}`}>
+                Opsi lain
               </summary>
               <div className="mt-3 space-y-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-slate-500">Catatan (opsional)</span>
-                  <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Contoh: Shift 1 — Lolos QC" className={inputClass} />
+                  <span className="mb-1 block text-xs font-medium text-[#64748B]">Catatan (opsional)</span>
+                  <input
+                    type="text"
+                    value={keterangan}
+                    onChange={(e) => setKeterangan(e.target.value)}
+                    placeholder="Contoh: Shift 1 — Lolos QC"
+                    className={FIELD}
+                  />
                 </label>
-                <div className="flex gap-3">
-                  <input ref={bulkInputRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleBulkUpload} />
+                <input ref={fileRef} type="file" accept=".csv,.txt,.json" className="hidden" onChange={handleUpload} />
+                <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => bulkInputRef.current?.click()}
-                    className="flex-1 rounded-md border-2 border-slate-300 bg-white py-3 text-sm font-bold text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={saving}
+                    className={`h-11 flex-1 rounded-lg border border-[#E5E9F0] bg-white text-sm font-semibold text-[#475569] transition hover:border-[#1E3A5F]/40 disabled:opacity-50 ${FOCUS}`}
                   >
-                    Upload CSV / TXT / JSON
+                    Upload CSV/TXT/JSON
                   </button>
-                  {scannedItemsCount > 0 && (
+                  {scannedItems.length > 0 && (
                     <button
                       type="button"
                       onClick={handleReset}
-                      className={`flex-1 rounded-md border-2 py-3 text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500 ${
-                        resetArmed
-                          ? "border-red-600 bg-red-600 text-white hover:bg-red-700"
-                          : "border-red-200 bg-white text-red-600 hover:bg-red-50"
+                      disabled={saving}
+                      className={`h-11 flex-1 rounded-lg border text-sm font-semibold transition disabled:opacity-50 ${FOCUS} ${
+                        resetArmed ? "border-[#EF4444] bg-[#EF4444] text-white" : "border-red-200 bg-white text-[#EF4444] hover:bg-red-50"
                       }`}
                     >
                       {resetArmed ? "Yakin? Ketuk lagi" : "Buang semua"}
                     </button>
                   )}
                 </div>
-                <p className="text-xs leading-snug text-slate-500">Format file: satu kode per baris, atau dipisah koma / titik-koma. JSON array juga diterima.</p>
+                <p className="text-xs leading-snug text-[#64748B]">
+                  Satu kode per baris, atau dipisah koma/titik-koma. JSON array juga diterima. Maks {MAX_UPLOAD_CODES} kode.
+                </p>
               </div>
             </details>
           </div>
 
-          <div className="sticky bottom-0 -mx-3 mt-6 border-t border-slate-200 bg-white/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
-            {(isBulkSubmitting || savingDus) && (
-              <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full bg-emerald-600 transition-all duration-300" style={{ width: `${submitProgress}%` }} />
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E5E9F0] bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:static lg:px-5 lg:pb-4">
+            {saving && (
+              <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-[#10B981] transition-all duration-300" style={{ width: `${progress}%` }} />
               </div>
             )}
-            {!isDusMode && validItemsCount > 0 && failedItems.length === 0 && hasMultipleStatus && (
-              <p className="mb-2 text-center text-xs font-medium text-slate-500">Akan disimpan per grup status</p>
+            {isDusMode && validCount > 0 && !saving && dusProblem && (
+              <p role="alert" className="mb-2 text-center text-xs font-semibold text-[#EF4444]">
+                {dusProblem}
+              </p>
             )}
-            {isDusMode ? (
+            <button type="button" onClick={handleSave} disabled={saving || validCount === 0 || !!dusProblem} className={PRIMARY_BTN}>
+              {saving
+                ? "Menyimpan…"
+                : isDusMode && activeGroup
+                  ? `Simpan ${validCount} item ke ${activeGroup.nama}`
+                  : `Simpan ${validCount} item`}
+            </button>
+          </div>
+        </aside>
+
+        <section className="flex min-w-0 flex-1 flex-col p-4 sm:p-5 lg:overflow-y-auto">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-[#64748B]">Daftar scan</h2>
+            {validCount > 0 && (
               <button
                 type="button"
-                onClick={handleSaveDus}
-                disabled={savingDus || validItemsCount === 0 || !activeGroup}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-4 text-lg font-black tracking-wide text-white shadow-lg transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                onClick={() => setShowSummary((v) => !v)}
+                aria-expanded={showSummary}
+                className={`rounded text-xs font-semibold text-[#0088C0] hover:underline ${FOCUS}`}
               >
-                {savingDus ? "Memproses..." : `Simpan ke ${activeGroup?.nama ?? "dus"}`}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleBulkSubmit}
-                disabled={isBulkSubmitting || validItemsCount === 0}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-4 text-lg font-black tracking-wide text-white shadow-lg transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
-              >
-                {isBulkSubmitting ? "Memproses..." : `Simpan ${validItemsCount} item`}
+                {showSummary ? "Sembunyikan ringkasan" : "Ringkasan per varian"}
               </button>
             )}
           </div>
-        </section>
 
-        <section className="z-0 flex w-full min-w-0 flex-col border-t border-slate-200 bg-slate-50 lg:border-l lg:border-t-0 lg:flex-1">
-          <div className="flex flex-col p-3 sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Daftar scan</h2>
-              <span className="rounded bg-white px-2 py-1 text-xs font-bold text-slate-600 shadow-sm">
-                {scannedItemsCount} baris{loadingCount > 0 ? ` · ${loadingCount} antre` : ""}
-              </span>
+          {showSummary && validCount > 0 && (
+            <div className={`${CARD} mb-3 divide-y divide-[#E5E9F0] text-sm`}>
+              {perVariant.map(([variant, count]) => (
+                <div key={variant} className="flex justify-between gap-3 px-4 py-2">
+                  <span className="min-w-0 truncate text-[#475569]">{variant}</span>
+                  <span className="shrink-0 font-semibold tabular-nums">{count} pcs</span>
+                </div>
+              ))}
             </div>
+          )}
 
-            {scannedItemsCount > 0 && (
-              <div className="mb-4">
-                <button type="button" onClick={() => setShowSummary((v) => !v)} aria-expanded={showSummary} className="text-xs font-bold text-sky-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500">
-                  {showSummary ? "Sembunyikan ringkasan" : "Tampilkan ringkasan"}
-                </button>
-                {showSummary && (
-                  <table className="mt-2 w-full text-left text-sm">
-                    <tbody>
-                      {Object.entries(itemsPerVariant).map(([variant, count]) => (
-                        <tr key={variant} className="border-b border-slate-200">
-                          <td className="py-1.5 pr-2 font-medium text-slate-600">{variant}</td>
-                          <td className="py-1.5 text-right font-bold text-slate-800">{count} pcs</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+          {failedItems.length > 0 && (
+            <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3.5">
+              <button
+                type="button"
+                onClick={() => setShowFailed((v) => !v)}
+                aria-expanded={showFailed}
+                className={`flex w-full items-center justify-between rounded text-left text-sm font-semibold text-[#B91C1C] ${FOCUS}`}
+              >
+                {failedItems.length} item gagal
+                <span className="text-xs font-medium">{showFailed ? "Tutup" : "Detail"}</span>
+              </button>
+              {showFailed && (
+                <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+                  {failedItems.slice(0, 20).map((it, i) => (
+                    <li key={`${it.kodeBarang}-${i}`} className="rounded-lg bg-white px-3 py-2 text-xs">
+                      <span className="font-mono font-bold text-[#B91C1C]">{it.kodeBarang}</span>
+                      <span className="block text-[#EF4444]">{it.reason || it.error || "Kesalahan tidak diketahui"}</span>
+                    </li>
+                  ))}
+                  {failedItems.length > 20 && <li className="pt-1 text-xs text-[#B91C1C]">…dan {failedItems.length - 20} lainnya</li>}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div className={`${CARD} flex min-h-[260px] flex-1 flex-col overflow-hidden`}>
+            {scannedItems.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+                <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#00A8E8]/10 text-[#0088C0]">
+                  <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <path d="M14 14h3v3h-3zM17 17h4M14 20h4M17 20h4" />
+                  </svg>
+                </span>
+                <p className="mt-3 font-semibold text-[#475569]">Belum ada barang</p>
+                <p className="mt-1 max-w-xs text-sm text-[#94A3B8]">Scan QR atau ketik kode lalu tekan Enter.</p>
               </div>
-            )}
-
-            {failedItems.length > 0 && (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
-                <button
-                  type="button"
-                  onClick={() => setShowFailedDetail((v) => !v)}
-                  aria-expanded={showFailedDetail}
-                  className="flex w-full items-center justify-between text-left text-sm font-bold text-red-700 hover:text-red-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500"
-                >
-                  <span>
-                    {showFailedDetail ? "▼" : "▶"} {failedItems.length} item gagal
-                  </span>
-                  <span className="text-xs font-normal text-red-500">ketuk untuk {showFailedDetail ? "tutup" : "detail"}</span>
-                </button>
-                {showFailedDetail && (
-                  <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
-                    {failedItems.slice(0, 10).map((item, idx) => (
-                      <div key={idx} className="rounded bg-white p-2 font-mono text-xs">
-                        <div className="font-bold text-red-700">{item.kodeBarang}</div>
-                        <div className="text-red-500">{item.reason || item.error || "Kesalahan tidak diketahui"}</div>
+            ) : (
+              <ul className="divide-y divide-[#E5E9F0] overflow-y-auto">
+                {scannedItems.map((it, i) => (
+                  <li key={it.id} className="flex items-center gap-3 px-3.5 py-3 sm:px-4">
+                    <span className="w-7 shrink-0 text-right text-xs font-semibold tabular-nums text-[#94A3B8]">
+                      {scannedItems.length - i}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="min-w-0 truncate font-mono text-sm font-bold">{it.kode}</span>
+                        {statusBadge(it.targetStatus)}
+                        {it.pernahRetur && (
+                          <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">Pernah retur</span>
+                        )}
+                        {it.statusSaved && (
+                          <span className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700">
+                            Status ✓ · belum masuk dus
+                          </span>
+                        )}
                       </div>
-                    ))}
-                    {failedItems.length > 10 && <div className="pt-2 text-xs italic text-red-600">…dan {failedItems.length - 10} item lainnya</div>}
-                  </div>
-                )}
-              </div>
+                      <p className="mt-0.5 truncate text-xs text-[#64748B]">
+                        {it.variant} · {it.waktu}
+                      </p>
+                    </div>
+                    {it.loading ? (
+                      <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[#00A8E8]" title="Memvalidasi…" aria-label="Memvalidasi" />
+                    ) : (
+                      <span className="shrink-0 text-sm font-bold text-[#10B981]" title="Siap disimpan" aria-label="Siap">
+                        ✓
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScannedItems((prev) => prev.filter((x) => x.id !== it.id));
+                        focusInput();
+                      }}
+                      disabled={saving}
+                      aria-label={`Hapus ${it.kode}`}
+                      title="Hapus"
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#94A3B8] transition hover:bg-red-50 hover:text-[#EF4444] disabled:opacity-40 ${FOCUS}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-
-            <div className="flex min-h-[300px] flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div id="scan-table-top" className="min-w-0 flex-1 overflow-auto">
-                {scannedItemsCount === 0 ? (
-                  <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-8 text-center text-slate-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="mb-3 h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                    </svg>
-                    <p className="text-base font-bold text-slate-500">Belum ada barang</p>
-                    <p className="mt-1 max-w-xs text-sm leading-snug text-slate-400">Scan QR atau masukkan kode, lalu tambah item. Status tujuan bisa diubah kapan saja — tabel boleh berisi beberapa status.</p>
-                  </div>
-                ) : (
-                  <table className="min-w-full border-collapse text-left text-sm">
-                    <thead className="sticky top-0 z-10 bg-slate-800 shadow-sm">
-                      <tr className="border-b-2 border-sky-500 text-xs uppercase tracking-wide text-white">
-                        <th className="w-10 px-3 py-3 text-left font-bold">No</th>
-                        <th className="px-3 py-3 text-left font-bold">Kode barang</th>
-                        <th className="px-3 py-3 text-left font-bold">Varian</th>
-                        <th className="px-3 py-3 text-left font-bold">Tujuan</th>
-                        <th className="hidden px-3 py-3 text-right font-bold sm:table-cell">Waktu</th>
-                        <th className="w-14 px-3 py-3 text-center font-bold">Validasi</th>
-                        <th className="w-12 px-2 py-3 text-center font-bold" aria-label="Hapus">
-                          <span className="sr-only">Hapus</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {scannedItems.map((item, index) => (
-                        <tr key={item.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                          <td className="px-3 py-3 text-sm font-bold text-sky-700">{index + 1}</td>
-                          <td className="max-w-[28vw] truncate px-3 py-3 font-mono text-sm font-bold text-slate-900 sm:max-w-none">{item.kode}</td>
-                          <td className="max-w-[30vw] truncate px-3 py-3 text-sm font-medium leading-snug text-slate-700 sm:max-w-none">{item.variant}</td>
-                          <td className="px-3 py-3">
-                            <span className={`inline-flex rounded px-2 py-0.5 text-xs font-bold ${statusBadge(item.targetStatus).className}`} style={statusBadge(item.targetStatus).style}>{statusLabel(item.targetStatus)}</span>
-                          </td>
-                          <td className="hidden whitespace-nowrap px-3 py-3 text-right text-sm font-medium tabular-nums text-slate-600 sm:table-cell">{item.waktu}</td>
-                          <td className="px-3 py-3 text-center">
-                            {item.loading ? (
-                              <span className="inline-flex items-center gap-1.5" title="Memvalidasi...">
-                                <span className="h-3 w-3 animate-pulse rounded-full bg-sky-500" aria-hidden="true" />
-                                <span className="hidden text-xs font-bold text-sky-600 sm:inline">Validasi</span>
-                              </span>
-                            ) : (
-                              <span className="text-base font-bold text-emerald-600" title="Siap disimpan">
-                                ✓
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-2 py-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeItem(item.id)}
-                              aria-label={`Hapus ${item.kode}`}
-                              title="Hapus baris ini"
-                              className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500 disabled:opacity-40"
-                              disabled={isBulkSubmitting || savingDus}
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="h-4 w-4">
-                                <path d="M18 6L6 18M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
           </div>
         </section>
       </main>

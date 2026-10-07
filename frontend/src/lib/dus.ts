@@ -17,6 +17,8 @@ export function isDusPengganti(g: DusLike): boolean {
   return (g.barang ?? []).some((b) => b.pernahRetur);
 }
 
+export const DUS_CAPACITY = 8;
+
 export function nextDusName(groups: DusLike[], pengganti: boolean): string {
   const prefix = pengganti ? "DUS PENGGANTI" : "DUS";
   let max = 0;

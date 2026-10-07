@@ -47,7 +47,7 @@ type FilterSectionProps = {
 };
 
 function formatDateInput(date: Date): string {
-  return date.toISOString().split("T")[0];
+  return date.toLocaleDateString("sv-SE");
 }
 
 export function FilterSection({
@@ -85,8 +85,8 @@ export function FilterSection({
 }: FilterSectionProps) {
   const [open, setOpen] = useState(false);
   const { options: statusOptions } = useStatusOptions();
-  const inputCls = "h-9 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[14px] text-[#1F2937] outline-none transition placeholder:text-[#6B7280]/60 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
-  const labelCls = "flex flex-col gap-1 text-xs font-medium text-[#1F2937]";
+  const inputCls = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
+  const labelCls = "flex flex-col gap-1 text-xs font-semibold text-slate-600";
   const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur].filter(Boolean).length;
 
   const handleDatePresetChange = (value: string) => {
@@ -105,7 +105,7 @@ export function FilterSection({
   };
 
   return (
-    <section aria-label="Filter barang" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+    <section aria-label="Filter barang" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       {/* compact single row: search + filter toggle + meta */}
       <div className="flex items-center gap-2 p-3">
         <div className="relative flex-1">
@@ -136,12 +136,12 @@ export function FilterSection({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 ${open || activeCount > 0 ? "border-[#00A8E8] bg-[#00A8E8]/10 text-[#00A8E8]" : "border-[#D1D5DB] bg-white text-[#1E3A5F] hover:border-[#00A8E8] hover:text-[#00A8E8]"}`}
+          className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border px-3.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/40 ${open || activeCount > 0 ? "border-[#1E3A5F] bg-[#1E3A5F] text-white" : "border-slate-200 bg-white text-slate-700 hover:border-[#1E3A5F]/40"}`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
           Filter
           {activeCount > 0 && (
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00A8E8] px-1.5 text-[10px] font-bold text-white">{activeCount}</span>
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[10px] font-bold text-[#1E3A5F]">{activeCount}</span>
           )}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
         </button>
@@ -166,7 +166,7 @@ export function FilterSection({
 
       {/* collapsible advanced filters — single row on desktop, grid on smaller */}
       {open && (
-        <div className="grid gap-2 border-t border-slate-100 bg-slate-50/50 p-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-3 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className={labelCls}>
             <span>Status</span>
             <select className={inputCls} value={statusFilter} onChange={(e) => onStatusChange(e.target.value as StatusBarang)}>
@@ -237,12 +237,12 @@ export function FilterSection({
             <input type="date" className={inputCls} value={tanggalAkhir} onChange={(e) => { onTanggalAkhirChange(e.target.value); onDatePresetChange(""); }} />
           </label>
 
-          <label className="flex h-9 items-center gap-2 rounded-lg border border-[#D1D5DB] bg-white px-3 text-[13px] font-medium text-[#1F2937]">
+          <label className="flex h-10 items-center gap-2 self-end rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
             <input
               type="checkbox"
               checked={Boolean(hanyaPernahRetur)}
               onChange={(e) => onPernahReturChange?.(e.target.checked)}
-              className="h-4 w-4 accent-[#00A8E8]"
+              className="h-4 w-4 accent-[#1E3A5F]"
             />
             Pernah retur
           </label>
@@ -252,7 +252,7 @@ export function FilterSection({
               type="button"
               onClick={onResetFilters}
               disabled={!hasActiveFilters}
-              className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-white px-3 text-sm font-medium text-[#6B7280] ring-1 ring-inset ring-[#D1D5DB] hover:bg-slate-100 hover:text-[#1F2937] disabled:opacity-40"
+              className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
             >
               Reset Filter
             </button>

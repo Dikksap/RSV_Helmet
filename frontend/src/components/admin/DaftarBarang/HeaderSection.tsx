@@ -9,6 +9,10 @@ type HeaderSectionProps = {
   onImport?: () => void;
 };
 
+const BTN =
+  "inline-flex h-10 items-center justify-center gap-1.5 rounded-xl px-3.5 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
+const GHOST = `${BTN} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`;
+
 export function HeaderSection({
   totalBarang,
   isExporting,
@@ -19,72 +23,39 @@ export function HeaderSection({
   onCreate,
   onImport,
 }: HeaderSectionProps) {
+  const exportTitle = exportDisabled ? exportDisabledReason : undefined;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
-      {/* left: title compact */}
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-bold leading-none tracking-tight text-[#1E3A5F] sm:text-xl">
-            Daftar Barang
-          </h1>
-          <span className="inline-flex items-center gap-1 rounded-full border border-[#1E3A5F]/10 bg-[#F5F7FA] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#1E3A5F]">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#10B981]" />
-            {totalBarang.toLocaleString("id-ID")} Total
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Barang Produksi</p>
+        <h1 className="mt-1 flex items-center gap-2.5 text-2xl font-bold tracking-tight text-slate-900">
+          Daftar Barang
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#00A8E8]/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#0088C0]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#10B981]" aria-hidden="true" />
+            {totalBarang.toLocaleString("id-ID")}
           </span>
-        </div>
-        <p className="mt-0.5 hidden text-xs leading-none text-[#6B7280] sm:block">
-          Inventory / Barang • Kelola barang real-time
-        </p>
-        <p className="mt-0.5 text-[11px] leading-none text-[#6B7280] sm:hidden">
-          Inventory / Barang
-        </p>
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">Data diperbarui otomatis saat ada scan.</p>
       </div>
 
-      {/* right: actions compact single row */}
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={onExportCSV} disabled={isExporting || exportDisabled} title={exportTitle} className={GHOST}>
+          CSV
+        </button>
+        <button type="button" onClick={onExportJSON} disabled={isExporting || exportDisabled} title={exportTitle} className={GHOST}>
+          JSON
+        </button>
         {onImport && (
-          <button
-            type="button"
-            onClick={onImport}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#00A8E8] bg-white px-3 text-xs font-semibold text-[#0088C0] hover:bg-sky-50 active:scale-[0.98]"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+          <button type="button" onClick={onImport} className={GHOST}>
             Import
           </button>
         )}
         {onCreate && (
-          <button
-            type="button"
-            onClick={onCreate}
-            className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#00A8E8] px-3 text-xs font-semibold text-white hover:bg-[#0088C0] active:scale-[0.98]"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-            <span className="hidden sm:inline">Tambah</span> Barang
+          <button type="button" onClick={onCreate} className={`${BTN} bg-[#1E3A5F] text-white hover:bg-[#162C48]`}>
+            + Tambah barang
           </button>
         )}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onExportCSV}
-            disabled={isExporting || exportDisabled}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-slate-50 disabled:opacity-40"
-            title={exportDisabled ? exportDisabledReason : "Export CSV"}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            CSV
-          </button>
-          <button
-            type="button"
-            onClick={onExportJSON}
-            disabled={isExporting || exportDisabled}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-slate-50 disabled:opacity-40"
-            title={exportDisabled ? exportDisabledReason : "Export JSON"}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            JSON
-          </button>
-        </div>
       </div>
-    </div>
+    </header>
   );
 }
