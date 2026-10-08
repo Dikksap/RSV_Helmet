@@ -289,8 +289,16 @@ function StokProduksi() {
     );
   };
 
+  // Nama boleh sama dengan dus arsip; sama dengan dus aktif hanya diberi peringatan.
+  const activeNamesake = (nama: string, exceptId?: number) => {
+    const key = nama.trim().toLowerCase();
+    return key ? active.filter((g) => g.id !== exceptId && g.nama.trim().toLowerCase() === key) : [];
+  };
+  const formDup = formMode ? activeNamesake(formNama, formMode === "edit" ? editingGroup?.id : undefined) : [];
+
   const setArsipOne = async (g: BarangGroup, isArsip: boolean) => {
     if (isArsip && !window.confirm(`Arsipkan "${g.nama}"?`)) return;
+    if (!isArsip && activeNamesake(g.nama).length > 0 && !window.confirm(`Sudah ada dus aktif bernama "${g.nama}". Tetap pulihkan?`)) return;
     setBusyId(g.id);
     try {
       await updateBarangGroup(g.id, { isArsip });
@@ -305,7 +313,9 @@ function StokProduksi() {
 
   const bulkSetArsip = async (targets: BarangGroup[], isArsip: boolean) => {
     if (targets.length === 0) return;
-    if (!window.confirm(`${isArsip ? "Arsipkan" : "Pulihkan"} ${targets.length} dus yang dipilih?`)) return;
+    const clashes = isArsip ? [] : targets.filter((g) => activeNamesake(g.nama).length > 0).map((g) => g.nama);
+    const clashNote = clashes.length > 0 ? `\n\n${clashes.length} dus punya nama sama dengan dus aktif: ${clashes.join(", ")}.` : "";
+    if (!window.confirm(`${isArsip ? "Arsipkan" : "Pulihkan"} ${targets.length} dus yang dipilih?${clashNote}`)) return;
     setBulkBusy(true);
     let ok = 0;
     let firstError = "";
@@ -735,15 +745,27 @@ function StokProduksi() {
           <form onSubmit={submitForm}>
             <label className="block text-xs font-semibold text-slate-600">
               Nama / nomor dus
-              <input className={`${FIELD} mt-1.5`} placeholder="Contoh: DUS 5" value={formNama} onChange={(e) => setFormNama(e.target.value)} autoFocus />
+              <input
+                className={`${FIELD} mt-1.5`}
+                placeholder="Contoh: DUS 5"
+                value={formNama}
+                onChange={(e) => setFormNama(e.target.value)}
+                aria-describedby={formDup.length > 0 ? "dus-dup-warning" : undefined}
+                autoFocus
+              />
             </label>
+            {formDup.length > 0 && (
+              <p id="dus-dup-warning" role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Nama sudah dipakai dus aktif: {formDup.map((g) => `${g.nama} (${g._count.barang}/${DUS_CAPACITY})`).join(", ")}. Tetap boleh disimpan.
+              </p>
+            )}
             <ErrorBox msg={crudError} />
             <div className="mt-5 flex gap-2 [&>*]:flex-1">
               <button type="button" onClick={() => setFormMode(null)} className={BTN_GHOST}>
                 Batal
               </button>
-              <button type="submit" disabled={crudLoading} className={BTN_PRIMARY}>
-                {crudLoading ? "Menyimpan…" : "Simpan"}
+              <button type="submit" disabled={crudLoading} className={formDup.length > 0 ? `${BTN} bg-amber-500 text-white hover:bg-amber-600` : BTN_PRIMARY}>
+                {crudLoading ? "Menyimpan…" : formDup.length > 0 ? "Tetap simpan" : "Simpan"}
               </button>
             </div>
           </form>

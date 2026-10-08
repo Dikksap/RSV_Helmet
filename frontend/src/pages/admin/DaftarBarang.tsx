@@ -200,6 +200,7 @@ function DaftarBarang() {
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [hanyaPernahRetur, setHanyaPernahRetur] = useState(false);
+  const [tanpaDus, setTanpaDus] = useState(false);
   const [datePreset, setDatePreset] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
@@ -276,7 +277,7 @@ function DaftarBarang() {
   }, [products, editingBarang]);
 
   const effectiveVariant = filterVariantOptions.some((o) => String(o.id) === variantFilter) ? variantFilter : "";
-  const hasOtherFilters = Boolean(statusFilter || effectiveVariant || styleFilter || colorFilter || sizeFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur);
+  const hasOtherFilters = Boolean(statusFilter || effectiveVariant || styleFilter || colorFilter || sizeFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur || tanpaDus);
   const hasActiveFilters = Boolean(search) || hasOtherFilters;
   const isSearchMode = Boolean(debouncedSearch) && !hasOtherFilters;
   const searchLimit = typeof pageSize === "number" ? Math.min(50, pageSize) : 50;
@@ -288,11 +289,12 @@ function DaftarBarang() {
       tanggalAwal: tanggalAwal || undefined,
       tanggalAkhir: tanggalAkhir || undefined,
       pernahRetur: hanyaPernahRetur || undefined,
+      tanpaDus: tanpaDus || undefined,
       styleId: num(styleFilter),
       colorId: num(colorFilter),
       sizeId: num(sizeFilter),
     }),
-    [effectiveVariant, statusFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, styleFilter, colorFilter, sizeFilter],
+    [effectiveVariant, statusFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, tanpaDus, styleFilter, colorFilter, sizeFilter],
   );
 
   const key = JSON.stringify(isSearchMode ? { q: debouncedSearch, searchLimit } : { ...filterParams, page, pageSize });
@@ -382,6 +384,7 @@ function DaftarBarang() {
     setTanggalAkhir("");
     setDatePreset("");
     setHanyaPernahRetur(false);
+    setTanpaDus(false);
     setPage(1);
   };
 
@@ -630,6 +633,8 @@ function DaftarBarang() {
         hasActiveFilters={hasActiveFilters}
         hanyaPernahRetur={hanyaPernahRetur}
         onPernahReturChange={resetPage(setHanyaPernahRetur)}
+        tanpaDus={tanpaDus}
+        onTanpaDusChange={resetPage(setTanpaDus)}
         searchDisabled={hasOtherFilters}
         searchHint="Pencarian dinonaktifkan saat filter lain dipakai"
         variantError={productsError}

@@ -2,8 +2,37 @@ import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
+import {
+  clearNotifications,
+  fetchNotifications,
+  type StoredNotif,
+} from "../../api/notification";
 import { NotifDetail, summarizeNotif } from "./notification";
 import type { NotifItem } from "./notification";
+
+const MAX_LIST = 20;
+
+function toItem(s: StoredNotif): NotifItem {
+  const full =
+    s.data !== null && s.data !== undefined ? JSON.stringify(s.data, null, 2) : "";
+  return {
+    id: s.id,
+    type: s.type,
+    message: s.message,
+    data: summarizeNotif(full),
+    fullData: full,
+    time: new Date(s.ts).toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+  };
+}
+
+function prependNotif(prev: NotifItem[], item: NotifItem): NotifItem[] {
+  if (prev.some((n) => n.id === item.id)) return prev;
+  return [item, ...prev].slice(0, MAX_LIST);
+}
 
 export function NotificationCenter() {
   const { subscribe } = useLiveSocketContext();
@@ -58,7 +87,9 @@ export function NotificationCenter() {
 
     const unsub = subscribe((payload) => {
       const now = new Date();
-      const id = ++idRef.current;
+      // id dari server dipakai untuk dedup terhadap riwayat; fallback negatif
+      // mencegah bentrok dengan id global milik server
+      const id = payload.id ?? -(++idRef.current);
       const full =
         payload.data !== null && payload.data !== undefined
           ? JSON.stringify(payload.data, null, 2)
@@ -76,7 +107,7 @@ export function NotificationCenter() {
         }),
       };
       setNotifCount((prev) => prev + 1);
-      setNotifList((prev) => [notif, ...prev.slice(0, 19)]);
+      setNotifList((prev) => prependNotif(prev, notif));
       pushToast(payload.type, payload.message || payload.type);
     });
 
@@ -87,10 +118,10 @@ export function NotificationCenter() {
       if (!message) return;
       pushToast(type, message);
       const now = new Date();
-      const id = ++idRef.current;
+      const id = -(++idRef.current);
       setNotifCount((prev) => prev + 1);
-      setNotifList((prev) => [
-        {
+      setNotifList((prev) =>
+        prependNotif(prev, {
           id,
           type,
           message,
@@ -101,9 +132,8 @@ export function NotificationCenter() {
             minute: "2-digit",
             second: "2-digit",
           }),
-        },
-        ...prev.slice(0, 19),
-      ]);
+        }),
+      );
     };
 
     // typed without "as unknown as string" — declare once via global augmentation if preferred;
@@ -125,6 +155,31 @@ export function NotificationCenter() {
       timers.clear();
     };
   }, [subscribe]);
+
+  // Riwayat 24 jam terakhir diambil dari Redis lewat backend, jadi notifikasi
+  // tetap ada setelah refresh dan terlihat di device lain. Badge tidak ikut
+  // naik: penghitung unread hanya untuk event yang datang selama sesi ini.
+  useEffect(() => {
+    let cancelled = false;
+    fetchNotifications()
+      .then((items) => {
+        if (cancelled) return;
+        const history = items.map(toItem);
+        setNotifList((prev) => {
+          let next = prev;
+          for (let i = history.length - 1; i >= 0; i--) {
+            next = prependNotif(next, history[i]);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // backend mati: lonceng tetap siap menerima event live
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // click outside -> close dropdown
   useEffect(() => {
@@ -165,6 +220,7 @@ export function NotificationCenter() {
     setNotifCount(0);
     setNotifList([]);
     setShowNotif(false);
+    void clearNotifications().catch(() => {});
   };
 
   return (

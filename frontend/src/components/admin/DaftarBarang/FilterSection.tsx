@@ -31,6 +31,8 @@ type FilterSectionProps = {
   hasActiveFilters: boolean;
   hanyaPernahRetur?: boolean;
   onPernahReturChange?: (value: boolean) => void;
+  tanpaDus?: boolean;
+  onTanpaDusChange?: (value: boolean) => void;
   searchDisabled?: boolean;
   searchHint?: string;
   variantError?: string | null;
@@ -69,6 +71,8 @@ export function FilterSection({
   hasActiveFilters,
   hanyaPernahRetur,
   onPernahReturChange,
+  tanpaDus,
+  onTanpaDusChange,
   searchDisabled,
   searchHint,
   variantError,
@@ -87,7 +91,7 @@ export function FilterSection({
   const { options: statusOptions } = useStatusOptions();
   const inputCls = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
   const labelCls = "flex flex-col gap-1 text-xs font-semibold text-slate-600";
-  const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur].filter(Boolean).length;
+  const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, tanpaDus].filter(Boolean).length;
 
   const handleDatePresetChange = (value: string) => {
     onDatePresetChange(value);
@@ -245,6 +249,16 @@ export function FilterSection({
               className="h-4 w-4 accent-[#1E3A5F]"
             />
             Pernah retur
+          </label>
+
+          <label className="flex h-10 items-center gap-2 self-end rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(tanpaDus)}
+              onChange={(e) => onTanpaDusChange?.(e.target.checked)}
+              className="h-4 w-4 accent-[#1E3A5F]"
+            />
+            Tanpa dus
           </label>
 
           <div className="flex items-end">

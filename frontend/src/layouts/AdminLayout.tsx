@@ -166,6 +166,8 @@ function AdminLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
+  const [hovered, setHovered] = useState(false);
+  const effectiveCollapsed = collapsed && !hovered;
 
   const toggleCollapsed = () =>
     setCollapsed((c) => {
@@ -225,11 +227,13 @@ function AdminLayout() {
   return (
     <div className="app-admin min-h-screen w-full bg-[#F6F8FB] font-sans text-slate-800 antialiased">
       <aside
+        onMouseEnter={() => collapsed && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         className={`fixed inset-y-0 left-0 z-40 hidden border-r border-slate-200 bg-white transition-[width] duration-200 lg:block ${
-          collapsed ? "w-16" : "w-64"
-        }`}
+          effectiveCollapsed ? "w-16" : "w-64"
+        } ${collapsed && hovered ? "shadow-xl" : ""}`}
       >
-        <SidebarContent pathname={pathname} collapsed={collapsed} />
+        <SidebarContent pathname={pathname} collapsed={effectiveCollapsed} />
       </aside>
 
       {drawerOpen && (

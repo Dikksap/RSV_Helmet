@@ -9,6 +9,7 @@ import {
 } from "react";
 
 type NotifPayload = {
+  id?: number;
   type: string;
   message: string;
   data: unknown;
@@ -52,6 +53,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         try {
           const raw = JSON.parse(event.data as string) as {
             event?: string;
+            id?: number;
             type?: string;
             message?: string;
             data?: unknown;
@@ -59,6 +61,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           const eventType = raw.event ?? raw.type;
           if (!eventType) return;
           const payload: NotifPayload = {
+            id: typeof raw.id === "number" ? raw.id : undefined,
             type: eventType,
             message: raw.message ?? "",
             data: raw.data ?? null,

@@ -58,6 +58,7 @@ export interface BarangListParams {
   limit?: number | "all";
   variantId?: number;
   batchId?: number;
+  tanpaDus?: boolean;
   status?: StatusBarang;
   tanggal?: string; // shortcut 1 hari penuh, diabaikan jika tanggalAwal/tanggalAkhir dikirim
   tanggalAwal?: string;
@@ -77,6 +78,7 @@ export async function getBarangPage(
   else query.set("limit", String(Math.min(100, Math.max(1, params.limit ?? 20))));
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
+  if (params.tanpaDus) query.set("tanpaDus", "true");
   if (params.status) query.set("status", params.status);
   if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
@@ -117,6 +119,7 @@ export interface ExportBarangParams {
   limit?: number;
   variantId?: number;
   batchId?: number;
+  tanpaDus?: boolean;
   status?: StatusBarang;
   tanggal?: string;
   tanggalAwal?: string;
@@ -137,6 +140,7 @@ export async function exportBarang(
   });
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
+  if (params.tanpaDus) query.set("tanpaDus", "true");
   if (params.status) query.set("status", params.status);
   if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
