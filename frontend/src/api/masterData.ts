@@ -98,6 +98,22 @@ export const updateSize = (id: number, body: { nama?: string; urutan?: number })
 export const deleteSize = (id: number) =>
   request<{ message: string }>(`/sizes/${id}`, { method: "DELETE" });
 
+// ---- StatusTransition: GET /api/status-transition, PUT /:fromKode {toKodes}, DELETE /:fromKode/:toKode ----
+export interface MasterStatusTransition {
+  id: number;
+  fromKode: string;
+  toKode: string;
+}
+
+export const getStatusTransitions = () => request<MasterStatusTransition[]>("/status-transition");
+export const setStatusTransitions = (fromKode: string, toKodes: string[]) =>
+  request<MasterStatusTransition[]>(`/status-transition/${encodeURIComponent(fromKode)}`, {
+    method: "PUT",
+    body: JSON.stringify({ toKodes }),
+  });
+export const deleteStatusTransition = (fromKode: string, toKode: string) =>
+  request<{ message: string }>(`/status-transition/${encodeURIComponent(fromKode)}/${encodeURIComponent(toKode)}`, { method: "DELETE" });
+
 // ---- StatusBarang: GET /api/status-barang, POST {kode,nama,warna?,urutan?,isActive?}, PUT, DELETE ----
 export const getStatusBarangs = () => request<MasterStatusBarang[]>("/status-barang");
 export const getStatusBarang = (id: number) => request<MasterStatusBarang>(`/status-barang/${id}`);

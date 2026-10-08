@@ -6,13 +6,18 @@ export type StatusBarang = string;
 
 // Hardcode transisi untuk 5 status awal. Status dinamis baru dianggap
 // terbuka (allow any) agar langsung bisa dipakai tanpa config transisi.
-export const VALID_TRANSITIONS: Record<string, string[]> = {
-  REGISTER: ["FINISHGOOD", "OUT", "RETUR", "BAD"],
-  FINISHGOOD: ["OUT", "RETUR", "BAD","FINISHGOOD"],
-  RETUR: ["FINISHGOOD", "OUT", "BAD"],
-  OUT: ["RETUR","FINISHGOOD","BAD"],
-  BAD: ["FINISHGOOD"],
-};
+// Transisi dibaca dari tabel StatusTransition. Jika suatu status sumber
+// belum punya konfigurasi transisi sama sekali, semua tujuan diizinkan.
+// Jika sudah dikonfigurasi, hanya tujuan yang terdaftar yang diizinkan.
+export async function isTransitionAllowed(current: string, next: string): Promise<boolean> {
+  if (current === next) return true;
+  const rows = await prisma.statusTransition.findMany({
+    where: { fromKode: current },
+    select: { toKode: true },
+  });
+  if (rows.length === 0) return true;
+  return rows.some((r) => r.toKode === next);
+}
 
 export async function getValidStatusKodes(): Promise<string[]> {
   const rows = await prisma.statusBarang.findMany({
@@ -21,17 +26,6 @@ export async function getValidStatusKodes(): Promise<string[]> {
     orderBy: { urutan: "asc" },
   });
   return rows.map((r) => r.kode);
-}
-
-function validateTransition(current: string, next: string): boolean {
-  if (current === next) return true;
-  const isCurrentHardcoded = current in VALID_TRANSITIONS;
-  const isNextHardcoded = next in VALID_TRANSITIONS;
-  if (isCurrentHardcoded && isNextHardcoded) {
-    return VALID_TRANSITIONS[current]?.includes(next) ?? false;
-  }
-  // Salah satu dinamis -> izinkan transisi (status valid sudah dicek)
-  return true;
 }
 
 export async function updateBarangStatus(
@@ -51,7 +45,7 @@ export async function updateBarangStatus(
     throw new Error(`Status '${newStatus}' tidak valid atau tidak aktif`);
   }
 
-  if (!validateTransition(barang.status, newStatus)) {
+  if (!(await isTransitionAllowed(barang.status, newStatus))) {
     throw new Error(`Transisi status dari ${barang.status} ke ${newStatus} tidak valid`);
   }
 

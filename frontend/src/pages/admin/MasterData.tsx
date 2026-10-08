@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPen, faTrash, faCirclePlus, faPalette, faRuler, faShirt, faMagnifyingGlass, faTag } from "@fortawesome/free-solid-svg-icons";
+import { faPen, faTrash, faCirclePlus, faPalette, faRuler, faShirt, faMagnifyingGlass, faTag, faRightLeft } from "@fortawesome/free-solid-svg-icons";
 import {
   getStyles, createStyle, updateStyle, deleteStyle,
   getColors, createColor, updateColor, deleteColor,
   getSizes, createSize, updateSize, deleteSize,
   getStatusBarangs, createStatusBarang, updateStatusBarang, deleteStatusBarang,
-  type MasterStyle, type MasterColor, type MasterSize, type MasterStatusBarang,
+  getStatusTransitions, setStatusTransitions,
+  type MasterStyle, type MasterColor, type MasterSize, type MasterStatusBarang, type MasterStatusTransition,
 } from "../../api/masterData";
 import { Modal } from "../../components/admin/VariantProduk/Modal";
 import { inputCls, labelCls } from "../../components/admin/VariantProduk/constants";
 
-type Tab = "style" | "color" | "size" | "status";
+type Tab = "style" | "color" | "size" | "status" | "transisi";
 type Row = MasterStyle | MasterColor | MasterSize | MasterStatusBarang;
 
 const TABS: { key: Tab; label: string; icon: typeof faShirt; hint: string }[] = [
@@ -19,6 +20,7 @@ const TABS: { key: Tab; label: string; icon: typeof faShirt; hint: string }[] = 
   { key: "color", label: "Warna", icon: faPalette, hint: "Varian warna" },
   { key: "size", label: "Ukuran", icon: faRuler, hint: "Size + urutan" },
   { key: "status", label: "Status", icon: faTag, hint: "Status barang" },
+  { key: "transisi", label: "Transisi", icon: faRightLeft, hint: "Aturan transisi status" },
 ];
 
 const API = {
@@ -41,6 +43,9 @@ export default function MasterData() {
   const [colors, setColors] = useState<MasterColor[]>([]);
   const [sizes, setSizes] = useState<MasterSize[]>([]);
   const [statusList, setStatusList] = useState<MasterStatusBarang[]>([]);
+  const [transitions, setTransitions] = useState<MasterStatusTransition[]>([]);
+  const [transDraft, setTransDraft] = useState<Record<string, Set<string>>>({});
+  const [transBusy, setTransBusy] = useState<string | null>(null);
   const [modal, setModal] = useState<{ open: boolean; editing: Row | null; nama: string; kode: string; warna: string; urutan: string; isActive: boolean; busy: boolean }>({
     open: false, editing: null, nama: "", kode: "", warna: "#6B7280", urutan: "", isActive: true, busy: false,
   });
@@ -52,8 +57,15 @@ export default function MasterData() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [s, c, z, st] = await Promise.all([getStyles(), getColors(), getSizes(), getStatusBarangs()]);
-      setStyles(s); setColors(c); setSizes(z); setStatusList(st); setError(null);
+      const [s, c, z, st, tr] = await Promise.all([getStyles(), getColors(), getSizes(), getStatusBarangs(), getStatusTransitions()]);
+      setStyles(s); setColors(c); setSizes(z); setStatusList(st); setTransitions(tr); setError(null);
+      setTransDraft(() => {
+        const m: Record<string, Set<string>> = {};
+        for (const t of tr) {
+          (m[t.fromKode] ??= new Set()).add(t.toKode);
+        }
+        return m;
+      });
     }
     catch (e) { setError(e instanceof Error ? e.message : "Gagal memuat master data."); }
     finally { setLoading(false); }
@@ -155,8 +167,8 @@ export default function MasterData() {
     flash(fails.length === 0 ? `${ok} ${API[tab].label.toLowerCase()} dihapus.` : `${ok} dihapus, ${fails.length} gagal (masih dipakai): ${fails.join(", ")}`);
   };
 
-  const counts: Record<Tab, number> = { style: styles.length, color: colors.length, size: sizes.length, status: statusList.length };
-  const tabLabel = tab === "style" ? "style" : tab === "color" ? "warna" : tab === "size" ? "ukuran" : "status";
+  const counts: Record<Tab, number> = { style: styles.length, color: colors.length, size: sizes.length, status: statusList.length, transisi: new Set(transitions.map(t => t.fromKode)).size };
+  const tabLabel = tab === "style" ? "style" : tab === "color" ? "warna" : tab === "size" ? "ukuran" : tab === "transisi" ? "transisi" : "status";
 
   const openAdd = () => {
     if (tab === "status") setModal({ open: true, editing: null, nama: "", kode: "", warna: "#6B7280", urutan: "", isActive: true, busy: false });
@@ -179,8 +191,8 @@ export default function MasterData() {
           <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Style · Warna · Ukuran · Status</h1>
           <p className="mt-2 text-base text-[#6B7280]">Kelola master data untuk variant produk dan status barang. Dipakai di POST /api/products/:id/variants dan /api/status-barang.</p>
         </div>
-        <button type="button" onClick={openAdd} className={primaryBtn}>
-          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah {API[tab].label}
+        <button type="button" onClick={openAdd} className={primaryBtn} hidden={tab === "transisi"}>
+          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah {API[tab] ? API[tab].label : ""}
         </button>
       </header>
 
@@ -255,6 +267,7 @@ export default function MasterData() {
             )}
           </section>
 
+          {tab !== "transisi" && (
           <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left">
@@ -342,6 +355,66 @@ export default function MasterData() {
               </table>
             </div>
           </section>
+          )}
+
+          {tab === "transisi" && (
+            <section className="space-y-4 rounded-xl bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+              <p className="text-sm text-[#6B7280]">
+                Status sumber tanpa centang apa pun = <strong>izinkan semua</strong> transisi. Jika minimal satu tujuan dicentang, hanya tujuan itu yang diizinkan.
+              </p>
+              {statusList.filter(s => !search.trim() || s.kode.toLowerCase().includes(search.trim().toLowerCase()) || s.nama.toLowerCase().includes(search.trim().toLowerCase())).map((s) => {
+                const draft = transDraft[s.kode] ?? new Set<string>();
+                const saved = new Set(transitions.filter(t => t.fromKode === s.kode).map(t => t.toKode));
+                const dirty = draft.size !== saved.size || [...draft].some(k => !saved.has(k));
+                return (
+                  <div key={s.kode} className="rounded-lg border border-slate-200 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="font-mono text-sm font-bold text-[#1F2937]">{s.kode}</span>
+                      <button
+                        type="button"
+                        disabled={!dirty || transBusy === s.kode}
+                        onClick={async () => {
+                          setTransBusy(s.kode);
+                          try {
+                            await setStatusTransitions(s.kode, [...draft]);
+                            flash(`Transisi ${s.kode} disimpan.`);
+                            await loadAll();
+                          } catch (e) { window.alert(e instanceof Error ? e.message : "Gagal menyimpan"); }
+                          finally { setTransBusy(null); }
+                        }}
+                        className="inline-flex items-center rounded-lg bg-[#00A8E8] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#0088C0] disabled:opacity-40"
+                      >
+                        {transBusy === s.kode ? "Menyimpan..." : "Simpan"}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {statusList.map((t) => {
+                        const on = draft.has(t.kode);
+                        return (
+                          <label key={t.kode} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${on ? "border-[#00A8E8] bg-[#00A8E8]/10 text-[#0088C0]" : "border-slate-200 text-[#6B7280]"}`}>
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() =>
+                                setTransDraft((prev) => {
+                                  const next = new Set(prev[s.kode] ?? []);
+                                  if (next.has(t.kode)) next.delete(t.kode);
+                                  else next.add(t.kode);
+                                  return { ...prev, [s.kode]: next };
+                                })
+                              }
+                              className="h-3.5 w-3.5 accent-[#00A8E8]"
+                            />
+                            {t.kode}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
         </main>
       )}
 

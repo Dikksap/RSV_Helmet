@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClipboardList, faTrash, faPlus, faCheck, faXmark, faUpload } from "@fortawesome/free-solid-svg-icons";
+import { faClipboardList, faTrash, faPlus, faCheck, faXmark, faUpload, faDownload } from "@fortawesome/free-solid-svg-icons";
+import { downloadCsv } from "../../../lib/csv";
 import type { ProductionOrderSummary, StatusProductionOrder } from "../../../api/productionOrders";
 import {
   updateOrder,
@@ -232,6 +233,21 @@ export default function MasterTab({ orderId, detail, loading, onChanged }: Props
           <div className="flex items-center justify-between border-b border-slate-100 p-4">
             <h3 className="font-semibold text-[#1E3A5F]">Data Master Produksi</h3>
             <span className="inline-flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const rows = groups.flatMap((g) =>
+                    g.rows.map((it) => [g.item, it.variant.size.nama, it.qty, it.priority]),
+                  );
+                  downloadCsv(`master-produksi-${local.nomor}-${new Date().toISOString().slice(0, 10)}.csv`, [
+                    ["item", "size", "stok", "priority"],
+                    ...rows,
+                  ]);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1E3A5F] ring-1 ring-slate-200/70 transition hover:bg-[#F5F7FA]"
+              >
+                <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" /> Export
+              </button>
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}

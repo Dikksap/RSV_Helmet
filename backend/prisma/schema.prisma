@@ -155,6 +155,23 @@ model StatusBarang {
 
   barang  Barang[]        @relation("BarangStatus")
   riwayat RiwayatBarang[] @relation("RiwayatStatus")
+  transisiDari StatusTransition[] @relation("TransitionFrom")
+  transisiKe   StatusTransition[] @relation("TransitionTo")
+}
+
+// Transisi status barang yang diizinkan. Kosong untuk suatu fromKode =
+// transisi dari status itu diizinkan ke semua (lihat model/barang).
+model StatusTransition {
+  id       Int    @id @default(autoincrement())
+  fromKode String
+  toKode   String
+
+  from StatusBarang @relation("TransitionFrom", fields: [fromKode], references: [kode], onDelete: Cascade)
+  to   StatusBarang @relation("TransitionTo", fields: [toKode], references: [kode], onDelete: Cascade)
+
+  @@unique([fromKode, toKode])
+  @@index([fromKode])
+  @@index([toKode])
 }
 
 // =============================================

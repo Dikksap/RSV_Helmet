@@ -80,7 +80,7 @@ export async function createBarangHandler(req: Request, res: Response) {
 // PUT /api/barang/:id - Update barang
 // Body: { variantId?, batchId?, kodeBarang?, tanggal?, status?, keterangan? }
 // - Minimal satu field harus diisi
-// - status divalidasi dengan VALID_TRANSITIONS
+// - status divalidasi dengan aturan dari tabel StatusTransition
 // =============================================
 export async function updateBarangHandler(req: Request, res: Response) {
   try {

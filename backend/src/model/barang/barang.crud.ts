@@ -2,7 +2,7 @@ import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { clearBarangCache } from "../../lib/barangCache.js";
 import { barangInclude } from "./barang.js";
 import {
-  VALID_TRANSITIONS,
+  isTransitionAllowed,
   type StatusBarang,
 } from "./barang.status.js";
 
@@ -320,7 +320,7 @@ export async function updateBarang(id: number, input: UpdateBarangInput) {
     }
     newStatus = kode;
     const current = existing.status;
-    const allowed = current === newStatus || VALID_TRANSITIONS[current]?.includes(newStatus);
+    const allowed = await isTransitionAllowed(current, newStatus);
     if (!allowed) {
       throw new Error(`Transisi status dari ${current} ke ${newStatus} tidak valid`);
     }

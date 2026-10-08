@@ -9,8 +9,8 @@ import {
 } from "../../lib/barangCache.js";
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
-  VALID_TRANSITIONS,
   bulkUpdateBarangStatus,
+  isTransitionAllowed,
   updateBarangStatus,
   type StatusBarang,
 } from "./barang.status.js";
@@ -31,7 +31,7 @@ import {
 export {
   generateBarangBulk,
   getGenerateInfo,
-  VALID_TRANSITIONS,
+  isTransitionAllowed,
   bulkUpdateBarangStatus,
   updateBarangStatus,
   getBarangStats,
@@ -383,13 +383,7 @@ export async function bulkScanBarang(
         continue;
       }
 
-      const isCurrentHardcoded = barang.status in VALID_TRANSITIONS;
-      const isNextHardcoded = newStatus in VALID_TRANSITIONS;
-      const allowed =
-        barang.status === newStatus ||
-        (isCurrentHardcoded && isNextHardcoded
-          ? VALID_TRANSITIONS[barang.status]?.includes(newStatus)
-          : true);
+      const allowed = await isTransitionAllowed(barang.status, newStatus);
       if (!allowed) {
         failed.push({
           kodeBarang: kode,
