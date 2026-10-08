@@ -13,6 +13,7 @@ import { Modal } from "../../components/admin/VariantProduk/Modal";
 import { inputCls, labelCls } from "../../components/admin/VariantProduk/constants";
 
 type Tab = "style" | "color" | "size" | "status" | "transisi";
+type MasterTabKey = Exclude<Tab, "transisi">;
 type Row = MasterStyle | MasterColor | MasterSize | MasterStatusBarang;
 
 const TABS: { key: Tab; label: string; icon: typeof faShirt; hint: string }[] = [
@@ -98,7 +99,7 @@ export default function MasterData() {
       if (urutan !== undefined && (!Number.isInteger(urutan) || urutan < 0)) return window.alert("Field 'urutan' harus angka >=0");
       setModal(m => ({ ...m, busy: true }));
       try {
-        const api = API[tab];
+        const api = API[tab as MasterTabKey];
         const body: Record<string, unknown> = { kode, nama, warna: modal.warna || null, isActive: modal.isActive };
         if (urutan !== undefined) body.urutan = urutan;
         if (modal.editing) await (api.update as unknown as (id: number, b: Record<string, unknown>) => Promise<unknown>)(modal.editing.id, body);
@@ -118,7 +119,7 @@ export default function MasterData() {
     if (tab === "size" && urutan !== undefined && (!Number.isInteger(urutan) || urutan < 0)) return window.alert("Field 'urutan' harus angka >=0 (400)");
     setModal(m => ({ ...m, busy: true }));
     try {
-      const api = API[tab];
+      const api = API[tab as MasterTabKey];
       if (modal.editing) await (api.update as unknown as (id: number, b: Record<string, unknown>) => Promise<unknown>)(modal.editing.id, tab === "size" ? { nama, urutan } : { nama });
       else await (api.create as unknown as (b: Record<string, unknown>) => Promise<unknown>)(tab === "size" ? { nama, urutan } : { nama });
       flash(modal.editing ? `${api.label} diperbarui.` : `${api.label} ditambahkan.`);
@@ -132,8 +133,8 @@ export default function MasterData() {
 
   const remove = async (row: Row) => {
     const label = tab === "status" ? (row as MasterStatusBarang).kode : row.nama;
-    if (!window.confirm(`Hapus ${API[tab].label.toLowerCase()} "${label}"?`)) return;
-    try { await API[tab].del(row.id); flash(`${API[tab].label} dihapus.`); await loadAll(); }
+    if (!window.confirm(`Hapus ${API[tab as MasterTabKey].label.toLowerCase()} "${label}"?`)) return;
+    try { await API[tab as MasterTabKey].del(row.id); flash(`${API[tab as MasterTabKey].label} dihapus.`); await loadAll(); }
     catch (e) { window.alert(e instanceof Error ? e.message : "Gagal hapus. Mungkin masih dipakai (409)."); }
   };
 
@@ -153,18 +154,18 @@ export default function MasterData() {
   const removeMany = async () => {
     if (selected.size === 0 || bulkBusy) return;
     const rows = filtered.filter(r => selected.has(r.id));
-    if (!window.confirm(`Hapus ${rows.length} ${API[tab].label.toLowerCase()} yang dipilih?`)) return;
+    if (!window.confirm(`Hapus ${rows.length} ${API[tab as MasterTabKey].label.toLowerCase()} yang dipilih?`)) return;
     setBulkBusy(true);
     let ok = 0;
     const fails: string[] = [];
     for (const r of rows) {
-      try { await API[tab].del(r.id); ok++; }
+      try { await API[tab as MasterTabKey].del(r.id); ok++; }
       catch { fails.push(tab === "status" ? (r as MasterStatusBarang).kode : r.nama); }
     }
     setBulkBusy(false);
     setSelected(new Set());
     await loadAll();
-    flash(fails.length === 0 ? `${ok} ${API[tab].label.toLowerCase()} dihapus.` : `${ok} dihapus, ${fails.length} gagal (masih dipakai): ${fails.join(", ")}`);
+    flash(fails.length === 0 ? `${ok} ${API[tab as MasterTabKey].label.toLowerCase()} dihapus.` : `${ok} dihapus, ${fails.length} gagal (masih dipakai): ${fails.join(", ")}`);
   };
 
   const counts: Record<Tab, number> = { style: styles.length, color: colors.length, size: sizes.length, status: statusList.length, transisi: new Set(transitions.map(t => t.fromKode)).size };
@@ -192,7 +193,7 @@ export default function MasterData() {
           <p className="mt-2 text-base text-[#6B7280]">Kelola master data untuk variant produk dan status barang. Dipakai di POST /api/products/:id/variants dan /api/status-barang.</p>
         </div>
         <button type="button" onClick={openAdd} className={primaryBtn} hidden={tab === "transisi"}>
-          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah {API[tab] ? API[tab].label : ""}
+          <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah {API[tab as MasterTabKey] ? API[tab as MasterTabKey].label : ""}
         </button>
       </header>
 
@@ -419,7 +420,7 @@ export default function MasterData() {
       )}
 
       {modal.open && (
-        <Modal title={`${modal.editing ? "Edit" : "Tambah"} ${API[tab].label}`} onClose={() => setModal({ open: false, editing: null, nama: "", kode: "", warna: "#6B7280", urutan: "", isActive: true, busy: false })}>
+        <Modal title={`${modal.editing ? "Edit" : "Tambah"} ${API[tab as MasterTabKey].label}`} onClose={() => setModal({ open: false, editing: null, nama: "", kode: "", warna: "#6B7280", urutan: "", isActive: true, busy: false })}>
           <div className="space-y-4">
             {tab === "status" ? (
               <>
@@ -433,7 +434,7 @@ export default function MasterData() {
               </>
             ) : (
               <>
-                <label className={labelCls}><span>Nama {API[tab].label}</span><input className={inputCls} placeholder={tab === "size" ? "cth: LG" : tab === "color" ? "cth: BOB" : "cth: Motif"} value={modal.nama} onChange={e => setModal(m => ({ ...m, nama: e.target.value }))} /></label>
+                <label className={labelCls}><span>Nama {API[tab as MasterTabKey].label}</span><input className={inputCls} placeholder={tab === "size" ? "cth: LG" : tab === "color" ? "cth: BOB" : "cth: Motif"} value={modal.nama} onChange={e => setModal(m => ({ ...m, nama: e.target.value }))} /></label>
                 {tab === "size" && <label className={labelCls}><span>Urutan (sorting)</span><input type="number" min={0} className={inputCls} placeholder="cth: 1" value={modal.urutan} onChange={e => setModal(m => ({ ...m, urutan: e.target.value }))} /></label>}
               </>
             )}
