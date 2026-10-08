@@ -25,6 +25,16 @@ vi.mock("../src/websocket/socket.js", () => ({
   broadcast: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../src/controller/barang/helpers.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/controller/barang/helpers.js")>();
+  const VALID = ["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"];
+  return {
+    ...actual,
+    isValidStatus: vi.fn(async (s: unknown) => typeof s === "string" && VALID.includes(s.trim().toUpperCase())),
+    getValidStatusList: vi.fn(async () => VALID.join(", ")),
+  };
+});
+
 import barangRouter from "../src/routes/barang.js";
 import {
   getGenerateInfo,
@@ -250,6 +260,20 @@ describe("GET /api/barang", () => {
     expect(res.status).toBe(200);
     expect(mocked.listBarang).toHaveBeenCalledWith(
       expect.objectContaining({ pernahRetur: undefined })
+    );
+  });
+
+  it("teruskan tanpaDus=true ke model", async () => {
+    mocked.listBarang.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+    } as any);
+
+    const res = await request(app).get("/api/barang?tanpaDus=true");
+
+    expect(res.status).toBe(200);
+    expect(mocked.listBarang).toHaveBeenCalledWith(
+      expect.objectContaining({ tanpaDus: true })
     );
   });
 

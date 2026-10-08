@@ -18,6 +18,7 @@ import permintaanBarangRouter from "./routes/permintaan-barang.js";
 import divisiRouter from "./routes/divisi.js";
 import batchesRouter from "./routes/batch.js";
 import userRouter from "./routes/user.js";
+import notificationsRouter from "./routes/notifications.js";
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use("/api/permintaan-barang", permintaanBarangRouter);
 app.use("/api/divisi", divisiRouter);
 app.use("/api/batches", batchesRouter);
 app.use("/api/users", userRouter);
+app.use("/api/notifications", notificationsRouter);
 
 
 export default app;

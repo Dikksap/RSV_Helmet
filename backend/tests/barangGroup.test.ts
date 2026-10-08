@@ -141,14 +141,6 @@ describe("POST /api/barang-group", () => {
     expect(mocked.createBarangGroup).not.toHaveBeenCalled();
   });
 
-  it("409 jika nama sudah ada", async () => {
-    mocked.createBarangGroup.mockRejectedValue(prismaError("P2002"));
-
-    const res = await request(app).post("/api/barang-group").send({ nama: "Gudang A" });
-
-    expect(res.status).toBe(409);
-  });
-
   it("201 kembalikan row baru", async () => {
     mocked.createBarangGroup.mockResolvedValue(sampleGroup as any);
 
@@ -172,14 +164,6 @@ describe("PUT /api/barang-group/:id", () => {
     const res = await request(app).put("/api/barang-group/999").send({ nama: "Baru" });
 
     expect(res.status).toBe(404);
-  });
-
-  it("409 jika nama duplikat", async () => {
-    mocked.updateBarangGroup.mockRejectedValue(prismaError("P2002"));
-
-    const res = await request(app).put("/api/barang-group/1").send({ nama: "Duplikat" });
-
-    expect(res.status).toBe(409);
   });
 
   it("200 kembalikan row terupdate", async () => {

@@ -84,6 +84,7 @@ export interface BarangListFilter {
   variantId?: number;
   batchId?: number;
   groupId?: number;
+  tanpaDus?: boolean;
   status?: StatusBarang;
   tanggalAwal?: Date;
   tanggalAkhir?: Date;
@@ -156,7 +157,7 @@ function normalizeEnd(d: Date): Date {
 }
 
 export async function listBarang(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
+  const { page, limit, variantId, batchId, groupId, tanpaDus, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
     filter;
 
   const cacheKey = barangListKey({
@@ -165,6 +166,7 @@ export async function listBarang(filter: BarangListFilter) {
     variantId: variantId ?? "",
     batchId: batchId ?? "",
     groupId: groupId ?? "",
+    tanpaDus: tanpaDus ?? "",
     status: status ?? "",
     tanggalAwal: tanggalAwal ?? "",
     tanggalAkhir: tanggalAkhir ?? "",
@@ -182,13 +184,13 @@ export async function listBarang(filter: BarangListFilter) {
 }
 
 async function listBarangUncached(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
+  const { page, limit, variantId, batchId, groupId, tanpaDus, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
     filter;
 
   const where: {
     variantId?: number;
     batchId?: number;
-    groupId?: number;
+    groupId?: number | null;
     status?: StatusBarang;
     tanggal?: { gte?: Date; lte?: Date };
     riwayat?: { some: { status: string } };
@@ -198,6 +200,7 @@ async function listBarangUncached(filter: BarangListFilter) {
   if (variantId !== undefined) where.variantId = variantId;
   if (batchId !== undefined) where.batchId = batchId;
   if (groupId !== undefined) where.groupId = groupId;
+  else if (tanpaDus) where.groupId = null;
   if (status) where.status = status;
   if (pernahRetur) where.riwayat = { some: { status: "RETUR" } };
   if (styleId !== undefined || colorId !== undefined || sizeId !== undefined) {

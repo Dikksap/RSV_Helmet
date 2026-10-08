@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { listBarang } from "../../model/barang/barang.js";
 import type { StatusBarang } from "../../model/barang/barang.js";
-import { isValidStatus } from "./helpers.js";
+import { getValidStatusList, isValidStatus } from "./helpers.js";
 
 function toStartOfDay(d: Date): Date {
   const c = new Date(d);
@@ -39,12 +39,11 @@ export async function exportBarangHandler(req: Request, res: Response) {
       10000,
       Math.max(1, Number(req.query.limit) || 10000),
     );
-    const { variantId, batchId, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } = req.query;
+    const { variantId, batchId, tanpaDus, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } = req.query;
 
-    if (status && !isValidStatus(status)) {
+    if (status && !(await isValidStatus(status))) {
       return res.status(400).json({
-        message:
-          "Parameter 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+        message: `Parameter 'status' tidak valid. Status aktif: ${await getValidStatusList()}`,
       });
     }
 
@@ -55,6 +54,9 @@ export async function exportBarangHandler(req: Request, res: Response) {
     };
     if (pernahRetur === "true" || pernahRetur === "1") {
       filter.pernahRetur = true;
+    }
+    if (tanpaDus === "true" || tanpaDus === "1") {
+      filter.tanpaDus = true;
     }
 
     if (variantId !== undefined) {

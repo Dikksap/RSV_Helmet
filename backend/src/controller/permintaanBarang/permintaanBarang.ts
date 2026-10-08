@@ -11,8 +11,8 @@ import {
   type PermintaanInput,
 } from "../../model/permintaanBarang/permintaanBarang.js";
 
-const KEBUTUHAN_UNTUK = ["Produksi", "Maintenance", "Proyek"] as const;
-const PRIORITAS = ["Normal", "Urgent"] as const;
+const KEBUTUHAN_UNTUK = ["Produksi", "Maintenance", "Proyek","Lainya"] as const;
+const PRIORITAS = ["Normal", "Urgent", "Sangat Urgent"] as const;
 const APPROVAL = ["BELUM_DISETUJUI", "DISETUJUI"] as const;
 
 type ParseResult = PermintaanInput | { error: string };

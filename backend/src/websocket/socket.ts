@@ -7,6 +7,7 @@ import type {
   Barang,
 } from "../../generated/prisma/client.js";
 import type { GenerateBarangResult } from "../model/barang/barang.generate.js";
+import { pushNotif } from "../lib/notificationCache.js";
 
 // =============================================
 // WebSocket Event Types
@@ -140,7 +141,13 @@ function broadcastLocal(payload: string): void {
 // =============================================
 
 export async function broadcast(event: AppEvent): Promise<void> {
-  await redisPub.publish(CHANNEL, JSON.stringify(event));
+  const id = await pushNotif({
+    type: event.type,
+    message: event.message,
+    data: event.data,
+  });
+  // id dipakai client untuk dedup antara riwayat dari REST dan event live
+  await redisPub.publish(CHANNEL, JSON.stringify(id === null ? event : { ...event, id }));
 }
 
 // =============================================

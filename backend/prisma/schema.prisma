@@ -163,7 +163,7 @@ model StatusBarang {
 
 model BarangGroup {
   id        Int      @id @default(autoincrement())
-  nama      String   @unique
+  nama      String
   isArsip   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

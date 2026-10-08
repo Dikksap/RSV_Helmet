@@ -78,10 +78,7 @@ export async function createBarangGroupHandler(req: Request, res: Response) {
     }
     const row = await createBarangGroup({ nama: nama.trim() });
     res.status(201).json(row);
-  } catch (error: any) {
-    if (error?.code === "P2002") {
-      return res.status(409).json({ message: "Nama grup barang sudah ada" });
-    }
+  } catch (error) {
     res.status(500).json({ message: "Gagal membuat grup barang", error });
   }
 }
@@ -105,9 +102,6 @@ export async function updateBarangGroupHandler(req: Request, res: Response) {
     const row = await updateBarangGroup(id, data);
     res.status(200).json(row);
   } catch (error: any) {
-    if (error?.code === "P2002") {
-      return res.status(409).json({ message: "Nama grup barang sudah ada" });
-    }
     if (error?.code === "P2025") {
       return res.status(404).json({ message: "Grup barang tidak ditemukan" });
     }

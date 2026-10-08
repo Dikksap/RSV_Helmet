@@ -10,6 +10,7 @@ import {
   searchBarangByKode,
 } from "../../model/barang/barang.js";
 import type { StatusBarang } from "../../model/barang/barang.js";
+import { getValidStatusList, isValidStatus } from "./helpers.js";
 
 function toStartOfDay(d: Date): Date {
   const c = new Date(d);
@@ -50,12 +51,11 @@ export async function listBarangHandler(req: Request, res: Response) {
     // limit=all (atau 0) = tanpa paginasi, ambil semua barang.
     const noLimit = req.query.limit === "all" || req.query.limit === "0";
     const limit = noLimit ? 0 : Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { variantId, batchId, groupId, status, tanggalAwal, tanggalAkhir, tanggal, pernahRetur, styleId, colorId, sizeId } = req.query;
+    const { variantId, batchId, groupId, tanpaDus, status, tanggalAwal, tanggalAkhir, tanggal, pernahRetur, styleId, colorId, sizeId } = req.query;
 
-    if (status && !["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"].includes(String(status))) {
+    if (status && !(await isValidStatus(status))) {
       return res.status(400).json({
-        message:
-          "Parameter 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+        message: `Parameter 'status' tidak valid. Status aktif: ${await getValidStatusList()}`,
       });
     }
 
@@ -154,6 +154,7 @@ export async function listBarangHandler(req: Request, res: Response) {
       variantId: vid,
       batchId: bid,
       groupId: gid,
+      tanpaDus: gid === undefined ? parsePernahRetur(tanpaDus) : undefined,
       status: status as StatusBarang | undefined,
       tanggalAwal: tAwal,
       tanggalAkhir: tAkhir,
@@ -175,10 +176,9 @@ export async function getBarangHariIniHandler(req: Request, res: Response) {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const { variantId, batchId, status } = req.query;
 
-    if (status && !["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"].includes(String(status))) {
+    if (status && !(await isValidStatus(status))) {
       return res.status(400).json({
-        message:
-          "Parameter 'status' harus salah satu dari: REGISTER, FINISHGOOD, RETUR, OUT, BAD",
+        message: `Parameter 'status' tidak valid. Status aktif: ${await getValidStatusList()}`,
       });
     }
 
