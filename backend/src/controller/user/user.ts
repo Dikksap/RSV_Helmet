@@ -7,7 +7,7 @@ import {
   deleteUser,
 } from "../../model/user/user.js";
 
-const ROLES = ["admin", "user"] as const;
+const ROLES = ["admin", "user", "gudang"] as const;
 
 function parseId(raw: string) {
   const id = Number(raw);
@@ -46,7 +46,7 @@ function validateCreate(body: any): { error: string } | { data: { name: string; 
   if (!name || typeof name !== "string" || !name.trim()) return { error: "Field 'name' wajib diisi" };
   if (!email || typeof email !== "string" || !email.trim()) return { error: "Field 'email' wajib diisi" };
   if (!password || typeof password !== "string" || password.length < 6) return { error: "Field 'password' wajib diisi minimal 6 karakter" };
-  if (role !== undefined && !ROLES.includes(role)) return { error: "Field 'role' harus 'admin' atau 'user'" };
+  if (role !== undefined && !ROLES.includes(role)) return { error: "Field 'role' harus 'admin', 'user', atau 'gudang'" };
   return { data: { name: name.trim(), email: email.trim(), password, role: role ?? "user" } };
 }
 
@@ -81,7 +81,7 @@ export async function updateUserHandler(req: Request, res: Response) {
     if (name !== undefined && (typeof name !== "string" || !name.trim())) return res.status(400).json({ message: "Field 'name' tidak valid" });
     if (email !== undefined && (typeof email !== "string" || !email.trim())) return res.status(400).json({ message: "Field 'email' tidak valid" });
     if (password !== undefined && (typeof password !== "string" || password.length < 6)) return res.status(400).json({ message: "Field 'password' minimal 6 karakter" });
-    if (role !== undefined && !ROLES.includes(role)) return res.status(400).json({ message: "Field 'role' harus 'admin' atau 'user'" });
+    if (role !== undefined && !ROLES.includes(role)) return res.status(400).json({ message: "Field 'role' harus 'admin', 'user', atau 'gudang'" });
     const user = await updateUser(id, {
       ...(name !== undefined ? { name: name.trim() } : {}),
       ...(email !== undefined ? { email: email.trim() } : {}),

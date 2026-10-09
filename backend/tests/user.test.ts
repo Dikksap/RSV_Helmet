@@ -127,6 +127,21 @@ describe("POST /api/users", () => {
     });
   });
 
+  it("201 sukses dengan role gudang", async () => {
+    mockedCreate.mockResolvedValue({ ...sampleUser, role: "gudang" } as any);
+    const res = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Sari", email: "sari@y.com", password: "rahasia1", role: "gudang" });
+    expect(res.status).toBe(201);
+    expect(mockedCreate).toHaveBeenCalledWith({
+      name: "Sari",
+      email: "sari@y.com",
+      password: "rahasia1",
+      role: "gudang",
+    });
+  });
+
   it("409 email duplikat", async () => {
     mockedCreate.mockRejectedValue({ code: "P2002" });
     const res = await request(app)
@@ -163,6 +178,16 @@ describe("PUT /api/users/:id", () => {
       .send({ name: "Baru" });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Baru");
+  });
+
+  it("200 update role ke gudang", async () => {
+    mockedUpdate.mockResolvedValue({ ...sampleUser, role: "gudang" } as any);
+    const res = await request(app)
+      .put("/api/users/2")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "gudang" });
+    expect(res.status).toBe(200);
+    expect(mockedUpdate).toHaveBeenCalledWith(2, { role: "gudang" });
   });
 });
 
