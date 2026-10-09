@@ -1,0 +1,2 @@
+rtk: Failed to resolve 'grep' via PATH, falling back to direct exec: Binary 'grep' not found on PATH
+rtk: search failed: Failed to execute command: program not found

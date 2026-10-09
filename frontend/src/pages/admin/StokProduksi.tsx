@@ -56,6 +56,8 @@ function countBy<T>(items: BarangInGroup[], keyOf: (b: BarangInGroup) => string 
 const summaryEntries = (items: BarangInGroup[]) =>
   countBy(items, (b) => `${variantName(b)} ${kondisi(b)}`, (b) => ({ name: variantName(b), label: kondisi(b) }));
 
+const isiEntries = (items: BarangInGroup[]) => countBy(items, variantName, (b) => ({ name: variantName(b) }));
+
 const labelEntries = (items: BarangInGroup[]) =>
   countBy(
     items,
@@ -73,6 +75,74 @@ function compareDus(a: { nama: string }, b: { nama: string }) {
   return num(a.nama) - num(b.nama) || a.nama.localeCompare(b.nama, "id", { numeric: true });
 }
 
+function itemName(b: BarangInGroup) {
+  const v = b.variant;
+  return v?.product && v.style && v.color ? `${v.product.nama} ${v.style.nama} ${v.color.nama}` : "-";
+}
+
+type PrintRow = { dus: string; item: string; size: string; retur: boolean; n: number };
+
+function printRows(resolved: Resolved[]): PrintRow[] {
+  const m = new Map<string, PrintRow>();
+  for (const { group, items } of resolved) {
+    for (const b of items) {
+      const item = itemName(b);
+      const size = b.variant?.size?.nama ?? "-";
+      const retur = !!b.pernahRetur;
+      const key = `${group.nama}|${item}|${size}|${retur}`;
+      const cur = m.get(key);
+      if (cur) cur.n += 1;
+      else m.set(key, { dus: group.nama, item, size, retur, n: 1 });
+    }
+  }
+  return [...m.values()].sort(
+    (a, b) =>
+      compareDus({ nama: a.dus }, { nama: b.dus }) ||
+      a.item.localeCompare(b.item, "id") ||
+      a.size.localeCompare(b.size, "id", { numeric: true }),
+  );
+}
+
+function mergeDus(rows: PrintRow[]): PrintRow[] {
+  const m = new Map<string, PrintRow>();
+  for (const r of rows) {
+    const key = `${r.item}|${r.size}|${r.retur}`;
+    const cur = m.get(key);
+    if (cur) cur.n += r.n;
+    else m.set(key, { ...r, dus: "" });
+  }
+  return [...m.values()].sort(
+    (a, b) => a.item.localeCompare(b.item, "id") || a.size.localeCompare(b.size, "id", { numeric: true }),
+  );
+}
+
+function buildTable(rows: PrintRow[]): string {
+  if (rows.length === 0) return "<p>Kosong</p>";
+  const byItem = new Map<string, PrintRow[]>();
+  for (const r of rows) {
+    const arr = byItem.get(r.item);
+    if (arr) arr.push(r);
+    else byItem.set(r.item, [r]);
+  }
+  let body = "";
+  for (const itemRows of byItem.values()) {
+    const itemTotal = itemRows.reduce((a, r) => a + r.n, 0);
+    let first = true;
+    for (const r of itemRows) {
+      body += "<tr>";
+      if (first) body += `<td rowspan="${itemRows.length}">${escapeHtml(r.item)}</td>`;
+      body += `<td>${escapeHtml(r.size)}</td>`;
+      body += `<td class="num">${r.n}</td>`;
+      if (first) body += `<td class="num total-cell" rowspan="${itemRows.length}">${itemTotal}</td>`;
+      body += "</tr>";
+      first = false;
+    }
+  }
+  const grand = rows.reduce((a, r) => a + r.n, 0);
+  const head = "<tr><th>Item</th><th>Size</th><th class=\"num\">Stok</th><th class=\"num\">Total Item</th></tr>";
+  return `<table><thead>${head}</thead><tbody>${body}</tbody><tfoot><tr><td class="grand" colspan="3">TOTAL</td><td class="num grand">${grand}</td></tr></tfoot></table>`;
+}
+
 function toast(message: string, type: "success" | "error" = "success") {
   window.dispatchEvent(new CustomEvent("app:toast", { detail: { type, message } }));
 }
@@ -87,15 +157,34 @@ function writeDoc(w: Window, title: string, css: string, body: string) {
 
 const total = ({ group, items }: Resolved) => items.length || group._count.barang;
 
-function printBiasa(w: Window, resolved: Resolved[]) {
+const PRINT_CSS =
+  "body{font-family:Arial,sans-serif;color:#111;padding:24px}h1{font-size:22px;margin:0 0 4px}.nama{font-size:34px;font-weight:800;margin:0}.sub{font-size:13px;color:#555;margin:4px 0 16px}h2{font-size:16px;margin:18px 0 8px;color:#1E3A5F}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:6px 8px;font-size:14px;text-align:left;vertical-align:middle}tr{break-inside:avoid}thead th{background:#f5f7fa;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7280}.num{text-align:right;font-variant-numeric:tabular-nums}.total-cell{font-weight:700;color:#1E3A5F}tfoot .grand{font-weight:800;background:#f5f7fa;color:#1E3A5F;border-top:2px solid #1E3A5F}";
+
+function printRekap(w: Window, resolved: Resolved[]) {
+  const rows = mergeDus(printRows(resolved));
+  const dusWith = (retur: boolean) => resolved.filter((r) => r.items.some((b) => !!b.pernahRetur === retur)).length;
+  const section = (title: string, list: PrintRow[], nDus: number) =>
+    list.length === 0
+      ? ""
+      : `<h2>${title} · ${list.reduce((a, r) => a + r.n, 0)} pcs · ${nDus} dus</h2>${buildTable(list)}`;
+  const header = `<h1>Rekap Stok Produksi</h1><p class="sub">${escapeHtml(formatDate(new Date().toISOString()))}</p>`;
+  const body =
+    rows.length === 0
+      ? "<p>Kosong</p>"
+      : section("FINISHGOOD", rows.filter((r) => !r.retur), dusWith(false)) +
+        section("PENGGANTI RETUR", rows.filter((r) => r.retur), dusWith(true));
+  writeDoc(w, "Rekap Stok Produksi", PRINT_CSS, header + body);
+}
+
+function printDus(w: Window, resolved: Resolved[]) {
   if (resolved.length === 1) {
     const r = resolved[0];
-    const entries = summaryEntries(r.items);
+    const entries = isiEntries(r.items);
     const body =
       entries.length === 0
         ? "<p>Kosong</p>"
-        : `<table><tr><th>Isi</th><th>Qty</th><th>R/FG</th></tr>${entries
-            .map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>x ${e.n}</td><td>${e.label}</td></tr>`)
+        : `<table><tr><th>Isi</th><th>Qty</th></tr>${entries
+            .map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>x ${e.n}</td></tr>`)
             .join("")}</table><p class="total">Total: ${total(r)} pcs</p>`;
     writeDoc(
       w,
@@ -110,20 +199,20 @@ function printBiasa(w: Window, resolved: Resolved[]) {
       ? ""
       : `<h2 class="${breakBefore ? "break" : ""}">${title} (${list.length})</h2><table><tr><th>Dus</th><th>Isi Dus</th><th>Total</th></tr>${list
           .map((r) => {
-            const entries = summaryEntries(r.items);
-            const isi = entries.length === 0 ? "Kosong" : entries.map((e) => `${escapeHtml(e.name)} x ${e.n} ${e.label}`).join("<br>");
+            const entries = isiEntries(r.items);
+            const isi = entries.length === 0 ? "Kosong" : entries.map((e) => `${escapeHtml(e.name)} x ${e.n}`).join("<br>");
             return `<tr><td class="dus">${escapeHtml(r.group.nama)}</td><td>${isi}</td><td class="num">${total(r)}</td></tr>`;
           })
           .join("")}</table><p class="total">Total: ${list.reduce((a, r) => a + total(r), 0)} pcs</p>`;
-  const biasa = resolved.filter((r) => !isDusPengganti(r.group));
+  const finishgood = resolved.filter((r) => !isDusPengganti(r.group));
   const pengganti = resolved.filter((r) => isDusPengganti(r.group));
   writeDoc(
     w,
-    `Rekap ${resolved.length} Dus`,
+    `${resolved.length} Dus`,
     `body{padding:24px}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:18px 0 8px}.break{break-before:page}.sub{font-size:13px;color:#555;margin:0 0 12px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #333;padding:6px 8px;font-size:14px;text-align:left;vertical-align:top}.dus{white-space:nowrap;font-weight:700}.num{text-align:center;font-weight:700}.total{font-size:15px;font-weight:700;margin-top:10px}`,
-    `<h1>Rekap ${resolved.length} Dus</h1><p class="sub">${escapeHtml(formatDate(new Date().toISOString()))}</p>` +
-      section("Dus", biasa, false) +
-      section("Dus Pengganti", pengganti, biasa.length > 0),
+    `<h1>${resolved.length} Dus</h1><p class="sub">${escapeHtml(formatDate(new Date().toISOString()))}</p>` +
+      section("FINISHGOOD", finishgood, false) +
+      section("PENGGANTI RETUR", pengganti, finishgood.length > 0),
   );
 }
 
@@ -131,7 +220,7 @@ function printLabel(w: Window, resolved: Resolved[]) {
   const labels = resolved
     .map(({ group, items }, i) => {
       const entries = labelEntries(items);
-      const ket = isDusPengganti({ nama: group.nama, barang: items }) ? "PENGGANTI" : "FINISHGOOD";
+      const ket = isDusPengganti({ nama: group.nama, barang: items }) ? "PENGGANTI RETUR" : "FINISHGOOD";
       const body =
         entries.length === 0
           ? `<p class="isi">Kosong</p>`
@@ -425,7 +514,7 @@ function StokProduksi() {
       })),
     );
 
-  const printGroups = async (targets: BarangGroup[], mode: "label" | "biasa") => {
+  const printGroups = async (targets: BarangGroup[], mode: "label" | "dus" | "rekap") => {
     if (targets.length === 0) return;
     const w = window.open("", "_blank", "width=400,height=600");
     if (!w) {
@@ -436,7 +525,8 @@ function StokProduksi() {
     try {
       const resolved = await resolveAll(targets);
       if (mode === "label") printLabel(w, resolved);
-      else printBiasa(w, resolved);
+      else if (mode === "rekap") printRekap(w, resolved);
+      else printDus(w, resolved);
     } catch (e) {
       w.close();
       toast(errMsg(e, "Gagal print dus"), "error");
@@ -449,31 +539,21 @@ function StokProduksi() {
     if (filtered.length === 0) return;
     try {
       const resolved = await resolveAll(filtered);
-      const rows: unknown[][] = [];
-      const section = (title: string, list: Resolved[]) => {
+      const rows = printRows(resolved);
+      const out: unknown[][] = [];
+      const section = (title: string, list: PrintRow[]) => {
         if (list.length === 0) return;
-        rows.push([title], ["NO", "PRODUCT", "SIZE", "JUMLAH"]);
+        out.push([title], ["NO", "DUS", "PRODUCT", "SIZE", "JUMLAH"]);
         let subtotal = 0;
-        for (const { group, items } of list) {
-          rows.push([group.nama]);
-          const entries = countBy(
-            items,
-            (b) => `${[b.variant?.product?.nama, b.variant?.style?.nama, b.variant?.color?.nama].filter(Boolean).join(" ")}|${b.variant?.size?.nama}`,
-            (b) => ({
-              product: [b.variant?.product?.nama, b.variant?.style?.nama, b.variant?.color?.nama].filter(Boolean).join(" ") || "-",
-              size: b.variant?.size?.nama ?? "-",
-            }),
-          ).sort((a, b) => a.product.localeCompare(b.product, "id") || a.size.localeCompare(b.size, "id", { numeric: true }));
-          if (entries.length === 0) rows.push(["Kosong"]);
-          entries.forEach((e, i) => rows.push([i + 1, e.product, e.size, e.n]));
-          subtotal += items.length;
-          rows.push([]);
-        }
-        rows.push(["TOTAL", "", "", subtotal], []);
+        list.forEach((r, i) => {
+          out.push([i + 1, r.dus, r.item, r.size, r.n]);
+          subtotal += r.n;
+        });
+        out.push(["TOTAL", "", "", "", subtotal], []);
       };
-      section("DUS", resolved.filter((r) => !isDusPengganti(r.group)));
-      section("DUS PENGGANTI", resolved.filter((r) => isDusPengganti(r.group)));
-      downloadCsv(`stok-produksi-${new Date().toISOString().slice(0, 10)}${filter === "all" ? "" : `-${filter}`}.csv`, rows);
+      section("FINISHGOOD", rows.filter((r) => !r.retur));
+      section("PENGGANTI RETUR", rows.filter((r) => r.retur));
+      downloadCsv(`stok-produksi-${new Date().toISOString().slice(0, 10)}${filter === "all" ? "" : `-${filter}`}.csv`, out);
       toast(`Export rekap ${filtered.length} dus ke CSV`);
     } catch (e) {
       toast(errMsg(e, "Gagal export CSV"), "error");
@@ -534,7 +614,7 @@ function StokProduksi() {
           </button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-3">
-          <button type="button" disabled={isPrinting} onClick={() => void printGroups([g], "biasa")} className={`${MINI} text-slate-600 hover:bg-slate-100`}>
+          <button type="button" disabled={isPrinting} onClick={() => void printGroups([g], "dus")} className={`${MINI} text-slate-600 hover:bg-slate-100`}>
             Print
           </button>
           <button type="button" disabled={isPrinting} onClick={() => void printGroups([g], "label")} className={`${MINI} text-slate-600 hover:bg-slate-100`}>
@@ -652,8 +732,11 @@ function StokProduksi() {
             <button type="button" onClick={() => setSelected(new Set())} className={`${BTN_GHOST} h-9`}>
               Batal
             </button>
-            <button type="button" disabled={isPrinting} onClick={() => void printGroups(visibleSelected, "biasa")} className={`${BTN_GHOST} h-9`}>
-              {isPrinting ? "Menyiapkan…" : "Print"}
+            <button type="button" disabled={isPrinting} onClick={() => void printGroups(visibleSelected, "rekap")} className={`${BTN_GHOST} h-9`}>
+              {isPrinting ? "Menyiapkan…" : "Print Rekap"}
+            </button>
+            <button type="button" disabled={isPrinting} onClick={() => void printGroups(visibleSelected, "dus")} className={`${BTN_GHOST} h-9`}>
+              {isPrinting ? "Menyiapkan…" : "Print Dus"}
             </button>
             <button type="button" disabled={isPrinting} onClick={() => void printGroups(visibleSelected, "label")} className={`${BTN_PRIMARY} h-9`}>
               {isPrinting ? "Menyiapkan…" : "Print label"}
