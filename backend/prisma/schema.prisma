@@ -6,6 +6,10 @@ generator client {
   importFileExtension    = "js"
 }
 
+generator erd {
+  provider = "prisma-erd-generator"
+}
+
 datasource db {
   provider = "mysql"
 }
