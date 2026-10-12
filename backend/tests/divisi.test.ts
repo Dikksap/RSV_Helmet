@@ -10,6 +10,12 @@ vi.mock("../src/model/divisi/divisi.js", () => ({
   deleteDivisi: vi.fn(),
 }));
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import divisiRouter from "../src/routes/divisi.js";
 import {
   getAllDivisi,

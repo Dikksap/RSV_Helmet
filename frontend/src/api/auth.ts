@@ -42,20 +42,18 @@ export async function logout(token: string): Promise<void> {
   });
 }
 
-export async function checkSession(): Promise<boolean> {
+export async function checkSession(): Promise<string | null> {
   const token = getToken();
-  if (!token) return false;
+  if (!token) return null;
   try {
-    const response = await fetch(`${apiUrl}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.status === 401) return false;
-    if (!response.ok) return true;
+    const response = await fetch(`${apiUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (response.status === 401) return null;
+    if (!response.ok) return getUser()?.role ?? null;
     const { user } = (await response.json()) as { user: User };
     localStorage.setItem(USER_KEY, JSON.stringify(user));
-    return user.role === "admin";
+    return user.role;
   } catch {
-    return true;
+    return getUser()?.role ?? null;
   }
 }
 
@@ -92,4 +90,22 @@ export function isAuthenticated(): boolean {
 export function isAdmin(): boolean {
   const user = getUser();
   return user?.role === "admin";
+}
+
+export function authHeaders(extra: HeadersInit = {}): HeadersInit {
+  const token = getToken();
+  return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
+
+export function redirectToLogin(): void {
+  clearAuth();
+  if (window.location.pathname.startsWith("/login")) return;
+  const hash = window.location.protocol === "file:" ? "#" : "";
+  window.location.assign(`${hash}/login?session=expired`);
+}
+
+export function homeForRole(role: string | undefined): string {
+  if (role === "admin") return "/admin/home";
+  if (role === "user") return "/scan-qr";
+  return "/";
 }

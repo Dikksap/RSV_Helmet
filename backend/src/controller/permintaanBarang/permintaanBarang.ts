@@ -132,7 +132,19 @@ export async function listPermintaanHandler(req: Request, res: Response) {
       if ("error" in parsed) return res.status(400).json({ message: parsed.error });
       approval = parsed.ok;
     }
-    const result = await listPermintaan({ page, limit, approval });
+    let dari: Date | undefined;
+    if (req.query.dari !== undefined && req.query.dari !== "") {
+      const parsed = parseTanggal(req.query.dari);
+      if (!parsed) return res.status(400).json({ message: "Query 'dari' harus tanggal valid (YYYY-MM-DD)" });
+      dari = parsed;
+    }
+    let sampai: Date | undefined;
+    if (req.query.sampai !== undefined && req.query.sampai !== "") {
+      const parsed = parseTanggal(req.query.sampai);
+      if (!parsed) return res.status(400).json({ message: "Query 'sampai' harus tanggal valid (YYYY-MM-DD)" });
+      sampai = parsed;
+    }
+    const result = await listPermintaan({ page, limit, approval, dari, sampai });
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data permintaan barang", error });

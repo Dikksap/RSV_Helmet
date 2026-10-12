@@ -7,6 +7,12 @@ vi.mock("../src/lib/mekari.js", () => ({
   mekariGet: vi.fn(),
 }));
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import integrasiJurnalRouter from "../src/routes/integrasi-jurnal.js";
 import { mekariConfigured, mekariGet } from "../src/lib/mekari.js";
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { login, setAuth, isAuthenticated } from "../../api/auth";
+import { getUser, homeForRole, isAuthenticated, login, setAuth } from "../../api/auth";
 import logoUrl from "../../assets/logo.png";
 
 const inputClass =
@@ -18,7 +18,7 @@ function Login() {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate("/admin/home", { replace: true });
+      navigate(homeForRole(getUser()?.role), { replace: true });
     }
   }, [navigate]);
 
@@ -29,7 +29,7 @@ function Login() {
     try {
       const response = await login({ email, password });
       setAuth(response.token, response.user);
-      navigate("/admin/home", { replace: true });
+      navigate(homeForRole(response.user.role), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {

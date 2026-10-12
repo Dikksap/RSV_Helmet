@@ -9,6 +9,14 @@ import {
 
 const ROLES = ["admin", "user", "gudang"] as const;
 
+const ROLE_ERROR = "Field 'role' harus 'admin', 'user', atau 'gudang'";
+
+function normalizeRole(role: unknown): string | null {
+  if (typeof role !== "string") return null;
+  const trimmed = role.trim();
+  return (ROLES as readonly string[]).includes(trimmed) ? trimmed : null;
+}
+
 function parseId(raw: string) {
   const id = Number(raw);
   return Number.isInteger(id) && id > 0 ? id : null;
@@ -46,8 +54,9 @@ function validateCreate(body: any): { error: string } | { data: { name: string; 
   if (!name || typeof name !== "string" || !name.trim()) return { error: "Field 'name' wajib diisi" };
   if (!email || typeof email !== "string" || !email.trim()) return { error: "Field 'email' wajib diisi" };
   if (!password || typeof password !== "string" || password.length < 6) return { error: "Field 'password' wajib diisi minimal 6 karakter" };
-  if (role !== undefined && !ROLES.includes(role)) return { error: "Field 'role' harus 'admin', 'user', atau 'gudang'" };
-  return { data: { name: name.trim(), email: email.trim(), password, role: role ?? "user" } };
+  const resolvedRole = role === undefined ? "user" : normalizeRole(role);
+  if (resolvedRole === null) return { error: ROLE_ERROR };
+  return { data: { name: name.trim(), email: email.trim(), password, role: resolvedRole } };
 }
 
 // POST /api/users
@@ -81,12 +90,13 @@ export async function updateUserHandler(req: Request, res: Response) {
     if (name !== undefined && (typeof name !== "string" || !name.trim())) return res.status(400).json({ message: "Field 'name' tidak valid" });
     if (email !== undefined && (typeof email !== "string" || !email.trim())) return res.status(400).json({ message: "Field 'email' tidak valid" });
     if (password !== undefined && (typeof password !== "string" || password.length < 6)) return res.status(400).json({ message: "Field 'password' minimal 6 karakter" });
-    if (role !== undefined && !ROLES.includes(role)) return res.status(400).json({ message: "Field 'role' harus 'admin', 'user', atau 'gudang'" });
+    const resolvedRole = role === undefined ? null : normalizeRole(role);
+    if (role !== undefined && resolvedRole === null) return res.status(400).json({ message: ROLE_ERROR });
     const user = await updateUser(id, {
       ...(name !== undefined ? { name: name.trim() } : {}),
       ...(email !== undefined ? { email: email.trim() } : {}),
       ...(password !== undefined ? { password } : {}),
-      ...(role !== undefined ? { role } : {}),
+      ...(resolvedRole !== null ? { role: resolvedRole } : {}),
     });
     res.status(200).json(user);
   } catch (error: any) {

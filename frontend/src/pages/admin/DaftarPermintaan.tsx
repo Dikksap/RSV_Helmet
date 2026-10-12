@@ -1,22 +1,26 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCheck,
-  faChevronDown,
-  faTrash,
-  faMagnifyingGlass,
-  faUndo,
-  faClipboardList,
-  faClock,
+  faChevronRight,
   faCircleCheck,
-  faTriangleExclamation,
+  faClock,
+  faClipboardList,
+  faFileCsv,
+  faLock,
+  faMagnifyingGlass,
   faRotate,
+  faSpinner,
+  faTrash,
+  faTriangleExclamation,
+  faUndo,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
@@ -26,25 +30,44 @@ import {
   type ApprovalPermintaan,
   type PermintaanBarangRecord,
 } from "../../api/permintaanBarang";
+import { downloadCsv } from "../../lib/csv";
+
+const FOCUS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/60";
 
 const inputCls =
-  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 " +
-  "placeholder:text-slate-400 outline-none transition " +
-  "focus:border-[#00A8E8] focus:ring-4 focus:ring-[#00A8E8]/10";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 " +
+  `placeholder:text-slate-400 outline-none transition ${FOCUS} ` +
+  "focus:border-[#00A8E8]";
 
 type FilterStatus = "SEMUA" | ApprovalPermintaan;
 
 const approvalBadge = (status: ApprovalPermintaan) => {
   if (status === "DISETUJUI") {
-    return "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20";
+    return "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/25";
   }
 
-  return "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20";
+  return "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/25";
 };
 
 const approvalLabel = (status: ApprovalPermintaan) => {
   return status === "DISETUJUI" ? "Disetujui" : "Belum disetujui";
 };
+
+const priorityBadge = (prioritas: string) => {
+  if (prioritas === "Sangat Urgent") {
+    return "bg-red-600 text-white";
+  }
+
+  if (prioritas === "Urgent") {
+    return "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/25";
+  }
+
+  return "bg-slate-100 text-slate-600";
+};
+
+const isUrgent = (prioritas: string) =>
+  prioritas.toLowerCase().includes("urgent");
 
 const formatTanggal = (iso: string | null) => {
   if (!iso) return "-";
@@ -83,9 +106,349 @@ const ringkasIsi = (record: PermintaanBarangRecord) => {
   };
 };
 
+/* Baris CSV sebagai tabel (unknown[][]) untuk lib/csv.ts:
+   ringkas = 1 baris per permintaan, rincian = 1 baris per barang. */
+const buildCsvRows = (
+  rows: PermintaanBarangRecord[],
+  mode: "ringkas" | "rincian",
+): unknown[][] => {
+  const permintaanCols = (record: PermintaanBarangRecord): unknown[] => [
+    record.noPermintaan,
+    formatTanggal(record.tanggal),
+    record.departemen,
+    record.namaPeminta,
+    record.kebutuhanUntuk || "",
+    record.prioritas,
+    formatTanggal(record.tanggalDibutuhkan),
+    record.alasan || "",
+    approvalLabel(record.approval),
+  ];
+
+  if (mode === "rincian") {
+    return [
+      [
+        "No Permintaan",
+        "Tanggal",
+        "Departemen",
+        "Nama Peminta",
+        "Kebutuhan Untuk",
+        "Prioritas",
+        "Tanggal Dibutuhkan",
+        "Alasan",
+        "Status",
+        "Nama Barang",
+        "Spesifikasi",
+        "Jumlah",
+        "Satuan",
+      ],
+      ...rows.flatMap((record) =>
+        record.items.map((item) => [
+          ...permintaanCols(record),
+          item.nama,
+          item.spesifikasi || "",
+          item.jumlah,
+          item.satuan || "",
+        ]),
+      ),
+    ];
+  }
+
+  return [
+    [
+      "No Permintaan",
+      "Tanggal",
+      "Departemen",
+      "Nama Peminta",
+      "Kebutuhan Untuk",
+      "Prioritas",
+      "Tanggal Dibutuhkan",
+      "Alasan",
+      "Status",
+      "Jumlah Jenis",
+      "Total Pcs",
+    ],
+    ...rows.map((record) => {
+      const summary = ringkasIsi(record);
+      return [...permintaanCols(record), summary.items, summary.pcs];
+    }),
+  ];
+};
+
+/* ------------------------------------------------------------------ */
+/* Presentational pieces                                               */
+/* ------------------------------------------------------------------ */
+
+function StatCard({
+  label,
+  value,
+  hint,
+  icon,
+  iconCls,
+  valueCls,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  icon: typeof faClipboardList;
+  iconCls: string;
+  valueCls: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </p>
+        <span
+          aria-hidden="true"
+          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs ${iconCls}`}
+        >
+          <FontAwesomeIcon icon={icon} />
+        </span>
+      </div>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${valueCls}`}>
+        {value.toLocaleString("id-ID")}
+      </p>
+      <p className="mt-0.5 text-xs text-slate-400">{hint}</p>
+    </div>
+  );
+}
+
+function DetailDrawer({
+  record,
+  busy,
+  onClose,
+  onSetujui,
+  onBatalkan,
+  onHapus,
+}: {
+  record: PermintaanBarangRecord;
+  busy: boolean;
+  onClose: () => void;
+  onSetujui: (record: PermintaanBarangRecord) => void;
+  onBatalkan: (record: PermintaanBarangRecord) => void;
+  onHapus: (record: PermintaanBarangRecord) => void;
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const summary = ringkasIsi(record);
+  const approved = record.approval === "DISETUJUI";
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="permintaan-drawer-title"
+      className="fixed inset-0 z-50"
+    >
+      <style>{`@media (prefers-reduced-motion: no-preference) {
+        @keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+        @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+        .drawer-panel { animation: drawer-in 160ms ease-out; }
+        .drawer-backdrop { animation: backdrop-in 160ms ease-out; }
+      }`}</style>
+
+      <button
+        type="button"
+        aria-label="Tutup detail permintaan"
+        onClick={onClose}
+        className="drawer-backdrop absolute inset-0 cursor-default bg-slate-900/40"
+      />
+
+      <aside className="drawer-panel absolute inset-y-0 right-0 flex w-full flex-col border-l border-slate-200 bg-white shadow-xl sm:max-w-md">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="permintaan-drawer-title"
+              className="truncate font-mono text-base font-bold text-[#1E3A5F]"
+            >
+              {record.noPermintaan}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${approvalBadge(record.approval)}`}
+              >
+                {approved && (
+                  <FontAwesomeIcon
+                    icon={faCircleCheck}
+                    className="mr-1 text-[10px]"
+                    aria-hidden="true"
+                  />
+                )}
+                {approvalLabel(record.approval)}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${priorityBadge(record.prioritas)}`}
+              >
+                {isUrgent(record.prioritas) && (
+                  <FontAwesomeIcon
+                    icon={faTriangleExclamation}
+                    className="mr-1 text-[10px]"
+                    aria-hidden="true"
+                  />
+                )}
+                {record.prioritas}
+              </span>
+            </div>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup detail"
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 ${FOCUS}`}
+          >
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+            {[
+              ["Departemen", record.departemen],
+              ["Nama peminta", record.namaPeminta],
+              ["Tanggal permintaan", formatTanggalLengkap(record.tanggal)],
+              ["Tanggal dibutuhkan", formatTanggalLengkap(record.tanggalDibutuhkan)],
+              ["Kebutuhan untuk", record.kebutuhanUntuk || "-"],
+            ].map(([term, value]) => (
+              <div key={term} className="min-w-0">
+                <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  {term}
+                </dt>
+                <dd className="mt-0.5 break-words text-sm font-medium text-slate-700">
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Alasan / keterangan
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">
+              {record.alasan || "-"}
+            </p>
+          </div>
+
+          <div className="mt-5">
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 className="text-sm font-bold text-[#1E3A5F]">Daftar barang</h3>
+              <p className="text-xs tabular-nums text-slate-400">
+                {summary.items} jenis · {summary.pcs.toLocaleString("id-ID")} pcs
+              </p>
+            </div>
+            <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+              {record.items.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-start justify-between gap-3 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-700">
+                      {item.nama}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                      {item.spesifikasi || "Tanpa spesifikasi"}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-sm font-bold tabular-nums text-slate-700">
+                    {item.jumlah.toLocaleString("id-ID")}{" "}
+                    <span className="font-medium text-slate-400">
+                      {item.satuan || ""}
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {approved && (
+            <p className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+              <FontAwesomeIcon icon={faLock} className="mt-0.5" aria-hidden="true" />
+              Permintaan yang disetujui terkunci dan tidak dapat diubah atau
+              dihapus.
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+          {!approved ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onHapus(record)}
+                className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+              >
+                {busy ? (
+                  <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
+                ) : (
+                  <FontAwesomeIcon icon={faTrash} aria-hidden="true" />
+                )}
+                Hapus
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onSetujui(record)}
+                className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+              >
+                {busy ? (
+                  <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
+                ) : (
+                  <FontAwesomeIcon icon={faCheck} aria-hidden="true" />
+                )}
+                {busy ? "Memproses…" : "Setujui Permintaan"}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onBatalkan(record)}
+              className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#1E3A5F] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+            >
+              {busy ? (
+                <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
+              ) : (
+                <FontAwesomeIcon icon={faUndo} aria-hidden="true" />
+              )}
+              Batalkan Persetujuan
+            </button>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
 export default function DaftarPermintaan() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterStatus>("SEMUA");
+  const [exportMode, setExportMode] = useState<"ringkas" | "rincian">("ringkas");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const [rows, setRows] = useState<PermintaanBarangRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,15 +456,20 @@ export default function DaftarPermintaan() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const [refreshing, setRefreshing] = useState(false);
+  const noticeTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    return () => window.clearTimeout(noticeTimer.current);
+  }, []);
 
   const flash = useCallback((message: string) => {
     setNotice(message);
-
-    window.setTimeout(() => {
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => {
       setNotice((current) => (current === message ? null : current));
     }, 3000);
   }, []);
@@ -118,6 +486,8 @@ export default function DaftarPermintaan() {
         const response = await listPermintaan({
           limit: 100,
           ...(status === "SEMUA" ? {} : { approval: status }),
+          ...(dateFrom ? { dari: dateFrom } : {}),
+          ...(dateTo ? { sampai: dateTo } : {}),
         });
 
         setRows(response.data);
@@ -133,16 +503,32 @@ export default function DaftarPermintaan() {
         setRefreshing(false);
       }
     },
-    [],
+    [dateFrom, dateTo],
   );
 
   useEffect(() => {
     void load(filter);
-  }, [filter, load]);
+  }, [filter, dateFrom, dateTo, load]);
 
   const changeFilter = (status: FilterStatus) => {
     setFilter(status);
-    setExpanded(null);
+    setSelectedId(null);
+  };
+
+  const resetFilter = () => {
+    setSearch("");
+    setDateFrom("");
+    setDateTo("");
+    changeFilter("SEMUA");
+  };
+
+  const exportCsv = () => {
+    if (filtered.length === 0) return;
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    downloadCsv(
+      `permintaan-barang-${exportMode}-${stamp}.csv`,
+      buildCsvRows(filtered, exportMode),
+    );
   };
 
   const filtered = useMemo(() => {
@@ -170,9 +556,7 @@ export default function DaftarPermintaan() {
       (row) => row.approval === "DISETUJUI",
     ).length;
 
-    const urgent = rows.filter(
-      (row) => row.prioritas === "Urgent",
-    ).length;
+    const urgent = rows.filter((row) => isUrgent(row.prioritas)).length;
 
     return {
       total: rows.length,
@@ -181,6 +565,19 @@ export default function DaftarPermintaan() {
       urgent,
     };
   }, [rows]);
+
+  const detail =
+    selectedId === null
+      ? null
+      : (rows.find((row) => row.id === selectedId) ?? null);
+
+  // Drawer menunjuk ke record yang sudah tidak ada (mis. terhapus atau
+  // keluar dari filter): tutup agar tidak menampilkan data basi.
+  useEffect(() => {
+    if (selectedId !== null && detail === null && !loading) {
+      setSelectedId(null);
+    }
+  }, [selectedId, detail, loading]);
 
   const setujui = async (record: PermintaanBarangRecord) => {
     if (
@@ -227,9 +624,7 @@ export default function DaftarPermintaan() {
       await load(filter);
     } catch (e) {
       window.alert(
-        e instanceof Error
-          ? e.message
-          : "Gagal membatalkan persetujuan.",
+        e instanceof Error ? e.message : "Gagal membatalkan persetujuan.",
       );
     } finally {
       setBusyId(null);
@@ -250,8 +645,8 @@ export default function DaftarPermintaan() {
     try {
       await deletePermintaan(record.id);
 
-      if (expanded === record.id) {
-        setExpanded(null);
+      if (selectedId === record.id) {
+        setSelectedId(null);
       }
 
       flash(`Permintaan ${record.noPermintaan} berhasil dihapus.`);
@@ -267,35 +662,38 @@ export default function DaftarPermintaan() {
   };
 
   const toggleExpanded = (id: number) => {
-    setExpanded((current) => (current === id ? null : id));
+    setSelectedId((current) => (current === id ? null : id));
   };
 
+  const filterActive =
+    search.trim() !== "" ||
+    filter !== "SEMUA" ||
+    dateFrom !== "" ||
+    dateTo !== "";
+  const closeDetail = useCallback(() => setSelectedId(null), []);
+
   return (
-    <div className="min-h-full space-y-6 pb-8">
-      {/* =========================================================
-          HEADER
-      ========================================================== */}
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="rounded-lg bg-[#00A8E8]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#008CC2]">
-              Warehouse
-            </span>
-
-            <span className="text-xs text-slate-400">/</span>
-
-            <span className="text-xs font-medium text-slate-500">
-              Permintaan Barang
-            </span>
-          </div>
-
-          <h1 className="text-3xl font-bold tracking-tight text-[#1E3A5F] sm:text-4xl">
+    <div className="min-h-full space-y-5 pb-8">
+      {/* Header */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <nav aria-label="Breadcrumb">
+            <p className="text-xs font-medium text-slate-500">
+              Warehouse{" "}
+              <span aria-hidden="true" className="text-slate-300">
+                /
+              </span>{" "}
+              <span aria-current="page" className="text-slate-700">
+                Permintaan Barang
+              </span>
+            </p>
+          </nav>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#1E3A5F]">
             Daftar Permintaan
           </h1>
-
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-[15px]">
-            Kelola permintaan barang dari setiap departemen. Tinjau detail,
-            setujui permintaan, atau hapus permintaan yang belum diperlukan.
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+            Kelola permintaan barang antar departemen: tinjau detail, setujui,
+            atau hapus permintaan yang belum diperlukan.
           </p>
         </div>
 
@@ -303,767 +701,627 @@ export default function DaftarPermintaan() {
           type="button"
           disabled={loading || refreshing}
           onClick={() => void load(filter, true)}
-          className="
-            inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200
-            bg-white px-4 py-2.5 text-sm font-semibold text-slate-600
-            shadow-sm transition hover:border-[#00A8E8]/30 hover:bg-slate-50
-            disabled:cursor-not-allowed disabled:opacity-50
-          "
+          aria-label={refreshing ? "Memuat ulang data…" : "Muat ulang data"}
+          className={`inline-flex min-h-[40px] w-fit shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#00A8E8]/40 hover:text-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
         >
           <FontAwesomeIcon
-            icon={faRotate}
-            className={refreshing ? "animate-spin" : ""}
+            icon={refreshing ? faSpinner : faRotate}
+            spin={refreshing}
+            aria-hidden="true"
           />
-          Refresh
+          {refreshing ? "Memuat…" : "Refresh"}
         </button>
       </header>
 
-      {/* =========================================================
-          NOTIFICATION
-      ========================================================== */}
+      {/* Notification */}
       <div aria-live="polite" className="space-y-3">
         {error && (
           <div
             role="alert"
-            className="
-              flex items-start gap-3 rounded-xl border border-red-200
-              bg-red-50 px-4 py-3.5 text-sm text-red-700
-            "
+            className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm text-red-700 sm:flex-row sm:items-center"
           >
-            <FontAwesomeIcon
-              icon={faTriangleExclamation}
-              className="mt-0.5"
-            />
-
-            <div>
-              <p className="font-semibold">Gagal memuat data</p>
-              <p className="mt-0.5 text-red-600">{error}</p>
-            </div>
+            <p className="flex flex-1 items-start gap-2.5">
+              <FontAwesomeIcon
+                icon={faTriangleExclamation}
+                className="mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
+              <span>
+                <span className="font-semibold">Gagal memuat data. </span>
+                {error}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => void load(filter)}
+              className={`inline-flex min-h-[36px] shrink-0 items-center gap-2 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-red-700 ${FOCUS}`}
+            >
+              <FontAwesomeIcon icon={faRotate} aria-hidden="true" />
+              Coba lagi
+            </button>
           </div>
         )}
 
         {notice && (
           <div
             role="status"
-            className="
-              flex items-start gap-3 rounded-xl border border-emerald-200
-              bg-emerald-50 px-4 py-3.5 text-sm text-emerald-700
-            "
+            className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
           >
             <FontAwesomeIcon
               icon={faCircleCheck}
-              className="mt-0.5"
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
             />
-
             <p className="font-medium">{notice}</p>
           </div>
         )}
       </div>
 
-      {/* =========================================================
-          STATISTICS
-      ========================================================== */}
-      {!loading && !error && (
-        <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {/* Total */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Total Permintaan
-                  </p>
-
-                  <p className="mt-2 text-3xl font-bold tabular-nums text-[#1E3A5F]">
-                    {statistics.total.toLocaleString("id-ID")}
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-[#00A8E8]">
-                  <FontAwesomeIcon icon={faClipboardList} />
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs text-slate-400">
-                Data sesuai filter saat ini
-              </p>
+      {/* Statistik ringkas */}
+      {loading ? (
+        <section aria-label="Memuat statistik" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-xl border border-slate-200 bg-white px-4 py-3.5"
+            >
+              <div className="h-3 w-24 rounded bg-slate-100" />
+              <div className="mt-2 h-7 w-16 rounded bg-slate-100" />
             </div>
-
-            {/* Pending */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Belum Disetujui
-                  </p>
-
-                  <p className="mt-2 text-3xl font-bold tabular-nums text-amber-600">
-                    {statistics.belumDisetujui.toLocaleString("id-ID")}
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <FontAwesomeIcon icon={faClock} />
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs text-slate-400">
-                Menunggu pemeriksaan
-              </p>
+          ))}
+        </section>
+      ) : (
+        !error && (
+          <section aria-label="Ringkasan permintaan">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Total Permintaan"
+                value={statistics.total}
+                hint="Sesuai filter aktif"
+                icon={faClipboardList}
+                iconCls="bg-sky-50 text-[#00A8E8]"
+                valueCls="text-[#1E3A5F]"
+              />
+              <StatCard
+                label="Belum Disetujui"
+                value={statistics.belumDisetujui}
+                hint="Menunggu pemeriksaan"
+                icon={faClock}
+                iconCls="bg-amber-50 text-amber-600"
+                valueCls="text-amber-600"
+              />
+              <StatCard
+                label="Disetujui"
+                value={statistics.disetujui}
+                hint="Data terkunci"
+                icon={faCircleCheck}
+                iconCls="bg-emerald-50 text-emerald-600"
+                valueCls="text-emerald-600"
+              />
+              <StatCard
+                label="Prioritas Urgent"
+                value={statistics.urgent}
+                hint="Butuh perhatian"
+                icon={faTriangleExclamation}
+                iconCls="bg-red-50 text-red-600"
+                valueCls="text-red-600"
+              />
             </div>
-
-            {/* Approved */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Disetujui
-                  </p>
-
-                  <p className="mt-2 text-3xl font-bold tabular-nums text-emerald-600">
-                    {statistics.disetujui.toLocaleString("id-ID")}
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                  <FontAwesomeIcon icon={faCircleCheck} />
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs text-slate-400">
-                Permintaan yang terkunci
-              </p>
-            </div>
-
-            {/* Urgent */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Prioritas Urgent
-                  </p>
-
-                  <p className="mt-2 text-3xl font-bold tabular-nums text-red-600">
-                    {statistics.urgent.toLocaleString("id-ID")}
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600">
-                  <FontAwesomeIcon icon={faTriangleExclamation} />
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs text-slate-400">
-                Membutuhkan perhatian
-              </p>
-            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Dihitung dari maks. 100 data terbaru yang dimuat, bukan seluruh
+              database.
+            </p>
           </section>
+        )
+      )}
 
-          {/* =========================================================
-              FILTER
-          ========================================================== */}
-          <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)] sm:p-6">
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-              <div className="flex-1">
+      {/* Tabel + toolbar */}
+      {!loading && !error && (
+        <section
+          aria-label="Data permintaan"
+          className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+        >
+          {/* Toolbar terintegrasi */}
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <label htmlFor="permintaan-search" className="sr-only">
+                Cari permintaan
+              </label>
+              <FontAwesomeIcon
+                icon={faMagnifyingGlass}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                id="permintaan-search"
+                type="search"
+                className={`${inputCls} pl-10`}
+                placeholder="Cari nomor, peminta, departemen…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-1.5">
                 <label
-                  htmlFor="permintaan-search"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
+                  htmlFor="permintaan-date-from"
+                  className="shrink-0 text-xs font-semibold text-slate-500"
                 >
-                  Cari permintaan
+                  Dari
                 </label>
-
-                <div className="relative max-w-xl">
-                  <FontAwesomeIcon
-                    icon={faMagnifyingGlass}
-                    className="
-                      pointer-events-none absolute left-4 top-1/2
-                      h-4 w-4 -translate-y-1/2 text-slate-400
-                    "
-                  />
-
-                  <input
-                    id="permintaan-search"
-                    type="search"
-                    className={`${inputCls} pl-11`}
-                    placeholder="Nomor permintaan, nama peminta, atau departemen..."
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-
-                  {search && (
-                    <button
-                      type="button"
-                      onClick={() => setSearch("")}
-                      className="
-                        absolute right-3 top-1/2 -translate-y-1/2
-                        rounded-md px-2 py-1 text-xs font-medium
-                        text-slate-400 hover:bg-slate-100 hover:text-slate-600
-                      "
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
+                <input
+                  id="permintaan-date-from"
+                  type="date"
+                  className={`${inputCls} sm:w-40`}
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(event) => setDateFrom(event.target.value)}
+                />
               </div>
 
-              <div className="w-full xl:w-64">
+              <div className="flex items-center gap-1.5">
                 <label
-                  htmlFor="permintaan-filter"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
+                  htmlFor="permintaan-date-to"
+                  className="shrink-0 text-xs font-semibold text-slate-500"
                 >
-                  Status Approval
+                  Sampai
                 </label>
+                <input
+                  id="permintaan-date-to"
+                  type="date"
+                  className={`${inputCls} sm:w-40`}
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(event) => setDateTo(event.target.value)}
+                />
+              </div>
 
+              <div>
+                <label htmlFor="permintaan-filter" className="sr-only">
+                  Filter status approval
+                </label>
                 <select
                   id="permintaan-filter"
-                  className={inputCls}
+                  className={`${inputCls} sm:w-48`}
                   value={filter}
                   onChange={(event) =>
                     changeFilter(event.target.value as FilterStatus)
                   }
                 >
                   <option value="SEMUA">Semua status</option>
-                  <option value="BELUM_DISETUJUI">
-                    Belum disetujui
-                  </option>
+                  <option value="BELUM_DISETUJUI">Belum disetujui</option>
                   <option value="DISETUJUI">Disetujui</option>
                 </select>
               </div>
-            </div>
 
-            <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-              <p>
-                Menampilkan{" "}
-                <span className="font-semibold text-slate-700">
-                  {filtered.length}
-                </span>{" "}
-                dari{" "}
-                <span className="font-semibold text-slate-700">
-                  {rows.length}
-                </span>{" "}
-                permintaan
-              </p>
-
-              {search && (
-                <p>
-                  Hasil pencarian untuk{" "}
-                  <span className="font-semibold text-slate-700">
-                    "{search}"
-                  </span>
-                </p>
+              {filterActive && (
+                <button
+                  type="button"
+                  onClick={resetFilter}
+                  className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-800 ${FOCUS}`}
+                >
+                  <FontAwesomeIcon icon={faXmark} aria-hidden="true" />
+                  Reset
+                </button>
               )}
-            </div>
-          </section>
 
-          {/* =========================================================
-              TABLE
-          ========================================================== */}
-          <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
               <div>
-                <h2 className="text-sm font-bold text-[#1E3A5F]">
-                  Data Permintaan
-                </h2>
-
-                <p className="mt-0.5 text-xs text-slate-400">
-                  Klik nomor permintaan untuk melihat detail
-                </p>
+                <label htmlFor="permintaan-export-mode" className="sr-only">
+                  Isi file export CSV
+                </label>
+                <select
+                  id="permintaan-export-mode"
+                  className={`${inputCls} sm:w-44`}
+                  value={exportMode}
+                  onChange={(event) =>
+                    setExportMode(event.target.value as "ringkas" | "rincian")
+                  }
+                >
+                  <option value="ringkas">Ringkasan per permintaan</option>
+                  <option value="rincian">Rincian per barang</option>
+                </select>
               </div>
+
+              <button
+                type="button"
+                onClick={exportCsv}
+                disabled={filtered.length === 0}
+                aria-label={
+                  filtered.length === 0
+                    ? "Tidak ada data untuk diekspor"
+                    : `Ekspor ${exportMode === "rincian" ? "rincian barang" : `${filtered.length} permintaan`} ke CSV`
+                }
+                title="Ekspor data tampil ke CSV"
+                className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 transition hover:border-[#00A8E8]/40 hover:text-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+              >
+                <FontAwesomeIcon icon={faFileCsv} aria-hidden="true" />
+                Export CSV
+              </button>
             </div>
+          </div>
 
-            {filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                  <FontAwesomeIcon
-                    icon={faClipboardList}
-                    className="text-xl"
-                  />
-                </div>
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 sm:px-5">
+            <p className="text-xs text-slate-500" role="status">
+              Menampilkan{" "}
+              <span className="font-bold tabular-nums text-slate-700">
+                {filtered.length}
+              </span>{" "}
+              dari{" "}
+              <span className="font-bold tabular-nums text-slate-700">
+                {rows.length}
+              </span>{" "}
+              permintaan
+              {filter !== "SEMUA" && (
+                <>
+                  {" · "}
+                  <span className="font-semibold text-slate-700">
+                    {filter === "DISETUJUI" ? "Disetujui" : "Belum disetujui"}
+                  </span>
+                </>
+              )}
+              {(dateFrom || dateTo) && (
+                <>
+                  {" · "}
+                  <span className="font-semibold tabular-nums text-slate-700">
+                    {formatTanggal(dateFrom || null)} –{" "}
+                    {formatTanggal(dateTo || null)}
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
 
-                <h3 className="mt-4 text-sm font-semibold text-slate-700">
-                  Tidak ada permintaan
-                </h3>
-
-                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
-                  Tidak ditemukan data yang sesuai dengan pencarian atau
-                  filter yang dipilih.
-                </p>
-
-                {(search || filter !== "SEMUA") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch("");
-                      changeFilter("SEMUA");
-                    }}
-                    className="
-                      mt-4 rounded-lg bg-[#1E3A5F] px-4 py-2
-                      text-xs font-semibold text-white transition
-                      hover:bg-[#16304F]
-                    "
-                  >
-                    Reset Filter
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="w-[180px] px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          {/* Desktop: tabel */}
+          {filtered.length === 0 ? (
+            <EmptyState
+              search={search}
+              filter={filter}
+              dateFilter={dateFrom !== "" || dateTo !== ""}
+              onReset={resetFilter}
+            />
+          ) : (
+            <>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th scope="col" className="px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Permintaan
                       </th>
-
-                      <th className="w-[120px] px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Tanggal
                       </th>
-
-                      <th className="px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Departemen / Peminta
                       </th>
-
-                      <th className="w-[150px] px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Isi
                       </th>
-
-                      <th className="w-[120px] px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Prioritas
                       </th>
-
-                      <th className="w-[150px] px-4 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Status
                       </th>
-
-                      <th className="w-[130px] px-6 py-4 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th scope="col" className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Aksi
                       </th>
                     </tr>
                   </thead>
-
                   <tbody className="divide-y divide-slate-100">
                     {filtered.map((record) => {
-                      const open = expanded === record.id;
                       const busy = busyId === record.id;
+                      const selected = selectedId === record.id;
                       const summary = ringkasIsi(record);
 
                       return (
-                        <Fragment key={record.id}>
-                          {/* =================================================
-                              MAIN ROW
-                          ================================================== */}
-                          <tr
-                            className={`
-                              group text-sm transition
-                              ${
-                                open
-                                  ? "bg-slate-50"
-                                  : "hover:bg-slate-50/70"
-                              }
-                            `}
-                          >
-                            <td className="px-6 py-4">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  toggleExpanded(record.id)
-                                }
-                                className="
-                                  group/id inline-flex items-center gap-2
-                                  text-left font-mono text-sm font-bold
-                                  text-[#1E3A5F] hover:text-[#00A8E8]
-                                "
-                                aria-expanded={open}
-                              >
-                                <span>{record.noPermintaan}</span>
+                        <tr
+                          key={record.id}
+                          className={`transition-colors ${
+                            selected
+                              ? "bg-sky-50/60"
+                              : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <td className="px-5 py-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(record.id)}
+                              aria-expanded={selected}
+                              aria-label={`Lihat detail ${record.noPermintaan}`}
+                              className={`rounded font-mono text-[13px] font-bold text-[#1E3A5F] underline decoration-[#00A8E8]/40 decoration-2 underline-offset-4 transition hover:text-[#00A8E8] ${FOCUS}`}
+                            >
+                              {record.noPermintaan}
+                            </button>
+                            {record.kebutuhanUntuk && (
+                              <p className="mt-0.5 max-w-[160px] truncate text-xs text-slate-400">
+                                {record.kebutuhanUntuk}
+                              </p>
+                            )}
+                          </td>
 
+                          <td className="whitespace-nowrap px-3 py-3 text-slate-500">
+                            {formatTanggal(record.tanggal)}
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-slate-700">
+                              {record.departemen}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              {record.namaPeminta}
+                            </p>
+                          </td>
+
+                          <td className="whitespace-nowrap px-3 py-3 tabular-nums">
+                            <span className="font-semibold text-slate-700">
+                              {summary.items} jenis
+                            </span>{" "}
+                            <span className="text-xs text-slate-400">
+                              · {summary.pcs.toLocaleString("id-ID")} pcs
+                            </span>
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${priorityBadge(record.prioritas)}`}
+                            >
+                              {isUrgent(record.prioritas) && (
                                 <FontAwesomeIcon
-                                  icon={faChevronDown}
-                                  className={`
-                                    h-3 w-3 text-slate-400 transition-transform
-                                    ${
-                                      open
-                                        ? "rotate-180 text-[#00A8E8]"
-                                        : "group-hover/id:text-[#00A8E8]"
-                                    }
-                                  `}
+                                  icon={faTriangleExclamation}
+                                  className="text-[10px]"
+                                  aria-hidden="true"
                                 />
-                              </button>
-
-                              {record.kebutuhanUntuk && (
-                                <p className="mt-1 max-w-[170px] truncate text-xs text-slate-400">
-                                  {record.kebutuhanUntuk}
-                                </p>
                               )}
-                            </td>
+                              {record.prioritas}
+                            </span>
+                          </td>
 
-                            <td className="whitespace-nowrap px-4 py-4 text-slate-500">
-                              {formatTanggal(record.tanggal)}
-                            </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${approvalBadge(record.approval)}`}
+                            >
+                              {approvalLabel(record.approval)}
+                            </span>
+                          </td>
 
-                            <td className="px-4 py-4">
-                              <p className="font-semibold text-slate-700">
-                                {record.departemen}
-                              </p>
-
-                              <p className="mt-0.5 text-xs text-slate-400">
-                                {record.namaPeminta}
-                              </p>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <div className="flex flex-col">
-                                <span className="font-semibold tabular-nums text-slate-700">
-                                  {summary.items} barang
-                                </span>
-
-                                <span className="mt-0.5 text-xs tabular-nums text-slate-400">
-                                  {summary.pcs.toLocaleString("id-ID")} pcs
-                                </span>
-                              </div>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <span
-                                className={`
-                                  inline-flex items-center gap-1.5 rounded-full
-                                  px-2.5 py-1 text-[11px] font-bold
-                                  ${
-                                    record.prioritas === "Urgent"
-                                      ? "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20"
-                                      : "bg-slate-100 text-slate-600"
-                                  }
-                                `}
-                              >
-                                {record.prioritas === "Urgent" && (
-                                  <FontAwesomeIcon
-                                    icon={faTriangleExclamation}
-                                    className="text-[10px]"
-                                  />
-                                )}
-
-                                {record.prioritas}
-                              </span>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <span
-                                className={`
-                                  inline-flex items-center rounded-full
-                                  px-2.5 py-1 text-[11px] font-bold
-                                  ${approvalBadge(record.approval)}
-                                `}
-                              >
-                                {approvalLabel(record.approval)}
-                              </span>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <div className="flex justify-end gap-1">
-                                {record.approval ===
-                                "BELUM_DISETUJUI" ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      aria-label={`Setujui ${record.noPermintaan}`}
-                                      title="Setujui permintaan"
-                                      disabled={busy}
-                                      onClick={() =>
-                                        void setujui(record)
-                                      }
-                                      className="
-                                        flex h-9 w-9 items-center justify-center
-                                        rounded-lg text-emerald-600 transition
-                                        hover:bg-emerald-50 hover:text-emerald-700
-                                        disabled:cursor-not-allowed disabled:opacity-40
-                                      "
-                                    >
-                                      <FontAwesomeIcon
-                                        icon={faCheck}
-                                      />
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      aria-label={`Hapus ${record.noPermintaan}`}
-                                      title="Hapus permintaan"
-                                      disabled={busy}
-                                      onClick={() =>
-                                        void hapus(record)
-                                      }
-                                      className="
-                                        flex h-9 w-9 items-center justify-center
-                                        rounded-lg text-slate-400 transition
-                                        hover:bg-red-50 hover:text-red-600
-                                        disabled:cursor-not-allowed disabled:opacity-40
-                                      "
-                                    >
-                                      <FontAwesomeIcon
-                                        icon={faTrash}
-                                      />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    aria-label={`Batalkan persetujuan ${record.noPermintaan}`}
-                                    title="Batalkan persetujuan"
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void batalkan(record)
-                                    }
-                                    className="
-                                      flex h-9 w-9 items-center justify-center
-                                      rounded-lg text-[#1E3A5F] transition
-                                      hover:bg-[#1E3A5F]/5
-                                      disabled:cursor-not-allowed disabled:opacity-40
-                                    "
-                                  >
-                                    <FontAwesomeIcon icon={faUndo} />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-
-                          {/* =================================================
-                              DETAIL ROW
-                          ================================================== */}
-                          {open && (
-                            <tr className="bg-slate-50">
-                              <td colSpan={7} className="px-6 pb-6 pt-1">
-                                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                                  {/* Detail Header */}
-                                  <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                                        Detail Permintaan
-                                      </p>
-
-                                      <h3 className="mt-1 font-mono text-base font-bold text-[#1E3A5F]">
-                                        {record.noPermintaan}
-                                      </h3>
-                                    </div>
-
-                                    <span
-                                      className={`
-                                        w-fit rounded-full px-3 py-1 text-xs font-bold
-                                        ${approvalBadge(record.approval)}
-                                      `}
-                                    >
-                                      {approvalLabel(record.approval)}
-                                    </span>
-                                  </div>
-
-                                  {/* Metadata */}
-                                  <div className="grid gap-x-8 gap-y-4 py-5 sm:grid-cols-2 lg:grid-cols-4">
-                                    <div>
-                                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                        Departemen
-                                      </p>
-
-                                      <p className="mt-1 text-sm font-medium text-slate-700">
-                                        {record.departemen}
-                                      </p>
-                                    </div>
-
-                                    <div>
-                                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                        Peminta
-                                      </p>
-
-                                      <p className="mt-1 text-sm font-medium text-slate-700">
-                                        {record.namaPeminta}
-                                      </p>
-                                    </div>
-
-                                    <div>
-                                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                        Dibutuhkan
-                                      </p>
-
-                                      <p className="mt-1 text-sm font-medium text-slate-700">
-                                        {formatTanggalLengkap(
-                                          record.tanggalDibutuhkan,
-                                        )}
-                                      </p>
-                                    </div>
-
-                                    <div>
-                                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                        Kebutuhan
-                                      </p>
-
-                                      <p className="mt-1 text-sm font-medium text-slate-700">
-                                        {record.kebutuhanUntuk}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Reason */}
-                                  <div className="rounded-lg bg-slate-50 px-4 py-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                      Alasan / Keterangan
-                                    </p>
-
-                                    <p className="mt-1 text-sm leading-6 text-slate-700">
-                                      {record.alasan || "-"}
-                                    </p>
-                                  </div>
-
-                                  {/* Items */}
-                                  <div className="mt-5">
-                                    <div className="mb-3 flex items-center justify-between">
-                                      <div>
-                                        <h4 className="text-sm font-bold text-[#1E3A5F]">
-                                          Daftar Barang
-                                        </h4>
-
-                                        <p className="mt-0.5 text-xs text-slate-400">
-                                          {summary.items} jenis barang ·{" "}
-                                          {summary.pcs.toLocaleString(
-                                            "id-ID",
-                                          )}{" "}
-                                          pcs
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    <div className="overflow-hidden rounded-lg border border-slate-200">
-                                      <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-50">
-                                          <tr>
-                                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                              Barang
-                                            </th>
-
-                                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                              Spesifikasi
-                                            </th>
-
-                                            <th className="w-32 px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                              Jumlah
-                                            </th>
-                                          </tr>
-                                        </thead>
-
-                                        <tbody className="divide-y divide-slate-100 bg-white">
-                                          {record.items.map((item) => (
-                                            <tr key={item.id}>
-                                              <td className="px-4 py-3 font-medium text-slate-700">
-                                                {item.nama}
-                                              </td>
-
-                                              <td className="px-4 py-3 text-slate-500">
-                                                {item.spesifikasi || "-"}
-                                              </td>
-
-                                              <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-700">
-                                                {item.jumlah.toLocaleString(
-                                                  "id-ID",
-                                                )}{" "}
-                                                {item.satuan || ""}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </div>
-
-                                  {/* Detail Actions */}
-                                  <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-                                    {record.approval ===
-                                    "BELUM_DISETUJUI" ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          disabled={busy}
-                                          onClick={() =>
-                                            void hapus(record)
-                                          }
-                                          className="
-                                            inline-flex items-center justify-center gap-2
-                                            rounded-lg border border-red-200 bg-white
-                                            px-4 py-2.5 text-xs font-bold text-red-600
-                                            transition hover:bg-red-50
-                                            disabled:cursor-not-allowed disabled:opacity-40
-                                          "
-                                        >
-                                          <FontAwesomeIcon icon={faTrash} />
-                                          Hapus
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          disabled={busy}
-                                          onClick={() =>
-                                            void setujui(record)
-                                          }
-                                          className="
-                                            inline-flex items-center justify-center gap-2
-                                            rounded-lg bg-emerald-600 px-4 py-2.5
-                                            text-xs font-bold text-white transition
-                                            hover:bg-emerald-700
-                                            disabled:cursor-not-allowed disabled:opacity-40
-                                          "
-                                        >
-                                          <FontAwesomeIcon icon={faCheck} />
-                                          Setujui Permintaan
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        disabled={busy}
-                                        onClick={() =>
-                                          void batalkan(record)
-                                        }
-                                        className="
-                                          inline-flex items-center justify-center gap-2
-                                          rounded-lg border border-slate-200 bg-white
-                                          px-4 py-2.5 text-xs font-bold text-[#1E3A5F]
-                                          transition hover:bg-slate-50
-                                          disabled:cursor-not-allowed disabled:opacity-40
-                                        "
-                                      >
-                                        <FontAwesomeIcon icon={faUndo} />
-                                        Batalkan Persetujuan
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
+                          <td className="px-5 py-3">
+                            <RowActions
+                              record={record}
+                              busy={busy}
+                              onSetujui={setujui}
+                              onBatalkan={batalkan}
+                              onHapus={hapus}
+                            />
+                          </td>
+                        </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            )}
-          </section>
-        </>
+
+              {/* Mobile: daftar card ringkas */}
+              <ul className="divide-y divide-slate-100 md:hidden">
+                {filtered.map((record) => {
+                  const busy = busyId === record.id;
+                  const selected = selectedId === record.id;
+                  const summary = ringkasIsi(record);
+
+                  return (
+                    <li
+                      key={record.id}
+                      className={selected ? "bg-sky-50/60" : undefined}
+                    >
+                      <div className="flex items-start gap-2 px-4 py-3.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(record.id)}
+                          aria-expanded={selected}
+                          aria-label={`Lihat detail ${record.noPermintaan}`}
+                          className={`min-w-0 flex-1 rounded text-left ${FOCUS}`}
+                        >
+                          <span className="block truncate font-mono text-sm font-bold text-[#1E3A5F]">
+                            {record.noPermintaan}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-slate-500">
+                            {record.departemen} · {record.namaPeminta}
+                          </span>
+                          <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${priorityBadge(record.prioritas)}`}
+                            >
+                              {record.prioritas}
+                            </span>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${approvalBadge(record.approval)}`}
+                            >
+                              {approvalLabel(record.approval)}
+                            </span>
+                            <span className="text-[11px] tabular-nums text-slate-400">
+                              {summary.items} jenis ·{" "}
+                              {summary.pcs.toLocaleString("id-ID")} pcs
+                            </span>
+                          </span>
+                        </button>
+                        <FontAwesomeIcon
+                          icon={faChevronRight}
+                          aria-hidden="true"
+                          className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-300"
+                        />
+                      </div>
+                      <div className="flex items-center justify-end gap-1 border-t border-dashed border-slate-100 px-4 py-1.5">
+                        <RowActions
+                          record={record}
+                          busy={busy}
+                          onSetujui={setujui}
+                          onBatalkan={batalkan}
+                          onHapus={hapus}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </section>
       )}
 
-      {/* =========================================================
-          LOADING STATE
-      ========================================================== */}
+      {/* Skeleton saat loading awal */}
       {loading && (
-        <section className="rounded-2xl border border-slate-100 bg-white p-8 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-          <div className="space-y-4">
-            <div className="h-5 w-48 animate-pulse rounded bg-slate-100" />
-
-            <div className="h-12 w-full animate-pulse rounded-xl bg-slate-100" />
-
-            <div className="h-16 w-full animate-pulse rounded-xl bg-slate-100" />
-
-            <div className="h-16 w-full animate-pulse rounded-xl bg-slate-100" />
-
-            <div className="h-16 w-full animate-pulse rounded-xl bg-slate-100" />
+        <section
+          aria-label="Memuat data permintaan"
+          className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+        >
+          <div className="space-y-2.5 px-4 py-4 sm:px-5">
+            <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-14 w-full animate-pulse rounded-xl bg-slate-100"
+              />
+            ))}
           </div>
         </section>
+      )}
+
+      {/* Drawer detail */}
+      {detail && (
+        <DetailDrawer
+          record={detail}
+          busy={busyId === detail.id}
+          onClose={closeDetail}
+          onSetujui={(record) => void setujui(record)}
+          onBatalkan={(record) => void batalkan(record)}
+          onHapus={(record) => void hapus(record)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Row-level actions (dipakai tabel desktop + card mobile)             */
+/* ------------------------------------------------------------------ */
+
+function RowActions({
+  record,
+  busy,
+  onSetujui,
+  onBatalkan,
+  onHapus,
+}: {
+  record: PermintaanBarangRecord;
+  busy: boolean;
+  onSetujui: (record: PermintaanBarangRecord) => void;
+  onBatalkan: (record: PermintaanBarangRecord) => void;
+  onHapus: (record: PermintaanBarangRecord) => void;
+}) {
+  const btn = `grid h-9 w-9 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
+
+  if (record.approval === "DISETUJUI") {
+    return (
+      <div className="flex justify-end">
+        <button
+          type="button"
+          aria-label={`Batalkan persetujuan ${record.noPermintaan}`}
+          title="Batalkan persetujuan"
+          disabled={busy}
+          onClick={() => onBatalkan(record)}
+          className={`${btn} text-[#1E3A5F] hover:bg-slate-100`}
+        >
+          <FontAwesomeIcon
+            icon={busy ? faSpinner : faUndo}
+            spin={busy}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-end gap-1">
+      <button
+        type="button"
+        aria-label={`Setujui ${record.noPermintaan}`}
+        title="Setujui permintaan"
+        disabled={busy}
+        onClick={() => onSetujui(record)}
+        className={`${btn} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`}
+      >
+        <FontAwesomeIcon
+          icon={busy ? faSpinner : faCheck}
+          spin={busy}
+          aria-hidden="true"
+        />
+      </button>
+      <button
+        type="button"
+        aria-label={`Hapus ${record.noPermintaan}`}
+        title="Hapus permintaan"
+        disabled={busy}
+        onClick={() => onHapus(record)}
+        className={`${btn} text-slate-400 hover:bg-red-50 hover:text-red-600`}
+      >
+        <FontAwesomeIcon icon={faTrash} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Empty states                                                        */
+/* ------------------------------------------------------------------ */
+
+function EmptyState({
+  search,
+  filter,
+  dateFilter,
+  onReset,
+}: {
+  search: string;
+  filter: FilterStatus;
+  dateFilter: boolean;
+  onReset: () => void;
+}) {
+  const searching = search.trim() !== "";
+  const filtering = filter !== "SEMUA" || dateFilter;
+
+  const title = searching
+    ? "Pencarian tidak menemukan hasil"
+    : filtering
+      ? "Tidak ada data pada filter ini"
+      : "Belum ada permintaan";
+
+  const desc = searching
+    ? `Tidak ada permintaan yang cocok dengan "${search.trim()}". Coba kata kunci lain atau reset filter.`
+    : filter !== "SEMUA"
+      ? `Tidak ada permintaan berstatus "${filter === "DISETUJUI" ? "Disetujui" : "Belum disetujui"}".`
+      : dateFilter
+        ? "Tidak ada permintaan pada rentang tanggal yang dipilih."
+        : "Belum ada permintaan barang yang tercatat. Data baru dari form publik akan muncul di sini.";
+
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+      <div
+        aria-hidden="true"
+        className="grid h-12 w-12 place-items-center rounded-xl bg-slate-100 text-slate-400"
+      >
+        <FontAwesomeIcon icon={searching ? faMagnifyingGlass : faClipboardList} />
+      </div>
+      <h3 className="mt-3 text-sm font-bold text-slate-700">{title}</h3>
+      <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{desc}</p>
+      {(searching || filtering) && (
+        <button
+          type="button"
+          onClick={onReset}
+          className={`mt-4 inline-flex min-h-[40px] items-center rounded-xl bg-[#1E3A5F] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#16304F] ${FOCUS}`}
+        >
+          Reset filter
+        </button>
       )}
     </div>
   );

@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import logoUrl from "../../assets/logo.svg";
-import { checkSession, clearAuth, getToken, getUser, isAdmin, isAuthenticated, logout } from "../../api/auth";
+import { checkSession, clearAuth, getToken, getUser, isAuthenticated, logout } from "../../api/auth";
 import { useStatusOptions } from "../../lib/useStatusOptions";
 
-type Module = { title: string; desc: string; to: string; icon: ReactNode };
+type Module = { title: string; desc: string; to: string; icon: ReactNode; public?: boolean };
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]";
 
@@ -25,6 +25,12 @@ const QR_ICON = icon(
 
 const OPERATOR_MODULES: Module[] = [
   {
+    title: "Scan Barang",
+    desc: "Pindai QR & kelola status",
+    to: "/scan-qr",
+    icon: QR_ICON,
+  },
+  {
     title: "Cetak Label",
     desc: "Cetak QR & hangtag barang",
     to: "/cetak-label",
@@ -40,6 +46,7 @@ const OPERATOR_MODULES: Module[] = [
     title: "Permintaan Barang",
     desc: "Ajukan kebutuhan barang",
     to: "/permintaan-barang",
+    public: true,
     icon: icon(<path d="M9 12h6m-6 4h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />),
   },
 ];
@@ -84,7 +91,7 @@ function ModuleItem({ m, locked }: { m: Module; locked: boolean }) {
   return (
     <Link
       to={locked ? "/login" : m.to}
-      title={locked ? "Butuh login admin" : undefined}
+      title={locked ? "Butuh login" : undefined}
       className={`group flex items-center gap-3 rounded-xl border border-[#E5E9F0] bg-white p-3.5 no-underline shadow-[0_1px_2px_rgba(15,28,46,0.04)] transition-all duration-200 hover:border-[#00A8E8]/50 hover:shadow-[0_8px_24px_rgba(15,28,46,0.08)] sm:flex-col sm:items-start sm:gap-4 sm:p-5 sm:hover:-translate-y-0.5 ${FOCUS}`}
     >
       <span
@@ -104,10 +111,10 @@ function ModuleItem({ m, locked }: { m: Module; locked: boolean }) {
       {locked && (
         <span className="hidden items-center gap-1.5 text-xs font-medium text-[#64748B] sm:inline-flex">
           {LOCK_ICON}
-          Login admin
+          Login
         </span>
       )}
-      {locked && <span className="sr-only"> — butuh login admin</span>}
+      {locked && <span className="sr-only"> — butuh login</span>}
     </Link>
   );
 }
@@ -120,7 +127,7 @@ function ModuleGroup({ title, modules, locked }: { title: string; modules: Modul
       </h2>
       <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
         {modules.map((m) => (
-          <ModuleItem key={m.title} m={m} locked={locked} />
+          <ModuleItem key={m.title} m={m} locked={locked && !m.public} />
         ))}
       </div>
     </section>
@@ -220,22 +227,23 @@ function ScanSheet({ onClose }: { onClose: () => void }) {
 }
 
 function LandingPage() {
-  const [admin, setAdmin] = useState(() => isAuthenticated() && isAdmin());
+  const [role, setRole] = useState<string | undefined>(() => getUser()?.role);
+  const admin = role === "admin";
   const [scanOpen, setScanOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const user = admin ? getUser() : null;
-  const name = user?.name ?? "Admin";
+  const user = role ? getUser() : null;
+  const name = user?.name ?? "Operator";
 
   useEffect(() => {
     let cancelled = false;
     if (isAuthenticated()) {
-      checkSession().then((valid) => {
+      checkSession().then((fresh) => {
         if (cancelled) return;
-        if (!valid) clearAuth();
-        setAdmin(valid && isAdmin());
+        if (!fresh) clearAuth();
+        setRole(fresh ?? undefined);
       });
     }
-    const onStorage = () => setAdmin(isAuthenticated() && isAdmin());
+    const onStorage = () => setRole(getUser()?.role);
     window.addEventListener("storage", onStorage);
     return () => {
       cancelled = true;
@@ -250,7 +258,7 @@ function LandingPage() {
     const token = getToken();
     if (token) await logout(token).catch(() => undefined);
     clearAuth();
-    setAdmin(false);
+    setRole(undefined);
   };
 
   return (
@@ -261,7 +269,7 @@ function LandingPage() {
             <img src={logoUrl} alt="RSV Helmet" className="h-8 w-auto sm:h-9" />
           </Link>
 
-          {admin ? (
+          {role ? (
             <div className="relative">
               <button
                 type="button"
@@ -290,16 +298,18 @@ function LandingPage() {
                       <p className="truncate text-sm font-semibold text-[#0F1C2E]">{name}</p>
                       <p className="flex items-center gap-1.5 text-xs text-[#64748B]">
                         <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#10B981]" />
-                        Administrator
+                        {role === "admin" ? "Administrator" : (role ?? "Operator")}
                       </p>
                     </div>
-                    <Link
-                      to="/admin/home"
-                      role="menuitem"
-                      className="block px-4 py-2.5 text-sm text-[#0F1C2E] no-underline hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
-                    >
-                      Dashboard
-                    </Link>
+                    {admin && (
+                      <Link
+                        to="/admin/home"
+                        role="menuitem"
+                        className="block px-4 py-2.5 text-sm text-[#0F1C2E] no-underline hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                      >
+                        Dashboard
+                      </Link>
+                    )}
                     <button
                       type="button"
                       role="menuitem"
@@ -330,7 +340,7 @@ function LandingPage() {
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-white/70">Halo,</p>
-              <h1 className="mt-0.5 text-2xl font-bold tracking-tight sm:text-3xl">{admin ? name : "Operator"}</h1>
+              <h1 className="mt-0.5 text-2xl font-bold tracking-tight sm:text-3xl">{role ? name : "Operator"}</h1>
               <p className="mt-2 max-w-md text-sm text-white/75">Scan barang, cetak label, dan ajukan permintaan dari satu tempat.</p>
             </div>
             <button
@@ -344,7 +354,7 @@ function LandingPage() {
           </div>
         </section>
 
-        <ModuleGroup title="Operator" modules={OPERATOR_MODULES} locked={false} />
+        <ModuleGroup title="Operator" modules={OPERATOR_MODULES} locked={!role} />
         <ModuleGroup title="Admin" modules={ADMIN_MODULES} locked={!admin} />
       </main>
 

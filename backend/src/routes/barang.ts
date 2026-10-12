@@ -28,21 +28,26 @@ import {
   updateBarangHandler,
   deleteBarangHandler,
 } from "../controller/barang/crud.controller.js";
+import { authenticate, requireRole } from "../middleware/auth.js";
 
 const router = Router();
+
+const operatorOnly = requireRole("admin", "user");
+
+router.use(authenticate);
 
 // =============================================
 // GET /api/barang/generate-info?variantId=1
 // HARUS didaftarkan sebelum /:id agar tidak
 // tertangkap sebagai id
 // =============================================
-router.get("/generate-info", getGenerateInfoHandler);
+router.get("/generate-info", operatorOnly, getGenerateInfoHandler);
 
 // POST /api/barang/generate
-router.post("/generate", generateBarang);
+router.post("/generate", operatorOnly, generateBarang);
 
 // POST /api/barang - Create single barang (CRUD)
-router.post("/", createBarangHandler);
+router.post("/", operatorOnly, createBarangHandler);
 
 // GET /api/barang - List semua barang
 router.get("/", listBarangHandler);
@@ -69,22 +74,22 @@ router.get("/export", exportBarangHandler);
 router.get("/hari-ini", getBarangHariIniHandler);
 
 // GET /api/barang/scan/:kodeBarang
-router.get("/scan/:kodeBarang", scanBarangHandler);
+router.get("/scan/:kodeBarang", operatorOnly, scanBarangHandler);
 
 // POST /api/barang/scan/bulk
-router.post("/scan/bulk", bulkScanBarangHandler);
+router.post("/scan/bulk", operatorOnly, bulkScanBarangHandler);
 
 // POST /api/barang/bulk-status
-router.post("/bulk-status", bulkStatusBarangHandler);
+router.post("/bulk-status", operatorOnly, bulkStatusBarangHandler);
 
 // PUT /api/barang/:id - Update barang (CRUD)
-router.put("/:id", updateBarangHandler);
+router.put("/:id", operatorOnly, updateBarangHandler);
 
 // DELETE /api/barang/:id - Hapus barang (CRUD)
-router.delete("/:id", deleteBarangHandler);
+router.delete("/:id", operatorOnly, deleteBarangHandler);
 
 // PATCH /api/barang/:id/status
-router.patch("/:id/status", updateStatusBarangHandler);
+router.patch("/:id/status", operatorOnly, updateStatusBarangHandler);
 
 // GET /api/barang/summary - alias untuk status-summary
 router.get("/summary", getStatusSummaryHandler);

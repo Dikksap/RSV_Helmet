@@ -1,4 +1,10 @@
+import { authHeaders } from "./auth";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+
+function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, headers: { ...authHeaders(), ...init.headers } });
+}
 
 export type StatusBarang = string;
 
@@ -88,7 +94,7 @@ export async function getBarangPage(
   if (params.colorId) query.set("colorId", String(params.colorId));
   if (params.sizeId) query.set("sizeId", String(params.sizeId));
 
-  const response = await fetch(`${apiUrl}/barang?${query}`);
+  const response = await apiFetch(`${apiUrl}/barang?${query}`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message || `Gagal mengambil data barang: ${response.status}`);
@@ -103,7 +109,7 @@ export async function searchBarang(
 ): Promise<{ data: Barang[]; meta: { q: string; count: number } }> {
   const query = new URLSearchParams({ q: q.trim(), limit: String(limit) });
   if (pernahRetur) query.set("pernahRetur", "true");
-  const response = await fetch(`${apiUrl}/barang/search?${query}`);
+  const response = await apiFetch(`${apiUrl}/barang/search?${query}`);
   if (!response.ok) {
     throw new Error(`Gagal mencari barang: ${response.status}`);
   }
@@ -150,7 +156,7 @@ export async function exportBarang(
   if (params.colorId) query.set("colorId", String(params.colorId));
   if (params.sizeId) query.set("sizeId", String(params.sizeId));
 
-  const response = await fetch(`${apiUrl}/barang/export?${query}`);
+  const response = await apiFetch(`${apiUrl}/barang/export?${query}`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
       message?: string;
@@ -192,7 +198,7 @@ export async function getBatchRentangTanggal(
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
   const queryString = query.toString();
-  const response = await fetch(
+  const response = await apiFetch(
     `${apiUrl}/barang/batch-rentang-tanggal${
       queryString ? `?${queryString}` : ""
     }`,
@@ -239,7 +245,7 @@ export async function getFinishgoodPerBulan(
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
   if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
   const queryString = query.toString();
-  const response = await fetch(
+  const response = await apiFetch(
     `${apiUrl}/barang/finishgood-per-bulan${
       queryString ? `?${queryString}` : ""
     }`,
@@ -263,7 +269,7 @@ export async function getBarangStats(
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
   const queryString = query.toString();
-  const response = await fetch(
+  const response = await apiFetch(
     `${apiUrl}/barang/stats${queryString ? `?${queryString}` : ""}`,
   );
   if (!response.ok) {
@@ -285,7 +291,7 @@ export interface StatusSummary {
 }
 
 export async function getStatusSummary(): Promise<StatusSummary> {
-  const response = await fetch(`${apiUrl}/barang/status-summary`);
+  const response = await apiFetch(`${apiUrl}/barang/status-summary`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message || `Gagal mengambil status summary: ${response.status}`);
@@ -294,7 +300,7 @@ export async function getStatusSummary(): Promise<StatusSummary> {
 }
 
 export async function getBarangSummary(): Promise<StatusSummary> {
-  const response = await fetch(`${apiUrl}/barang/summary`);
+  const response = await apiFetch(`${apiUrl}/barang/summary`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message || `Gagal mengambil summary: ${response.status}`);
@@ -303,7 +309,7 @@ export async function getBarangSummary(): Promise<StatusSummary> {
 }
 
 export async function getBarang(): Promise<BarangResponse> {
-  const response = await fetch(`${apiUrl}/barang?page=1&limit=100`);
+  const response = await apiFetch(`${apiUrl}/barang?page=1&limit=100`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch barang: ${response.status}`);
@@ -312,7 +318,7 @@ export async function getBarang(): Promise<BarangResponse> {
   const firstPage = (await response.json()) as BarangPageResponse;
   const pages = await Promise.all(
     Array.from({ length: firstPage.meta.totalPages - 1 }, (_, index) =>
-      fetch(`${apiUrl}/barang?page=${index + 2}&limit=100`).then(
+      apiFetch(`${apiUrl}/barang?page=${index + 2}&limit=100`).then(
         (pageResponse) => {
           if (!pageResponse.ok)
             throw new Error(`Failed to fetch barang page ${index + 2}`);
@@ -347,7 +353,7 @@ function toTanggalParam(d: Date): string {
 // bukan getBarang() yang mengunduh seluruh histori.
 export async function getBarangTodayStats(date = new Date()): Promise<TodayStats> {
   const tanggal = toTanggalParam(date);
-  const firstRes = await fetch(`${apiUrl}/barang?tanggal=${tanggal}&page=1&limit=100`);
+  const firstRes = await apiFetch(`${apiUrl}/barang?tanggal=${tanggal}&page=1&limit=100`);
   if (!firstRes.ok) {
     throw new Error(`Failed to fetch today barang: ${firstRes.status}`);
   }
@@ -357,7 +363,7 @@ export async function getBarangTodayStats(date = new Date()): Promise<TodayStats
     totalPages > 1
       ? await Promise.all(
           Array.from({ length: totalPages - 1 }, (_, index) =>
-            fetch(`${apiUrl}/barang?tanggal=${tanggal}&page=${index + 2}&limit=100`).then(
+            apiFetch(`${apiUrl}/barang?tanggal=${tanggal}&page=${index + 2}&limit=100`).then(
               (pageResponse) => {
                 if (!pageResponse.ok)
                   throw new Error(`Failed to fetch today barang page ${index + 2}`);
@@ -417,7 +423,7 @@ async function parseApiError(
 export async function getGenerateInfo(
   variantId: number,
 ): Promise<GenerateInfo> {
-  const response = await fetch(
+  const response = await apiFetch(
     `${apiUrl}/barang/generate-info?variantId=${variantId}`,
   );
   if (!response.ok)
@@ -430,7 +436,7 @@ export async function generateBarang(
   jumlah = 1,
 ): Promise<GenerateResponse> {
   const n = Math.max(1, Math.min(500, Math.floor(jumlah) || 1));
-  const response = await fetch(`${apiUrl}/barang/generate`, {
+  const response = await apiFetch(`${apiUrl}/barang/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ variantId, jumlah: n }),
@@ -441,7 +447,7 @@ export async function generateBarang(
 }
 
 export async function getScanBarang(kodeBarang: string): Promise<Barang> {
-  const response = await fetch(
+  const response = await apiFetch(
     `${apiUrl}/barang/scan/${encodeURIComponent(kodeBarang)}`,
   );
   if (!response.ok)
@@ -466,7 +472,7 @@ export async function bulkScanBarang(
   status: StatusBarang,
   keterangan?: string,
 ): Promise<BulkScanResponse> {
-  const response = await fetch(`${apiUrl}/barang/scan/bulk`, {
+  const response = await apiFetch(`${apiUrl}/barang/scan/bulk`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ kodeBarang, status, keterangan }),
@@ -507,7 +513,7 @@ async function parseCrudError(response: Response, fallback: string): Promise<nev
 }
 
 export async function createBarang(payload: CreateBarangPayload): Promise<Barang> {
-  const response = await fetch(`${apiUrl}/barang`, {
+  const response = await apiFetch(`${apiUrl}/barang`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -517,13 +523,13 @@ export async function createBarang(payload: CreateBarangPayload): Promise<Barang
 }
 
 export async function getBarangById(id: number): Promise<Barang> {
-  const response = await fetch(`${apiUrl}/barang/${id}`);
+  const response = await apiFetch(`${apiUrl}/barang/${id}`);
   if (!response.ok) await parseCrudError(response, `Gagal mengambil detail barang: ${response.status}`);
   return response.json() as Promise<Barang>;
 }
 
 export async function updateBarang(id: number, payload: UpdateBarangPayload): Promise<Barang> {
-  const response = await fetch(`${apiUrl}/barang/${id}`, {
+  const response = await apiFetch(`${apiUrl}/barang/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -533,7 +539,7 @@ export async function updateBarang(id: number, payload: UpdateBarangPayload): Pr
 }
 
 export async function deleteBarang(id: number): Promise<{ message: string; id: number }> {
-  const response = await fetch(`${apiUrl}/barang/${id}`, { method: "DELETE" });
+  const response = await apiFetch(`${apiUrl}/barang/${id}`, { method: "DELETE" });
   if (!response.ok) await parseCrudError(response, `Gagal menghapus barang: ${response.status}`);
   return response.json() as Promise<{ message: string; id: number }>;
 }
@@ -547,7 +553,7 @@ export interface BulkStatusResponse {
 export async function bulkStatusBarang(
   items: { id: number; status: StatusBarang; keterangan?: string }[],
 ): Promise<BulkStatusResponse> {
-  const response = await fetch(`${apiUrl}/barang/bulk-status`, {
+  const response = await apiFetch(`${apiUrl}/barang/bulk-status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
@@ -571,7 +577,7 @@ export interface RiwayatBarangResponse {
 }
 
 export async function getRiwayatBarang(id: number): Promise<RiwayatBarangResponse> {
-  const response = await fetch(`${apiUrl}/barang/${id}/riwayat`);
+  const response = await apiFetch(`${apiUrl}/barang/${id}/riwayat`);
   if (!response.ok) await parseCrudError(response, `Gagal mengambil riwayat barang: ${response.status}`);
   return response.json() as Promise<RiwayatBarangResponse>;
 }

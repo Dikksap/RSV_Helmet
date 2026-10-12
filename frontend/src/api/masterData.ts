@@ -1,4 +1,4 @@
-import { clearAuth } from "./auth";
+import { authHeaders, redirectToLogin } from "./auth";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
@@ -36,11 +36,10 @@ export interface MasterStatusBarang {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem("rsv_auth_token");
   const res = await fetch(`${apiUrl}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(),
       ...(options.headers ?? {}),
     },
     ...options,
@@ -54,10 +53,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (res.status === 401) {
       // POST/PUT/DELETE status-barang butuh JWT admin; token expired/invalid
       // harus pulangkan user ke login, bukan alert mentah.
-      clearAuth();
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?session=expired";
-      }
+      redirectToLogin();
       throw new Error("Sesi telah berakhir. Silakan login ulang.");
     }
     throw new Error(message);

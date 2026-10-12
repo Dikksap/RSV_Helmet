@@ -21,6 +21,12 @@ vi.mock("../src/model/permintaanBarang/permintaanBarang.js", () => {
   };
 });
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import permintaanBarangRouter from "../src/routes/permintaan-barang.js";
 import {
   createPermintaan,
@@ -133,6 +139,26 @@ describe("GET /api/permintaan-barang", () => {
     const res = await request(app).get("/api/permintaan-barang?approval=SALAH");
     expect(res.status).toBe(400);
   });
+
+  it("rentang dari/sampai diteruskan ke model sebagai Date", async () => {
+    mocked.listPermintaan.mockResolvedValue({ data: [], meta: { page: 1, limit: 20, total: 0, totalPages: 1 } } as never);
+    const res = await request(app).get("/api/permintaan-barang?dari=2026-10-01&sampai=2026-10-10");
+    expect(res.status).toBe(200);
+    expect(mocked.listPermintaan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dari: new Date("2026-10-01T00:00:00"),
+        sampai: new Date("2026-10-10T00:00:00"),
+      }),
+    );
+  });
+
+  it("400 jika dari/sampai bukan tanggal valid", async () => {
+    const res = await request(app).get("/api/permintaan-barang?dari=bukan-tanggal");
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/'dari'/);
+    const res2 = await request(app).get("/api/permintaan-barang?sampai=2026-13-99");
+    expect(res2.status).toBe(400);
+  });
 });
 
 describe("GET /api/permintaan-barang/:id", () => {
@@ -185,6 +211,19 @@ describe("PATCH /api/permintaan-barang/:id/approval", () => {
     mocked.setApproval.mockResolvedValue(null as never);
     const res = await request(app).patch("/api/permintaan-barang/99/approval").send({ approval: "DISETUJUI" });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("auth wiring", () => {
+  it("POST public, sisanya di belakang authenticate", async () => {
+    const { authenticate } = await import("../src/middleware/auth.js");
+    const stack = (permintaanBarangRouter as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean> }; handle?: unknown }> }).stack;
+    const idxAuth = stack.findIndex((l) => !l.route && l.handle === authenticate);
+    const idxOf = (method: string, path: string) =>
+      stack.findIndex((l) => l.route?.path === path && !!l.route?.methods?.[method]);
+    expect(idxAuth).toBeGreaterThan(-1);
+    expect(idxOf("post", "/")).toBeLessThan(idxAuth);
+    expect(idxOf("get", "/")).toBeGreaterThan(idxAuth);
   });
 });
 

@@ -8,7 +8,7 @@ import { authenticate, adminOnly } from "../middleware/auth.js";
 
 const router = Router();
 
-router.get("/", getTransitionsHandler);
+router.get("/", authenticate, getTransitionsHandler);
 router.put("/:fromKode", authenticate, adminOnly, setTransitionsHandler);
 router.delete("/:fromKode/:toKode", authenticate, adminOnly, deleteTransitionHandler);
 

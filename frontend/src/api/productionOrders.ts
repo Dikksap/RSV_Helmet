@@ -1,3 +1,5 @@
+import { authHeaders } from "./auth";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 export type StatusProductionOrder = "DRAFT" | "AKTIF" | "SELESAI" | "BATAL";
@@ -49,7 +51,7 @@ export interface ProductionOrderSummary extends ProductionOrderDetail {
 }
 
 async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiUrl}${path}`);
+  const response = await fetch(`${apiUrl}${path}`, { headers: authHeaders() });
   if (!response.ok) {
     let message = `Request failed: ${response.status}`;
     try {
@@ -70,7 +72,7 @@ export async function getProductionOrders(): Promise<ProductionOrderListItem[]> 
 async function mutate<T>(path: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
@@ -276,7 +278,7 @@ export async function replaceProductionCapacities(
 ): Promise<ProductionCapacity[]> {
   const response = await fetch(`${apiUrl}/production-orders/${orderId}/capacities`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(items),
   });
   if (!response.ok) {

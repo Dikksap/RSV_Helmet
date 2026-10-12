@@ -9,6 +9,11 @@ export async function findUserByEmail(email: string) {
   return prisma.user.findUnique({ where: { email } });
 }
 
+export async function getUserRole(id: number): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  return user?.role ?? null;
+}
+
 const publicFields = { id: true, name: true, email: true, role: true, createdAt: true, updatedAt: true } as const;
 
 export async function getAllUsers() {

@@ -182,8 +182,8 @@ function AdminLayout() {
     }
 
     let cancelled = false;
-    checkSession().then((valid) => {
-      if (cancelled || valid) return;
+    checkSession().then((role) => {
+      if (cancelled || role === "admin") return;
       clearAuth();
       navigate("/login?session=expired", { replace: true });
     });

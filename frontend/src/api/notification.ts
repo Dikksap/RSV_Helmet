@@ -1,3 +1,5 @@
+import { authHeaders } from "./auth";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 export interface StoredNotif {
@@ -10,7 +12,7 @@ export interface StoredNotif {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(options.headers ?? {}) },
     ...options,
   });
   if (!response.ok) {

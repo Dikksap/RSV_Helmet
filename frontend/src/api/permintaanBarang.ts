@@ -1,3 +1,5 @@
+import { authHeaders } from "./auth";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 export type ApprovalPermintaan = "BELUM_DISETUJUI" | "DISETUJUI";
@@ -50,7 +52,7 @@ export async function createPermintaan(
 ): Promise<PermintaanBarangRecord> {
   const response = await fetch(`${apiUrl}/permintaan-barang`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
@@ -64,6 +66,8 @@ export interface PermintaanListParams {
   page?: number;
   limit?: number;
   approval?: ApprovalPermintaan;
+  dari?: string;
+  sampai?: string;
 }
 
 export interface PermintaanListResponse {
@@ -84,7 +88,9 @@ export async function listPermintaan(
     limit: String(Math.min(100, Math.max(1, params.limit ?? 100))),
   });
   if (params.approval) query.set("approval", params.approval);
-  const response = await fetch(`${apiUrl}/permintaan-barang?${query}`);
+  if (params.dari) query.set("dari", params.dari);
+  if (params.sampai) query.set("sampai", params.sampai);
+  const response = await fetch(`${apiUrl}/permintaan-barang?${query}`, { headers: authHeaders() });
   if (!response.ok) await parseListError(response, "Gagal memuat daftar permintaan");
   return response.json() as Promise<PermintaanListResponse>;
 }
@@ -95,7 +101,7 @@ export async function setApprovalPermintaan(
 ): Promise<PermintaanBarangRecord> {
   const response = await fetch(`${apiUrl}/permintaan-barang/${id}/approval`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ approval }),
   });
   if (!response.ok) await parseListError(response, "Gagal memperbarui status approval");
@@ -103,7 +109,7 @@ export async function setApprovalPermintaan(
 }
 
 export async function deletePermintaan(id: number): Promise<{ message: string }> {
-  const response = await fetch(`${apiUrl}/permintaan-barang/${id}`, { method: "DELETE" });
+  const response = await fetch(`${apiUrl}/permintaan-barang/${id}`, { method: "DELETE", headers: authHeaders() });
   if (!response.ok) await parseListError(response, "Gagal menghapus permintaan");
   return response.json() as Promise<{ message: string }>;
 }

@@ -6,13 +6,16 @@ import {
   updateStyleHandler,
   deleteStyleHandler,
 } from "../controller/style/style.js";
+import { authenticate, adminOnly } from "../middleware/auth.js";
 
 const router = Router();
 
+router.use(authenticate);
+
 router.get("/", getStylesHandler);
 router.get("/:id", getStyleDetail);
-router.post("/", createStyleHandler);
-router.put("/:id", updateStyleHandler);
-router.delete("/:id", deleteStyleHandler);
+router.post("/", adminOnly, createStyleHandler);
+router.put("/:id", adminOnly, updateStyleHandler);
+router.delete("/:id", adminOnly, deleteStyleHandler);
 
 export default router;

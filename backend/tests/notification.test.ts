@@ -22,6 +22,12 @@ import {
   clearNotifs,
   NOTIF_TTL_SECONDS,
 } from "../src/lib/notificationCache.js";
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import notificationsRouter from "../src/routes/notifications.js";
 
 const m = {

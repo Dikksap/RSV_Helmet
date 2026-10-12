@@ -13,6 +13,12 @@ vi.mock("../src/model/barangGroup/barangGroup.js", () => ({
   unassignBarangFromGroup: vi.fn(),
 }));
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import barangGroupRouter from "../src/routes/barangGroup.js";
 import {
   getAllBarangGroup,

@@ -14,6 +14,12 @@ vi.mock("../src/websocket/socket.js", () => ({
   broadcast: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import variantProdukRouter from "../src/routes/variant-produk.js";
 import {
   getVariantProduk,

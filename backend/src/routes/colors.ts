@@ -6,13 +6,16 @@ import {
   updateColorHandler,
   deleteColorHandler,
 } from "../controller/color/color.js";
+import { authenticate, adminOnly } from "../middleware/auth.js";
 
 const router = Router();
 
+router.use(authenticate);
+
 router.get("/", getColorsHandler);
 router.get("/:id", getColorDetail);
-router.post("/", createColorHandler);
-router.put("/:id", updateColorHandler);
-router.delete("/:id", deleteColorHandler);
+router.post("/", adminOnly, createColorHandler);
+router.put("/:id", adminOnly, updateColorHandler);
+router.delete("/:id", adminOnly, deleteColorHandler);
 
 export default router;

@@ -1,3 +1,5 @@
+import { authHeaders } from "./auth";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 export interface JurnalProduct {
@@ -18,7 +20,7 @@ export interface JurnalProduct {
 
 export async function getJurnalProducts(includeArchive = false): Promise<JurnalProduct[]> {
   const q = includeArchive ? "" : "?include_archive=false";
-  const response = await fetch(`${apiUrl}/integrasi-jurnal/products${q}`);
+  const response = await fetch(`${apiUrl}/integrasi-jurnal/products${q}`, { headers: authHeaders() });
   if (!response.ok) {
     let message = `Request failed: ${response.status}`;
     try {

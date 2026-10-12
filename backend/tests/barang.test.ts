@@ -35,6 +35,12 @@ vi.mock("../src/controller/barang/helpers.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import barangRouter from "../src/routes/barang.js";
 import {
   getGenerateInfo,

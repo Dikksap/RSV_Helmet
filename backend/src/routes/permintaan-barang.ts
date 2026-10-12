@@ -7,14 +7,19 @@ import {
   setApprovalHandler,
   deletePermintaanHandler,
 } from "../controller/permintaanBarang/permintaanBarang.js";
+import { authenticate, adminOnly } from "../middleware/auth.js";
 
 const router = Router();
 
+// Public: form permintaan diisi user tanpa login.
+router.post("/", createPermintaanHandler);
+
+router.use(authenticate);
+
 router.get("/", listPermintaanHandler);
 router.get("/:id", getPermintaanHandler);
-router.post("/", createPermintaanHandler);
-router.put("/:id", updatePermintaanHandler);
-router.patch("/:id/approval", setApprovalHandler);
-router.delete("/:id", deletePermintaanHandler);
+router.put("/:id", adminOnly, updatePermintaanHandler);
+router.patch("/:id/approval", adminOnly, setApprovalHandler);
+router.delete("/:id", adminOnly, deletePermintaanHandler);
 
 export default router;

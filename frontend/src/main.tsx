@@ -31,16 +31,17 @@ import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
 import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
+import RequireRole from "./components/RequireRole.tsx";
 
 const routes = (
   <Routes>
     <Route element={<PublicLayout />}>
       <Route path="/" element={<LandingPage />} />
-      <Route path="/cetak-label" element={<CetakLabel />} />
-      <Route path="/live-view" element={<LiveView />} />
+      <Route path="/cetak-label" element={<RequireRole roles={["admin", "user"]}><CetakLabel /></RequireRole>} />
+      <Route path="/live-view" element={<RequireRole roles={["admin"]}><LiveView /></RequireRole>} />
       <Route path="/permintaan-barang" element={<PermintaanBarang />} />
       <Route path="/print_manager" element={<PrintManager />} />
-      <Route path="/scan-qr" element={<ScanQr />} />
+      <Route path="/scan-qr" element={<RequireRole roles={["admin", "user"]}><ScanQr /></RequireRole>} />
       <Route path="/login" element={<Login />} />
     </Route>
 

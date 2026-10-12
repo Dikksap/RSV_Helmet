@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 
 vi.mock("../src/model/user/user.js", () => ({
   findUserByEmail: vi.fn(),
+  getUserRole: vi.fn(),
 }));
 
 vi.mock("../src/lib/redis.js", () => ({
@@ -15,12 +16,13 @@ vi.mock("../src/lib/redis.js", () => ({
 }));
 
 import authRouter from "../src/routes/auth.js";
-import { authenticate, adminOnly } from "../src/middleware/auth.js";
-import { findUserByEmail } from "../src/model/user/user.js";
+import { authenticate, adminOnly, requireRole } from "../src/middleware/auth.js";
+import { findUserByEmail, getUserRole } from "../src/model/user/user.js";
 import { signToken, verifyToken, type TokenPayload } from "../src/lib/jwt.js";
 import redis from "../src/lib/redis.js";
 
 const mockedFindUserByEmail = vi.mocked(findUserByEmail);
+const mockedGetUserRole = vi.mocked(getUserRole);
 const mockedRedis = {
   setex: vi.mocked(redis.setex),
   exists: vi.mocked(redis.exists),
@@ -34,6 +36,12 @@ const adminApp = express();
 adminApp.use(express.json());
 adminApp.use("/api/admin", authenticate, adminOnly, (_req, res) => {
   res.status(200).json({ message: "Admin dashboard", user: (_req as any).user });
+});
+
+const operatorApp = express();
+operatorApp.use(express.json());
+operatorApp.use("/api/operator", authenticate, requireRole("admin", "user"), (_req, res) => {
+  res.status(200).json({ message: "Operator ok", user: (_req as any).user });
 });
 
 // App terproteksi untuk test middleware
@@ -57,6 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockedRedis.setex.mockResolvedValue("OK");
   mockedRedis.exists.mockResolvedValue(0);
+  mockedGetUserRole.mockResolvedValue("admin");
 });
 
 // =============================================
@@ -189,6 +198,7 @@ describe("Middleware adminOnly", () => {
   });
 
   it("403 jika role bukan admin", async () => {
+    mockedGetUserRole.mockResolvedValue("user");
     const token = signToken({ id: 1, email: "user@example.com", name: "User", role: "user" });
 
     const res = await request(adminApp)
@@ -210,6 +220,67 @@ describe("Middleware adminOnly", () => {
     expect(res.body.message).toBe("Admin dashboard");
     expect(res.body.user.id).toBe(1);
     expect(res.body.user.role).toBe("admin");
+  });
+});
+
+// =============================================
+// Middleware requireRole
+// =============================================
+
+describe("Middleware requireRole", () => {
+  const call = (app: express.Express, role: string) =>
+    request(app)
+      .get("/api/operator")
+      .set("Authorization", `Bearer ${signToken({ id: 1, email: "u@example.com", name: "U", role })}`);
+
+  it("200 untuk role yang terdaftar di gate", async () => {
+    mockedGetUserRole.mockResolvedValue("user");
+
+    const res = await call(operatorApp, "user");
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe("user");
+  });
+
+  it("403 untuk role di luar gate", async () => {
+    mockedGetUserRole.mockResolvedValue("gudang");
+
+    const res = await call(operatorApp, "gudang");
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toContain("admin, user");
+  });
+
+  it("role basi di token ditimpa nilai database", async () => {
+    mockedGetUserRole.mockResolvedValue("gudang");
+
+    const res = await call(operatorApp, "admin");
+
+    expect(res.status).toBe(403);
+  });
+
+  it("401 jika akun sudah dihapus", async () => {
+    mockedGetUserRole.mockResolvedValue(null);
+
+    const res = await call(operatorApp, "user");
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toContain("Akun tidak ditemukan");
+  });
+
+  it("500 jika query role gagal, bukan request menggantung", async () => {
+    mockedGetUserRole.mockRejectedValue(new Error("DB down"));
+
+    const res = await call(operatorApp, "user");
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toContain("Gagal memverifikasi role");
+  });
+
+  it("401 jika tanpa token", async () => {
+    const res = await request(operatorApp).get("/api/operator");
+
+    expect(res.status).toBe(401);
   });
 });
 

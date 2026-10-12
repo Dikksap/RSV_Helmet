@@ -16,8 +16,11 @@ import {
   getRealisasiHandler,
   saveRealisasiHandler,
 } from "../controller/production-order/production-order.js";
+import { authenticate, adminOnly } from "../middleware/auth.js";
 
 const router = Router();
+
+router.use(authenticate, adminOnly);
 
 router.get("/", getOrdersHandler);
 router.get("/:id", getOrderDetail);

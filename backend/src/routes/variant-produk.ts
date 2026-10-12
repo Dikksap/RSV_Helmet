@@ -6,8 +6,11 @@ import {
   updateVariantHandler,
   deleteVariantHandler,
 } from "../controller/variantproduk/variantproduk.js";
+import { authenticate, adminOnly } from "../middleware/auth.js";
 
 const router = Router();
+
+router.use(authenticate);
 
 // =============================================
 // GET /api/variant-produk - Ambil data variant
@@ -24,17 +27,17 @@ router.get("/:id", getVariantProdukDetail);
 // POST /api/variant-produk - Buat variant baru
 // Body: { productId, styleId, colorId, sizeId, tanggal? }
 // =============================================
-router.post("/", createVariantHandler);
+router.post("/", adminOnly, createVariantHandler);
 
 // =============================================
 // PUT /api/variant-produk/:id - Update variant (parsial)
 // Body opsional: { styleId, colorId, sizeId, tanggal }
 // =============================================
-router.put("/:id", updateVariantHandler);
+router.put("/:id", adminOnly, updateVariantHandler);
 
 // =============================================
 // DELETE /api/variant-produk/:id - Hapus variant
 // =============================================
-router.delete("/:id", deleteVariantHandler);
+router.delete("/:id", adminOnly, deleteVariantHandler);
 
 export default router;

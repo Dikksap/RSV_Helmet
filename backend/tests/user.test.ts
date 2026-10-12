@@ -9,6 +9,7 @@ vi.mock("../src/model/user/user.js", () => ({
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
   findUserByEmail: vi.fn(),
+  getUserRole: vi.fn(),
 }));
 
 vi.mock("../src/lib/redis.js", () => ({
@@ -25,6 +26,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  getUserRole,
 } from "../src/model/user/user.js";
 import { signToken } from "../src/lib/jwt.js";
 
@@ -33,6 +35,7 @@ const mockedGetById = vi.mocked(getUserById);
 const mockedCreate = vi.mocked(createUser);
 const mockedUpdate = vi.mocked(updateUser);
 const mockedDelete = vi.mocked(deleteUser);
+const mockedGetRole = vi.mocked(getUserRole);
 
 const app = express();
 app.use(express.json());
@@ -50,7 +53,10 @@ const sampleUser = {
   updatedAt: new Date().toISOString(),
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockedGetRole.mockResolvedValue("admin");
+});
 
 describe("Auth guard /api/users", () => {
   it("401 tanpa token", async () => {
@@ -59,7 +65,14 @@ describe("Auth guard /api/users", () => {
   });
 
   it("403 jika bukan admin", async () => {
+    mockedGetRole.mockResolvedValue("user");
     const res = await request(app).get("/api/users").set("Authorization", `Bearer ${userToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("403 jika role gudang", async () => {
+    mockedGetRole.mockResolvedValue("gudang");
+    const res = await request(app).get("/api/users").set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(403);
   });
 });
@@ -140,6 +153,18 @@ describe("POST /api/users", () => {
       password: "rahasia1",
       role: "gudang",
     });
+  });
+
+  it("201 role di-trim sebelum disimpan", async () => {
+    mockedCreate.mockResolvedValue({ ...sampleUser, role: "gudang" } as any);
+    const res = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Sari", email: "sari@y.com", password: "rahasia1", role: "  gudang  " });
+    expect(res.status).toBe(201);
+    expect(mockedCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "gudang" }),
+    );
   });
 
   it("409 email duplikat", async () => {

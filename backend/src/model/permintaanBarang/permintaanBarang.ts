@@ -60,6 +60,18 @@ function isUniqueViolation(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === "P2002";
 }
 
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 async function insertPermintaan(tx: PrismaTransactionClient, input: PermintaanInput): Promise<PermintaanRecord> {
   const noPermintaan = await generateNoPermintaan(tx, input.tanggal);
   return tx.permintaanBarang.create({
@@ -92,9 +104,18 @@ export async function listPermintaan(params: {
   page: number;
   limit: number;
   approval?: ApprovalPermintaan;
+  dari?: Date;
+  sampai?: Date;
 }): Promise<{ data: PermintaanRecord[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
-  const { page, limit, approval } = params;
-  const where = approval ? { approval } : {};
+  const { page, limit, approval, dari, sampai } = params;
+  const where: Prisma.PermintaanBarangWhereInput = {};
+  if (approval) where.approval = approval;
+  // Rentang inklusif dua sisi pada kolom tanggal: [awal dari, awal (sampai+1 hari)).
+  if (dari || sampai) {
+    where.tanggal = {};
+    if (dari) where.tanggal.gte = startOfDay(dari);
+    if (sampai) where.tanggal.lt = startOfDay(addDays(sampai, 1));
+  }
   const [total, data] = await Promise.all([
     prisma.permintaanBarang.count({ where }),
     prisma.permintaanBarang.findMany({

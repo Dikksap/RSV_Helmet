@@ -1,4 +1,5 @@
 import type { StatusBarang } from "./barang";
+import { authHeaders } from "./auth";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
@@ -33,13 +34,13 @@ async function parseApiError(response: Response, fallback: string): Promise<Erro
 }
 
 export async function getBarangGroups(): Promise<BarangGroup[]> {
-  const response = await fetch(`${apiUrl}/barang-group`);
+  const response = await fetch(`${apiUrl}/barang-group`, { headers: authHeaders() });
   if (!response.ok) throw await parseApiError(response, "Gagal mengambil daftar dus");
   return response.json() as Promise<BarangGroup[]>;
 }
 
 export async function getBarangInGroup(groupId: number): Promise<BarangInGroup[]> {
-  const response = await fetch(`${apiUrl}/barang-group/${groupId}/barangs`);
+  const response = await fetch(`${apiUrl}/barang-group/${groupId}/barangs`, { headers: authHeaders() });
   if (!response.ok) throw await parseApiError(response, "Gagal memuat isi dus");
   return (await response.json() as { barang: BarangInGroup[] }).barang;
 }
@@ -47,7 +48,7 @@ export async function getBarangInGroup(groupId: number): Promise<BarangInGroup[]
 export async function createBarangGroup(nama: string): Promise<BarangGroup> {
   const response = await fetch(`${apiUrl}/barang-group`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ nama }),
   });
   if (!response.ok) throw await parseApiError(response, "Gagal membuat dus");
@@ -57,7 +58,7 @@ export async function createBarangGroup(nama: string): Promise<BarangGroup> {
 export async function updateBarangGroup(id: number, data: { nama?: string; isArsip?: boolean }): Promise<BarangGroup> {
   const response = await fetch(`${apiUrl}/barang-group/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
   });
   if (!response.ok) throw await parseApiError(response, "Gagal memperbarui dus");
@@ -65,7 +66,7 @@ export async function updateBarangGroup(id: number, data: { nama?: string; isArs
 }
 
 export async function deleteBarangGroup(id: number): Promise<void> {
-  const response = await fetch(`${apiUrl}/barang-group/${id}`, { method: "DELETE" });
+  const response = await fetch(`${apiUrl}/barang-group/${id}`, { method: "DELETE", headers: authHeaders() });
   if (!response.ok) throw await parseApiError(response, "Gagal menghapus dus");
 }
 
@@ -75,7 +76,7 @@ export async function assignBarangToGroup(
 ): Promise<{ updated: number; skipped: number }> {
   const response = await fetch(`${apiUrl}/barang-group/${groupId}/assign`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ barangIds }),
   });
   if (!response.ok) throw await parseApiError(response, "Gagal memasukkan barang ke dus");
@@ -88,7 +89,7 @@ export async function unassignBarangFromGroup(
 ): Promise<{ updated: number; skipped: number }> {
   const response = await fetch(`${apiUrl}/barang-group/${groupId}/unassign`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ barangIds }),
   });
   if (!response.ok) throw await parseApiError(response, "Gagal melepas barang dari dus");

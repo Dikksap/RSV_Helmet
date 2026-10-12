@@ -27,6 +27,12 @@ vi.mock("../src/model/production-order/production-order.js", () => ({
   SCHEDULE_STAGES: ["buffing", "baseCoat", "decalSolid", "decalMotif", "topCoat", "perakitan", "qc"],
 }));
 
+vi.mock("../src/middleware/auth.js", () => ({
+  authenticate: (_req: any, _res: any, next: any) => next(),
+  adminOnly: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 import productionOrdersRouter from "../src/routes/production-orders.js";
 import {
   getAllOrders,
