@@ -1,4 +1,5 @@
 import prisma from "../../lib/prisma.js";
+import type { Request } from "express";
 import type { StatusBarang } from "../../model/barang/barang.status.js";
 
 export function errorMessage(error: unknown, fallback: string): string {
@@ -31,3 +32,22 @@ export async function getValidStatusList(): Promise<string> {
   });
   return rows.map((r) => r.kode).join(", ");
 }
+
+/**
+ * Scope visibilitas status barang pemanggil. `null` = semua status boleh
+ * dilihat (role admin). Tanpa `req.access` (authorize belum dipasang)
+ * dianggap deny semua supaya gagal tertutup, bukan terbuka.
+ */
+export function barangScope(req: Request): string[] | null {
+  return req.access ? req.access.statusView : [];
+}
+
+export function isStatusInView(scope: string[] | null, status: unknown): boolean {
+  if (scope === null) return true;
+  return typeof status === "string" && scope.includes(status.trim().toUpperCase());
+}
+
+export function statusDeniedMessage(status: string): string {
+  return `Status '${status}' tidak diizinkan untuk role Anda`;
+}
+

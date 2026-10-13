@@ -31,6 +31,8 @@ import {
   type PermintaanBarangRecord,
 } from "../../api/permintaanBarang";
 import { downloadCsv } from "../../lib/csv";
+import { getUser, hasPermission } from "../../api/auth";
+import KeputusanApprovalModal from "../../components/admin/DaftarPermintaan/KeputusanApprovalModal";
 
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/60";
@@ -83,6 +85,17 @@ const formatTanggal = (iso: string | null) => {
       });
 };
 
+/* Format vendor: bulan/hari/tahun tanpa nol depan, cth. 10/3/2026. */
+const formatTanggalVendor = (iso: string | null) => {
+  if (!iso) return "";
+
+  const d = new Date(iso);
+
+  return Number.isNaN(d.getTime())
+    ? iso
+    : `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+};
+
 const formatTanggalLengkap = (iso: string | null) => {
   if (!iso) return "-";
 
@@ -107,10 +120,12 @@ const ringkasIsi = (record: PermintaanBarangRecord) => {
 };
 
 /* Baris CSV sebagai tabel (unknown[][]) untuk lib/csv.ts:
-   ringkas = 1 baris per permintaan, rincian = 1 baris per barang. */
+   ringkas = 1 baris per permintaan, rincian = 1 baris per barang,
+   vendor = 1 baris per (tanggal + kode item), hanya
+   TANGGAL/Product Code/Jumlah yang diisi, sisanya dikosongkan. */
 const buildCsvRows = (
   rows: PermintaanBarangRecord[],
-  mode: "ringkas" | "rincian",
+  mode: "ringkas" | "rincian" | "vendor",
 ): unknown[][] => {
   const permintaanCols = (record: PermintaanBarangRecord): unknown[] => [
     record.noPermintaan,
@@ -150,6 +165,33 @@ const buildCsvRows = (
           item.satuan || "",
         ]),
       ),
+    ];
+  }
+
+  if (mode === "vendor") {
+    const gabung = new Map<string, { iso: string; tanggal: string; kode: string; nama: string; jumlah: number }>();
+    for (const record of rows) {
+      const iso = (record.tanggal ?? "").slice(0, 10);
+      const tanggal = formatTanggalVendor(record.tanggal);
+      for (const item of record.items) {
+        const qty = item.jumlahDisetujui ?? 0;
+        if (!Number.isInteger(qty) || qty <= 0) continue;
+        const kode = item.item?.kode ?? "(tanpa kode)";
+        const key = `${iso}||${kode}`;
+        const ada = gabung.get(key);
+        if (ada) {
+          ada.jumlah += qty;
+        } else {
+          gabung.set(key, { iso, tanggal, kode, nama: item.nama, jumlah: qty });
+        }
+      }
+    }
+    const urut = [...gabung.values()].sort((a, b) =>
+      a.iso === b.iso ? a.kode.localeCompare(b.kode) : a.iso.localeCompare(b.iso),
+    );
+    return [
+      ["NO", "KODE", "TANGGAL", "", "Product Code", "Product Name", "unit", "Jumlah", "jenis item", "Sub item", "Divisi / dari"],
+      ...urut.map((g) => ["", "", g.tanggal, "", g.kode, "", "", g.jumlah, "", "", ""]),
     ];
   }
 
@@ -217,6 +259,8 @@ function StatCard({
 function DetailDrawer({
   record,
   busy,
+  canApprove,
+  isAdmin,
   onClose,
   onSetujui,
   onBatalkan,
@@ -224,6 +268,8 @@ function DetailDrawer({
 }: {
   record: PermintaanBarangRecord;
   busy: boolean;
+  canApprove: boolean;
+  isAdmin: boolean;
   onClose: () => void;
   onSetujui: (record: PermintaanBarangRecord) => void;
   onBatalkan: (record: PermintaanBarangRecord) => void;
@@ -391,47 +437,53 @@ function DetailDrawer({
         <div className="flex flex-col-reverse gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
           {!approved ? (
             <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onHapus(record)}
-                className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
-              >
-                {busy ? (
-                  <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
-                ) : (
-                  <FontAwesomeIcon icon={faTrash} aria-hidden="true" />
-                )}
-                Hapus
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onSetujui(record)}
-                className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
-              >
-                {busy ? (
-                  <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
-                ) : (
-                  <FontAwesomeIcon icon={faCheck} aria-hidden="true" />
-                )}
-                {busy ? "Memproses…" : "Setujui Permintaan"}
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onHapus(record)}
+                  className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+                >
+                  {busy ? (
+                    <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
+                  ) : (
+                    <FontAwesomeIcon icon={faTrash} aria-hidden="true" />
+                  )}
+                  Hapus
+                </button>
+              )}
+              {canApprove && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onSetujui(record)}
+                  className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+                >
+                  {busy ? (
+                    <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
+                  ) : (
+                    <FontAwesomeIcon icon={faCheck} aria-hidden="true" />
+                  )}
+                  {busy ? "Memproses…" : "Setujui Permintaan"}
+                </button>
+              )}
             </>
           ) : (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onBatalkan(record)}
-              className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#1E3A5F] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
-            >
-              {busy ? (
-                <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
-              ) : (
-                <FontAwesomeIcon icon={faUndo} aria-hidden="true" />
-              )}
-              Batalkan Persetujuan
-            </button>
+            canApprove && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onBatalkan(record)}
+                className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#1E3A5F] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
+              >
+                {busy ? (
+                  <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />
+                ) : (
+                  <FontAwesomeIcon icon={faUndo} aria-hidden="true" />
+                )}
+                Batalkan Persetujuan
+              </button>
+            )
           )}
         </div>
       </aside>
@@ -446,7 +498,7 @@ function DetailDrawer({
 export default function DaftarPermintaan() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterStatus>("SEMUA");
-  const [exportMode, setExportMode] = useState<"ringkas" | "rincian">("ringkas");
+  const [exportMode, setExportMode] = useState<"ringkas" | "rincian" | "vendor">("ringkas");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -458,6 +510,9 @@ export default function DaftarPermintaan() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [keputusanFor, setKeputusanFor] = useState<PermintaanBarangRecord | null>(null);
+  const isAdmin = getUser()?.role === "admin";
+  const canApprove = isAdmin || hasPermission("KELOLA_ITEM");
 
   const [refreshing, setRefreshing] = useState(false);
   const noticeTimer = useRef<number | undefined>(undefined);
@@ -579,30 +634,14 @@ export default function DaftarPermintaan() {
     }
   }, [selectedId, detail, loading]);
 
-  const setujui = async (record: PermintaanBarangRecord) => {
-    if (
-      !window.confirm(
-        `Setujui permintaan ${record.noPermintaan}?\n\nData akan terkunci setelah disetujui.`,
-      )
-    ) {
-      return;
-    }
+  const setujui = (record: PermintaanBarangRecord) => {
+    setKeputusanFor(record);
+  };
 
-    setBusyId(record.id);
-
-    try {
-      await setApprovalPermintaan(record.id, "DISETUJUI");
-
-      flash(`Permintaan ${record.noPermintaan} berhasil disetujui.`);
-
-      await load(filter);
-    } catch (e) {
-      window.alert(
-        e instanceof Error ? e.message : "Gagal menyetujui permintaan.",
-      );
-    } finally {
-      setBusyId(null);
-    }
+  const selesaiSetujui = async (message: string) => {
+    setKeputusanFor(null);
+    flash(message);
+    await load(filter);
   };
 
   const batalkan = async (record: PermintaanBarangRecord) => {
@@ -915,11 +954,12 @@ export default function DaftarPermintaan() {
                   className={`${inputCls} sm:w-44`}
                   value={exportMode}
                   onChange={(event) =>
-                    setExportMode(event.target.value as "ringkas" | "rincian")
+                    setExportMode(event.target.value as "ringkas" | "rincian" | "vendor")
                   }
                 >
                   <option value="ringkas">Ringkasan per permintaan</option>
                   <option value="rincian">Rincian per barang</option>
+                  <option value="vendor">Vendor per item (gabung)</option>
                 </select>
               </div>
 
@@ -930,7 +970,7 @@ export default function DaftarPermintaan() {
                 aria-label={
                   filtered.length === 0
                     ? "Tidak ada data untuk diekspor"
-                    : `Ekspor ${exportMode === "rincian" ? "rincian barang" : `${filtered.length} permintaan`} ke CSV`
+                    : `Ekspor ${exportMode === "rincian" ? "rincian barang" : exportMode === "vendor" ? "vendor per item" : `${filtered.length} permintaan`} ke CSV`
                 }
                 title="Ekspor data tampil ke CSV"
                 className={`inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 transition hover:border-[#00A8E8]/40 hover:text-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
@@ -1090,6 +1130,8 @@ export default function DaftarPermintaan() {
                             <RowActions
                               record={record}
                               busy={busy}
+                              canApprove={canApprove}
+                              isAdmin={isAdmin}
                               onSetujui={setujui}
                               onBatalkan={batalkan}
                               onHapus={hapus}
@@ -1155,6 +1197,8 @@ export default function DaftarPermintaan() {
                         <RowActions
                           record={record}
                           busy={busy}
+                          canApprove={canApprove}
+                          isAdmin={isAdmin}
                           onSetujui={setujui}
                           onBatalkan={batalkan}
                           onHapus={hapus}
@@ -1192,10 +1236,20 @@ export default function DaftarPermintaan() {
         <DetailDrawer
           record={detail}
           busy={busyId === detail.id}
+          canApprove={canApprove}
+          isAdmin={isAdmin}
           onClose={closeDetail}
-          onSetujui={(record) => void setujui(record)}
+          onSetujui={(record) => setujui(record)}
           onBatalkan={(record) => void batalkan(record)}
           onHapus={(record) => void hapus(record)}
+        />
+      )}
+
+      {keputusanFor && (
+        <KeputusanApprovalModal
+          record={keputusanFor}
+          onClose={() => setKeputusanFor(null)}
+          onDone={(message) => void selesaiSetujui(message)}
         />
       )}
     </div>
@@ -1209,12 +1263,16 @@ export default function DaftarPermintaan() {
 function RowActions({
   record,
   busy,
+  canApprove,
+  isAdmin,
   onSetujui,
   onBatalkan,
   onHapus,
 }: {
   record: PermintaanBarangRecord;
   busy: boolean;
+  canApprove: boolean;
+  isAdmin: boolean;
   onSetujui: (record: PermintaanBarangRecord) => void;
   onBatalkan: (record: PermintaanBarangRecord) => void;
   onHapus: (record: PermintaanBarangRecord) => void;
@@ -1222,6 +1280,7 @@ function RowActions({
   const btn = `grid h-9 w-9 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 
   if (record.approval === "DISETUJUI") {
+    if (!canApprove) return null;
     return (
       <div className="flex justify-end">
         <button
@@ -1242,32 +1301,38 @@ function RowActions({
     );
   }
 
+  if (!canApprove && !isAdmin) return null;
+
   return (
     <div className="flex justify-end gap-1">
-      <button
-        type="button"
-        aria-label={`Setujui ${record.noPermintaan}`}
-        title="Setujui permintaan"
-        disabled={busy}
-        onClick={() => onSetujui(record)}
-        className={`${btn} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`}
-      >
-        <FontAwesomeIcon
-          icon={busy ? faSpinner : faCheck}
-          spin={busy}
-          aria-hidden="true"
-        />
-      </button>
-      <button
-        type="button"
-        aria-label={`Hapus ${record.noPermintaan}`}
-        title="Hapus permintaan"
-        disabled={busy}
-        onClick={() => onHapus(record)}
-        className={`${btn} text-slate-400 hover:bg-red-50 hover:text-red-600`}
-      >
-        <FontAwesomeIcon icon={faTrash} aria-hidden="true" />
-      </button>
+      {canApprove && (
+        <button
+          type="button"
+          aria-label={`Setujui ${record.noPermintaan}`}
+          title="Setujui permintaan"
+          disabled={busy}
+          onClick={() => onSetujui(record)}
+          className={`${btn} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`}
+        >
+          <FontAwesomeIcon
+            icon={busy ? faSpinner : faCheck}
+            spin={busy}
+            aria-hidden="true"
+          />
+        </button>
+      )}
+      {isAdmin && (
+        <button
+          type="button"
+          aria-label={`Hapus ${record.noPermintaan}`}
+          title="Hapus permintaan"
+          disabled={busy}
+          onClick={() => onHapus(record)}
+          className={`${btn} text-slate-400 hover:bg-red-50 hover:text-red-600`}
+        >
+          <FontAwesomeIcon icon={faTrash} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

@@ -4,6 +4,20 @@ import { clearBarangCache } from "../../lib/barangCache.js";
 // StatusBarang sekarang dinamis (tabel StatusBarang), tipe = string
 export type StatusBarang = string;
 
+export const gudangSelect = { id: true, kode: true, name: true };
+export type StatusFilter = string | { in: string[] } | { not: string } | undefined;
+
+/**
+ * Gabungkan status yang diminta pemanggil dengan scope visibilitas role.
+ * scope null/undefined = tanpa batasan (role admin atau panggilan internal),
+ * scope [] = tidak ada status yang terlihat.
+ */
+export function statusScopeFilter(scope: string[] | null | undefined, status?: string): StatusFilter {
+  if (scope === null || scope === undefined) return status;
+  if (status) return scope.includes(status) ? status : { in: [] };
+  return { in: scope };
+}
+
 // Hardcode transisi untuk 5 status awal. Status dinamis baru dianggap
 // terbuka (allow any) agar langsung bisa dipakai tanpa config transisi.
 // Transisi dibaca dari tabel StatusTransition. Jika suatu status sumber
@@ -71,6 +85,7 @@ export async function updateBarangStatus(
             status: true,
           },
         },
+        gudang: { select: gudangSelect },
       },
     });
 

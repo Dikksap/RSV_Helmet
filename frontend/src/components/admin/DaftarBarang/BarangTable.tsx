@@ -14,6 +14,7 @@ type BarangTableProps = {
   onEdit?: (item: Barang) => void;
   onDelete?: (item: Barang) => void;
   onRiwayat?: (item: Barang) => void;
+  onMutasi?: (item: Barang) => void;
   formatDate: (date: string) => string;
   formatRelativeTime: (date: string, nowMs: number) => string;
   caption?: string;
@@ -22,6 +23,7 @@ type BarangTableProps = {
 const MINI =
   "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
 const batchLabel = (b: Barang) => (b.batch ? `BC${String(b.batch.nomorBatch).padStart(3, "0")}` : null);
+const gudangLabel = (b: Barang) => (b.gudang ? `${b.gudang.kode} - ${b.gudang.name}` : null);
 
 export function BarangTable({
   barang,
@@ -36,6 +38,7 @@ export function BarangTable({
   onEdit,
   onDelete,
   onRiwayat,
+  onMutasi,
   formatDate,
   formatRelativeTime,
   caption,
@@ -44,7 +47,7 @@ export function BarangTable({
   const someSelected = !allSelected && barang.some((b) => selectedIds.has(b.id));
   const size = pageSize === "all" ? barang.length : pageSize;
   const rowNo = (i: number) => (currentPage - 1) * size + i + 1;
-  const hasActions = Boolean(onEdit || onDelete || onRiwayat);
+  const hasActions = Boolean(onEdit || onDelete || onRiwayat || onMutasi);
   const range =
     totalBarang > 0 && size > 0
       ? `${((currentPage - 1) * size + 1).toLocaleString("id-ID")}–${Math.min(currentPage * size, totalBarang).toLocaleString("id-ID")}`
@@ -80,6 +83,11 @@ export function BarangTable({
         {onRiwayat && (
           <button type="button" onClick={() => onRiwayat(item)} className={`${MINI} text-slate-600 hover:bg-slate-100`}>
             Riwayat
+          </button>
+        )}
+        {onMutasi && (
+          <button type="button" onClick={() => onMutasi(item)} className={`${MINI} text-slate-600 hover:bg-slate-100`}>
+            Mutasi
           </button>
         )}
         {onEdit && (
@@ -130,7 +138,7 @@ export function BarangTable({
                   </p>
                   <p className="mt-0.5 text-xs text-slate-400">
                     #{rowNo(i)} · {batchLabel(item) ?? "Tanpa batch"}
-                    {item.group ? ` · ${item.group.nama}` : ""} · {formatRelativeTime(item.createdAt, now)}
+                    {item.group ? ` · ${item.group.nama}` : ""} · {gudangLabel(item) ?? "Belum ditempatkan"} · {formatRelativeTime(item.createdAt, now)}
                   </p>
                 </div>
               </div>
@@ -150,6 +158,7 @@ export function BarangTable({
               <th className="px-3 py-3">Produk & varian</th>
               <th className="px-3 py-3">Batch</th>
               <th className="px-3 py-3">Dus</th>
+              <th className="px-3 py-3">Gudang</th>
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3">Tanggal</th>
               <th className="px-3 py-3">Dibuat</th>
@@ -186,6 +195,9 @@ export function BarangTable({
                     )}
                   </td>
                   <td className="max-w-[140px] truncate px-3 py-2.5 text-xs text-slate-600">{item.group?.nama ?? <span className="text-slate-300">—</span>}</td>
+                  <td className="max-w-[160px] truncate px-3 py-2.5 text-xs text-slate-600" title={gudangLabel(item) ?? "Belum ditempatkan"}>
+                    {gudangLabel(item) ?? <span className="italic text-slate-400">Belum ditempatkan</span>}
+                  </td>
                   <td className="px-3 py-2.5">
                     <div className="flex flex-wrap items-center gap-1">
                       <StatusBadge status={item.status} />

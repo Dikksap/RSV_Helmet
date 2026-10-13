@@ -10,7 +10,7 @@ import {
   searchBarangByKode,
 } from "../../model/barang/barang.js";
 import type { StatusBarang } from "../../model/barang/barang.js";
-import { getValidStatusList, isValidStatus } from "./helpers.js";
+import { getValidStatusList, isValidStatus, barangScope, isStatusInView, statusDeniedMessage } from "./helpers.js";
 
 function toStartOfDay(d: Date): Date {
   const c = new Date(d);
@@ -51,12 +51,17 @@ export async function listBarangHandler(req: Request, res: Response) {
     // limit=all (atau 0) = tanpa paginasi, ambil semua barang.
     const noLimit = req.query.limit === "all" || req.query.limit === "0";
     const limit = noLimit ? 0 : Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { variantId, batchId, groupId, tanpaDus, status, tanggalAwal, tanggalAkhir, tanggal, pernahRetur, styleId, colorId, sizeId } = req.query;
+    const { variantId, batchId, groupId, tanpaDus, gudangId, tanpaGudang, status, tanggalAwal, tanggalAkhir, tanggal, pernahRetur, styleId, colorId, sizeId } = req.query;
+    const scope = barangScope(req);
 
     if (status && !(await isValidStatus(status))) {
       return res.status(400).json({
         message: `Parameter 'status' tidak valid. Status aktif: ${await getValidStatusList()}`,
       });
+    }
+
+    if (status && !isStatusInView(scope, status)) {
+      return res.status(403).json({ message: statusDeniedMessage(String(status)) });
     }
 
     let vid: number | undefined;
@@ -80,6 +85,14 @@ export async function listBarangHandler(req: Request, res: Response) {
       gid = Number(groupId);
       if (Number.isNaN(gid)) {
         return res.status(400).json({ message: "Parameter 'groupId' harus angka" });
+      }
+    }
+
+    let gudid: number | undefined;
+    if (gudangId !== undefined) {
+      gudid = Number(gudangId);
+      if (Number.isNaN(gudid)) {
+        return res.status(400).json({ message: "Parameter 'gudangId' harus angka" });
       }
     }
 
@@ -155,7 +168,10 @@ export async function listBarangHandler(req: Request, res: Response) {
       batchId: bid,
       groupId: gid,
       tanpaDus: gid === undefined ? parsePernahRetur(tanpaDus) : undefined,
+      gudangId: gudid,
+      tanpaGudang: gudid === undefined ? parsePernahRetur(tanpaGudang) : undefined,
       status: status as StatusBarang | undefined,
+      statusScope: scope,
       tanggalAwal: tAwal,
       tanggalAkhir: tAkhir,
       pernahRetur: parsePernahRetur(pernahRetur),
@@ -175,11 +191,16 @@ export async function getBarangHariIniHandler(req: Request, res: Response) {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const { variantId, batchId, status } = req.query;
+    const scope = barangScope(req);
 
     if (status && !(await isValidStatus(status))) {
       return res.status(400).json({
         message: `Parameter 'status' tidak valid. Status aktif: ${await getValidStatusList()}`,
       });
+    }
+
+    if (status && !isStatusInView(scope, status)) {
+      return res.status(403).json({ message: statusDeniedMessage(String(status)) });
     }
 
     let vid: number | undefined;
@@ -205,6 +226,7 @@ export async function getBarangHariIniHandler(req: Request, res: Response) {
       variantId: vid,
       batchId: bid,
       status: status as StatusBarang | undefined,
+      statusScope: scope,
       tanggalAwal: toStartOfDay(now),
       tanggalAkhir: toEndOfDay(now),
     });
@@ -229,6 +251,10 @@ export async function getBarangDetail(req: Request, res: Response) {
       return res.status(404).json({ message: "Barang tidak ditemukan" });
     }
 
+    if (!isStatusInView(barangScope(req), barang.status)) {
+      return res.status(403).json({ message: statusDeniedMessage(String(barang.status)) });
+    }
+
     res.status(200).json(barang);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data barang", error });
@@ -243,10 +269,15 @@ export async function getRiwayatHandler(req: Request, res: Response) {
       return res.status(400).json({ message: "Parameter 'id' tidak valid" });
     }
 
-    const result = await getRiwayatByBarangId(id);
+    const scope = barangScope(req);
+    const result = await getRiwayatByBarangId(id, scope);
 
     if (!result) {
       return res.status(404).json({ message: "Barang tidak ditemukan" });
+    }
+
+    if (!isStatusInView(scope, result.summary.currentStatus)) {
+      return res.status(403).json({ message: statusDeniedMessage(String(result.summary.currentStatus)) });
     }
 
     res.status(200).json(result);
@@ -255,9 +286,9 @@ export async function getRiwayatHandler(req: Request, res: Response) {
   }
 }
 
-export async function getStatusSummaryHandler(_req: Request, res: Response) {
+export async function getStatusSummaryHandler(req: Request, res: Response) {
   try {
-    const result = await getStatusSummary();
+    const result = await getStatusSummary(barangScope(req));
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil ringkasan status", error });
@@ -285,7 +316,7 @@ export async function getStatsHandler(req: Request, res: Response) {
       filter.batchId = b;
     }
 
-    const result = await getBarangStats(filter);
+    const result = await getBarangStats(filter, barangScope(req));
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil statistik barang", error });
@@ -400,7 +431,12 @@ export async function searchBarangHandler(req: Request, res: Response) {
     }
 
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-    const result = await searchBarangByKode({ q, limit, pernahRetur: parsePernahRetur(req.query.pernahRetur) });
+    const result = await searchBarangByKode({
+      q,
+      limit,
+      pernahRetur: parsePernahRetur(req.query.pernahRetur),
+      statusScope: barangScope(req),
+    });
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mencari barang", error });

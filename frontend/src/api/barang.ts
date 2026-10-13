@@ -43,6 +43,8 @@ export interface Barang {
   } | null;
   groupId?: number | null;
   group?: { id: number; nama: string } | null;
+  gudangId?: number | null;
+  gudang?: { id: number; kode: string; name: string } | null;
 }
 
 interface BarangPageResponse {
@@ -65,6 +67,8 @@ export interface BarangListParams {
   variantId?: number;
   batchId?: number;
   tanpaDus?: boolean;
+  gudangId?: number;
+  tanpaGudang?: boolean;
   status?: StatusBarang;
   tanggal?: string; // shortcut 1 hari penuh, diabaikan jika tanggalAwal/tanggalAkhir dikirim
   tanggalAwal?: string;
@@ -85,6 +89,8 @@ export async function getBarangPage(
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
   if (params.tanpaDus) query.set("tanpaDus", "true");
+  if (params.gudangId) query.set("gudangId", String(params.gudangId));
+  if (params.tanpaGudang) query.set("tanpaGudang", "true");
   if (params.status) query.set("status", params.status);
   if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
@@ -126,6 +132,8 @@ export interface ExportBarangParams {
   variantId?: number;
   batchId?: number;
   tanpaDus?: boolean;
+  gudangId?: number;
+  tanpaGudang?: boolean;
   status?: StatusBarang;
   tanggal?: string;
   tanggalAwal?: string;
@@ -147,6 +155,8 @@ export async function exportBarang(
   if (params.variantId) query.set("variantId", String(params.variantId));
   if (params.batchId) query.set("batchId", String(params.batchId));
   if (params.tanpaDus) query.set("tanpaDus", "true");
+  if (params.gudangId) query.set("gudangId", String(params.gudangId));
+  if (params.tanpaGudang) query.set("tanpaGudang", "true");
   if (params.status) query.set("status", params.status);
   if (params.tanggal) query.set("tanggal", params.tanggal);
   if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);

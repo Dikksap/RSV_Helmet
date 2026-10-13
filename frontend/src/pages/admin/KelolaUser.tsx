@@ -159,6 +159,9 @@ export default function KelolaUser() {
             <label className={labelCls}><span>Role</span>
               <select className={inputCls} value={modal.role} onChange={(e) => setModal((m) => ({ ...m, role: e.target.value }))}>
                 <option value="user">user</option>
+                <option value="produksi">produksi</option>
+                <option value="qc">qc</option>
+                <option value="gudang">gudang</option>
                 <option value="admin">admin</option>
               </select>
             </label>

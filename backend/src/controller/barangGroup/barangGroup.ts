@@ -9,6 +9,7 @@ import {
   assignBarangToGroup,
   unassignBarangFromGroup,
 } from "../../model/barangGroup/barangGroup.js";
+import { barangScope } from "../barang/helpers.js";
 
 function parseId(raw: unknown): number | null {
   const id = Number(raw);
@@ -33,9 +34,9 @@ function parseBarangIds(body: unknown): { ids: number[] } | { error: string } {
 }
 
 // GET /api/barang-group
-export async function getBarangGroupListHandler(_req: Request, res: Response) {
+export async function getBarangGroupListHandler(req: Request, res: Response) {
   try {
-    const data = await getAllBarangGroup();
+    const data = await getAllBarangGroup(barangScope(req));
     res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data grup barang", error });
@@ -47,7 +48,7 @@ export async function getBarangGroupDetailHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (id === null) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const row = await getBarangGroupById(id);
+    const row = await getBarangGroupById(id, barangScope(req));
     if (!row) return res.status(404).json({ message: "Grup barang tidak ditemukan" });
     res.status(200).json(row);
   } catch (error) {
@@ -60,9 +61,10 @@ export async function getBarangGroupBarangsHandler(req: Request, res: Response) 
   try {
     const id = parseId(req.params.id);
     if (id === null) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const group = await getBarangGroupById(id);
+    const scope = barangScope(req);
+    const group = await getBarangGroupById(id, scope);
     if (!group) return res.status(404).json({ message: "Grup barang tidak ditemukan" });
-    const barang = await getBarangInGroup(id);
+    const barang = await getBarangInGroup(id, scope);
     res.status(200).json({ group, barang });
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil isi grup barang", error });

@@ -229,6 +229,7 @@ function ScanSheet({ onClose }: { onClose: () => void }) {
 function LandingPage() {
   const [role, setRole] = useState<string | undefined>(() => getUser()?.role);
   const admin = role === "admin";
+  const dashboardTo = role === "admin" ? "/admin/home" : role === "gudang" ? "/gudang/barang" : null;
   const [scanOpen, setScanOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const user = role ? getUser() : null;
@@ -301,9 +302,9 @@ function LandingPage() {
                         {role === "admin" ? "Administrator" : (role ?? "Operator")}
                       </p>
                     </div>
-                    {admin && (
+                    {dashboardTo && (
                       <Link
-                        to="/admin/home"
+                        to={dashboardTo}
                         role="menuitem"
                         className="block px-4 py-2.5 text-sm text-[#0F1C2E] no-underline hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
                       >

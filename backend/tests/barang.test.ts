@@ -39,6 +39,22 @@ vi.mock("../src/middleware/auth.js", () => ({
   authenticate: (_req: any, _res: any, next: any) => next(),
   adminOnly: (_req: any, _res: any, next: any) => next(),
   requireRole: () => (_req: any, _res: any, next: any) => next(),
+  authorize: (req: any, _res: any, next: any) => {
+    req.access = {
+      role: "user",
+      permissions: [
+        "BARANG_LIHAT",
+        "BARANG_STATISTIK_LIHAT",
+        "BARANG_SCAN",
+        "BARANG_UBAH_STATUS",
+        "BARANG_GENERATE",
+        "BARANG_KELOLA",
+      ],
+      statusView: null,
+    };
+    next();
+  },
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 import barangRouter from "../src/routes/barang.js";
@@ -575,7 +591,7 @@ describe("GET /api/barang/stats", () => {
     const res = await request(app).get("/api/barang/stats?variantId=1&batchId=2");
 
     expect(res.status).toBe(200);
-    expect(mocked.getBarangStats).toHaveBeenCalledWith({ variantId: 1, batchId: 2 });
+    expect(mocked.getBarangStats).toHaveBeenCalledWith({ variantId: 1, batchId: 2 }, null);
   });
 });
 
@@ -776,7 +792,7 @@ describe("GET /api/barang/search", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    expect(mocked.searchBarangByKode).toHaveBeenCalledWith({ q: "BC001", limit: 5, pernahRetur: undefined });
+    expect(mocked.searchBarangByKode).toHaveBeenCalledWith({ q: "BC001", limit: 5, pernahRetur: undefined, statusScope: null });
   });
 
   it("200 teruskan pernahRetur ke searchBarangByKode", async () => {

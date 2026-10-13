@@ -12,6 +12,10 @@ vi.mock("../src/model/user/user.js", () => ({
   getUserRole: vi.fn(),
 }));
 
+vi.mock("../src/model/role/role.js", () => ({
+  getRoleKodes: vi.fn().mockResolvedValue(["admin", "user", "gudang", "produksi", "qc"]),
+}));
+
 vi.mock("../src/lib/redis.js", () => ({
   default: {
     setex: vi.fn().mockResolvedValue("OK"),

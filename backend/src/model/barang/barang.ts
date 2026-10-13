@@ -2,6 +2,7 @@ import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import {
   BARANG_TTL_LIST,
   barangListKey,
+  barangScopeKey,
   barangSearchKey,
   clearBarangCache,
   getBarangCache,
@@ -10,10 +11,14 @@ import {
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
   bulkUpdateBarangStatus,
+  gudangSelect,
   isTransitionAllowed,
+  statusScopeFilter,
   updateBarangStatus,
   type StatusBarang,
+  type StatusFilter,
 } from "./barang.status.js";
+export { gudangSelect } from "./barang.status.js";
 import {
   getBarangStats,
   getBatchRentangTanggal,
@@ -76,6 +81,9 @@ export const barangInclude = {
       nama: true,
     },
   },
+  gudang: {
+    select: gudangSelect,
+  },
 };
 
 export interface BarangListFilter {
@@ -85,7 +93,10 @@ export interface BarangListFilter {
   batchId?: number;
   groupId?: number;
   tanpaDus?: boolean;
+  gudangId?: number;
+  tanpaGudang?: boolean;
   status?: StatusBarang;
+  statusScope?: string[] | null;
   tanggalAwal?: Date;
   tanggalAkhir?: Date;
   pernahRetur?: boolean;
@@ -157,16 +168,19 @@ function normalizeEnd(d: Date): Date {
 }
 
 export async function listBarang(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, groupId, tanpaDus, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
+  const { page, limit, variantId, batchId, groupId, tanpaDus, gudangId, tanpaGudang, status, statusScope, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
     filter;
 
   const cacheKey = barangListKey({
     page,
     limit,
+    scope: barangScopeKey(statusScope),
     variantId: variantId ?? "",
     batchId: batchId ?? "",
     groupId: groupId ?? "",
     tanpaDus: tanpaDus ?? "",
+    gudangId: gudangId ?? "",
+    tanpaGudang: tanpaGudang ?? "",
     status: status ?? "",
     tanggalAwal: tanggalAwal ?? "",
     tanggalAkhir: tanggalAkhir ?? "",
@@ -184,14 +198,15 @@ export async function listBarang(filter: BarangListFilter) {
 }
 
 async function listBarangUncached(filter: BarangListFilter) {
-  const { page, limit, variantId, batchId, groupId, tanpaDus, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
+  const { page, limit, variantId, batchId, groupId, tanpaDus, gudangId, tanpaGudang, status, statusScope, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } =
     filter;
 
   const where: {
     variantId?: number;
     batchId?: number;
     groupId?: number | null;
-    status?: StatusBarang;
+    gudangId?: number | null;
+    status?: StatusFilter;
     tanggal?: { gte?: Date; lte?: Date };
     riwayat?: { some: { status: string } };
     variant?: { styleId?: number; colorId?: number; sizeId?: number };
@@ -201,7 +216,10 @@ async function listBarangUncached(filter: BarangListFilter) {
   if (batchId !== undefined) where.batchId = batchId;
   if (groupId !== undefined) where.groupId = groupId;
   else if (tanpaDus) where.groupId = null;
-  if (status) where.status = status;
+  if (gudangId !== undefined) where.gudangId = gudangId;
+  else if (tanpaGudang) where.gudangId = null;
+  const statusFilter = statusScopeFilter(statusScope, status);
+  if (statusFilter) where.status = statusFilter;
   if (pernahRetur) where.riwayat = { some: { status: "RETUR" } };
   if (styleId !== undefined || colorId !== undefined || sizeId !== undefined) {
     where.variant = {
@@ -254,12 +272,13 @@ export async function searchBarangByKode(opts: {
   q: string;
   limit: number;
   pernahRetur?: boolean;
+  statusScope?: string[] | null;
 }): Promise<{
   data: Awaited<ReturnType<typeof prisma.barang.findMany>>;
   meta: { q: string; count: number };
 }> {
   const kode = opts.q.trim();
-  const cacheKey = barangSearchKey(kode, opts.limit, opts.pernahRetur);
+  const cacheKey = barangSearchKey(kode, opts.limit, opts.pernahRetur, barangScopeKey(opts.statusScope));
   const cached = await getBarangCache<{
     data: Awaited<ReturnType<typeof prisma.barang.findMany>>;
     meta: { q: string; count: number };
@@ -268,6 +287,7 @@ export async function searchBarangByKode(opts: {
   const data = await prisma.barang.findMany({
     where: {
       kodeBarang: { contains: kode },
+      status: statusScopeFilter(opts.statusScope),
       ...(opts.pernahRetur
         ? { riwayat: { some: { status: "RETUR" } } }
         : {}),
@@ -297,7 +317,7 @@ export async function findBarangByKodeList(
   });
 }
 
-export async function getRiwayatByBarangId(id: number) {
+export async function getRiwayatByBarangId(id: number, statusScope?: string[] | null) {
   const barang = await prisma.barang.findUnique({
     where: { id },
     select: { id: true, kodeBarang: true, status: true },
@@ -306,7 +326,7 @@ export async function getRiwayatByBarangId(id: number) {
   if (!barang) return null;
 
   const riwayat = await prisma.riwayatBarang.findMany({
-    where: { barangId: id },
+    where: { barangId: id, status: statusScopeFilter(statusScope) },
     orderBy: { tanggal: "desc" },
   });
 
@@ -343,6 +363,7 @@ export async function scanBarang(
           status: true,
         },
       },
+      gudang: { select: gudangSelect },
     },
   });
 
@@ -414,6 +435,7 @@ export async function bulkScanBarang(
                 status: true,
               },
             },
+            gudang: { select: gudangSelect },
           },
         });
 

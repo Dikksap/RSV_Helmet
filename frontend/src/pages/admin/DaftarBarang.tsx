@@ -14,6 +14,8 @@ import {
 } from "../../api/barang";
 import { getProducts, type Product } from "../../api/products";
 import { getColors, getSizes, getStyles } from "../../api/masterData";
+import { getGudangList, type Gudang } from "../../api/gudang";
+import { catatMutasi, catatMutasiBulk } from "../../api/mutasi";
 import { HeaderSection } from "../../components/admin/DaftarBarang/HeaderSection";
 import { FilterSection } from "../../components/admin/DaftarBarang/FilterSection";
 import { BarangTable } from "../../components/admin/DaftarBarang/BarangTable";
@@ -22,6 +24,7 @@ import { HangtagModal } from "../../components/admin/DaftarBarang/HangtagModal";
 import { RiwayatModal } from "../../components/admin/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../../components/admin/DaftarBarang/BarangImportModal";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
+import { getUser, hasPermission } from "../../api/auth";
 import { downloadCsv } from "../../lib/csv";
 import { useStatusOptions, type StatusOption } from "../../lib/useStatusOptions";
 
@@ -201,6 +204,9 @@ function DaftarBarang() {
   const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [hanyaPernahRetur, setHanyaPernahRetur] = useState(false);
   const [tanpaDus, setTanpaDus] = useState(false);
+  const [gudangFilter, setGudangFilter] = useState("");
+  const [tanpaGudang, setTanpaGudang] = useState(false);
+  const [gudangOptions, setGudangOptions] = useState<Gudang[]>([]);
   const [datePreset, setDatePreset] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
@@ -221,6 +227,12 @@ function DaftarBarang() {
 
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [editingBarang, setEditingBarang] = useState<Barang | null>(null);
+  const [mutasiBarang, setMutasiBarang] = useState<Barang | null>(null);
+  const [mutasiTujuan, setMutasiTujuan] = useState("");
+  const [mutasiKeterangan, setMutasiKeterangan] = useState("");
+  const [showBulkMutasi, setShowBulkMutasi] = useState(false);
+  const [bulkTujuan, setBulkTujuan] = useState("");
+  const [bulkKeterangan, setBulkKeterangan] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [pendingDelete, setPendingDelete] = useState<{ kind: "single"; barang: Barang } | { kind: "bulk" } | null>(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
@@ -248,6 +260,7 @@ function DaftarBarang() {
     getStyles().then((r) => setStyleOptions(toOptions(r))).catch(() => setStyleOptions([]));
     getColors().then((r) => setColorOptions(toOptions(r))).catch(() => setColorOptions([]));
     getSizes().then((r) => setSizeOptions(toOptions(r))).catch(() => setSizeOptions([]));
+    getGudangList().then(setGudangOptions).catch(() => setGudangOptions([]));
   }, []);
 
   const matchesAttr = useCallback(
@@ -277,7 +290,7 @@ function DaftarBarang() {
   }, [products, editingBarang]);
 
   const effectiveVariant = filterVariantOptions.some((o) => String(o.id) === variantFilter) ? variantFilter : "";
-  const hasOtherFilters = Boolean(statusFilter || effectiveVariant || styleFilter || colorFilter || sizeFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur || tanpaDus);
+  const hasOtherFilters = Boolean(statusFilter || effectiveVariant || styleFilter || colorFilter || sizeFilter || gudangFilter || tanggalAwal || tanggalAkhir || hanyaPernahRetur || tanpaDus || tanpaGudang);
   const hasActiveFilters = Boolean(search) || hasOtherFilters;
   const isSearchMode = Boolean(debouncedSearch) && !hasOtherFilters;
   const searchLimit = typeof pageSize === "number" ? Math.min(50, pageSize) : 50;
@@ -290,11 +303,13 @@ function DaftarBarang() {
       tanggalAkhir: tanggalAkhir || undefined,
       pernahRetur: hanyaPernahRetur || undefined,
       tanpaDus: tanpaDus || undefined,
+      gudangId: num(gudangFilter),
+      tanpaGudang: !gudangFilter && tanpaGudang ? true : undefined,
       styleId: num(styleFilter),
       colorId: num(colorFilter),
       sizeId: num(sizeFilter),
     }),
-    [effectiveVariant, statusFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, tanpaDus, styleFilter, colorFilter, sizeFilter],
+    [effectiveVariant, statusFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, tanpaDus, gudangFilter, tanpaGudang, styleFilter, colorFilter, sizeFilter],
   );
 
   const key = JSON.stringify(isSearchMode ? { q: debouncedSearch, searchLimit } : { ...filterParams, page, pageSize });
@@ -349,8 +364,12 @@ function DaftarBarang() {
   const error = !isLoading ? (result?.error ?? null) : null;
   const visibleSelected = useMemo(() => new Set(barang.filter((b) => selectedIds.has(b.id)).map((b) => b.id)), [barang, selectedIds]);
   const selectedCount = visibleSelected.size;
+  const isAdmin = getUser()?.role === "admin";
+  const canKelola = isAdmin || hasPermission("BARANG_KELOLA");
+  const canUbahStatus = isAdmin || hasPermission("BARANG_UBAH_STATUS");
+  const canMutasi = isAdmin || hasPermission("MUTASI_GUDANG");
 
-  const anyModal = formMode !== null || pendingDelete !== null || showBulkEdit || selectedBarang !== null || riwayatBarang !== null || showImport;
+  const anyModal = formMode !== null || pendingDelete !== null || showBulkEdit || showBulkMutasi || selectedBarang !== null || riwayatBarang !== null || showImport || mutasiBarang !== null;
   const closeAll = useCallback(() => {
     if (busy) return;
     setFormMode(null);
@@ -359,6 +378,8 @@ function DaftarBarang() {
     setSelectedBarang(null);
     setRiwayatBarang(null);
     setShowImport(false);
+    setMutasiBarang(null);
+    setShowBulkMutasi(false);
   }, [busy]);
 
   useEffect(() => {
@@ -385,6 +406,8 @@ function DaftarBarang() {
     setDatePreset("");
     setHanyaPernahRetur(false);
     setTanpaDus(false);
+    setGudangFilter("");
+    setTanpaGudang(false);
     setPage(1);
   };
 
@@ -422,6 +445,33 @@ function DaftarBarang() {
       keterangan: "",
     });
     setFormMode("edit");
+  };
+
+  const openMutasi = (item: Barang) => {
+    setCrudError(null);
+    setMutasiBarang(item);
+    setMutasiTujuan(item.gudangId ? String(item.gudangId) : "");
+    setMutasiKeterangan("");
+  };
+
+  const submitMutasi = async () => {
+    if (!mutasiBarang) return;
+    setCrudError(null);
+    setBusy(true);
+    try {
+      await catatMutasi({
+        barangId: mutasiBarang.id,
+        gudangAsalId: mutasiBarang.gudangId ?? null,
+        gudangTujuanId: mutasiTujuan ? Number(mutasiTujuan) : null,
+        keterangan: mutasiKeterangan.trim() || undefined,
+      });
+      setMutasiBarang(null);
+      load();
+    } catch (e) {
+      setCrudError(e instanceof Error ? e.message : "Gagal mencatat mutasi.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitForm = async (e?: FormEvent) => {
@@ -508,6 +558,36 @@ function DaftarBarang() {
     setCrudError(null);
     setBulk({ status: "", tanggal: "", keterangan: "" });
     setShowBulkEdit(true);
+  };
+
+  const openBulkMutasi = () => {
+    setCrudError(null);
+    setBulkTujuan("");
+    setBulkKeterangan("");
+    setShowBulkMutasi(true);
+  };
+
+  const handleBulkMutasi = async (e: FormEvent) => {
+    e.preventDefault();
+    const ids = [...visibleSelected];
+    if (ids.length === 0) return;
+    setBusy(true);
+    setCrudError(null);
+    try {
+      const res = await catatMutasiBulk({
+        barangIds: ids,
+        gudangTujuanId: bulkTujuan ? Number(bulkTujuan) : null,
+        keterangan: bulkKeterangan.trim() || undefined,
+      });
+      setSelectedIds(new Set());
+      setShowBulkMutasi(false);
+      load();
+      toast(`${res.summary.success} barang dimutasi`);
+    } catch (err) {
+      setCrudError(errMsg(err, "Gagal mencatat mutasi massal"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleBulkEdit = async (e: FormEvent) => {
@@ -610,8 +690,8 @@ function DaftarBarang() {
         exportDisabledReason="Export tidak mendukung pencarian — gunakan filter"
         onExportCSV={() => void handleExport("csv")}
         onExportJSON={() => void handleExport("json")}
-        onCreate={openCreate}
-        onImport={() => setShowImport(true)}
+        onCreate={canKelola ? openCreate : undefined}
+        onImport={canKelola ? () => setShowImport(true) : undefined}
       />
 
       <FilterSection
@@ -635,6 +715,11 @@ function DaftarBarang() {
         onPernahReturChange={resetPage(setHanyaPernahRetur)}
         tanpaDus={tanpaDus}
         onTanpaDusChange={resetPage(setTanpaDus)}
+        gudangFilter={gudangFilter}
+        gudangOptions={gudangOptions.map((g) => ({ id: g.id, nama: `${g.kode} - ${g.name}` }))}
+        onGudangChange={resetPage(setGudangFilter)}
+        tanpaGudang={tanpaGudang}
+        onTanpaGudangChange={resetPage(setTanpaGudang)}
         searchDisabled={hasOtherFilters}
         searchHint="Pencarian dinonaktifkan saat filter lain dipakai"
         variantError={productsError}
@@ -660,19 +745,28 @@ function DaftarBarang() {
             <button type="button" onClick={handleBulkExport} className={`${BTN_GHOST} h-9`}>
               Export
             </button>
-            <button type="button" onClick={openBulkEdit} className={`${BTN_PRIMARY} h-9`}>
-              Edit massal
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCrudError(null);
-                setPendingDelete({ kind: "bulk" });
-              }}
-              className={`${BTN_DANGER} h-9`}
-            >
-              Hapus
-            </button>
+            {canUbahStatus && (
+              <button type="button" onClick={openBulkEdit} className={`${BTN_PRIMARY} h-9`}>
+                Edit massal
+              </button>
+            )}
+            {canMutasi && (
+              <button type="button" onClick={openBulkMutasi} className={`${BTN_PRIMARY} h-9`}>
+                Mutasi massal
+              </button>
+            )}
+            {canKelola && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCrudError(null);
+                  setPendingDelete({ kind: "bulk" });
+                }}
+                className={`${BTN_DANGER} h-9`}
+              >
+                Hapus
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -700,9 +794,11 @@ function DaftarBarang() {
           <p className="mx-auto mt-1 max-w-xs text-sm text-slate-500">
             {hasActiveFilters ? "Ubah kata kunci atau reset filter." : "Tambahkan barang pertama untuk mulai mengelola inventory."}
           </p>
-          <button type="button" onClick={hasActiveFilters ? handleResetFilters : openCreate} className={`${hasActiveFilters ? BTN_GHOST : BTN_PRIMARY} mt-4`}>
-            {hasActiveFilters ? "Reset filter" : "+ Tambah barang"}
-          </button>
+          {(!hasActiveFilters && !canKelola) ? null : (
+            <button type="button" onClick={hasActiveFilters ? handleResetFilters : openCreate} className={`${hasActiveFilters ? BTN_GHOST : BTN_PRIMARY} mt-4`}>
+              {hasActiveFilters ? "Reset filter" : "+ Tambah barang"}
+            </button>
+          )}
         </div>
       ) : (
         <section className="space-y-3">
@@ -717,11 +813,12 @@ function DaftarBarang() {
             onToggle={toggleSelect}
             onToggleAll={toggleSelectAll}
             onRowClick={setSelectedBarang}
-            onEdit={openEdit}
-            onDelete={(b) => {
+            onEdit={canKelola ? openEdit : undefined}
+            onDelete={canKelola ? (b) => {
               setCrudError(null);
               setPendingDelete({ kind: "single", barang: b });
-            }}
+            } : undefined}
+            onMutasi={canMutasi ? openMutasi : undefined}
             onRiwayat={setRiwayatBarang}
             formatDate={formatDate}
             formatRelativeTime={formatRelativeTime}
@@ -839,6 +936,105 @@ function DaftarBarang() {
                 placeholder="Keterangan riwayat"
                 value={bulk.keterangan}
                 onChange={(e) => setBulk((b) => ({ ...b, keterangan: e.target.value }))}
+              />
+            </label>
+          </form>
+        </Modal>
+      )}
+
+      {mutasiBarang && (
+        <Modal
+          eyebrow="Mutasi gudang"
+          title={<span className="font-mono">{mutasiBarang.kodeBarang}</span>}
+          onClose={closeAll}
+          footer={
+            <>
+              <button type="button" onClick={closeAll} disabled={busy} className={BTN_GHOST}>
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitMutasi()}
+                disabled={busy || mutasiTujuan === (mutasiBarang.gudangId ? String(mutasiBarang.gudangId) : "")}
+                className={BTN_PRIMARY}
+              >
+                {busy ? "Menyimpan…" : "Catat mutasi"}
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-3">
+            <ErrorBox msg={crudError} />
+            <p className="text-sm text-slate-600">
+              Lokasi kini:{" "}
+              <span className="font-semibold text-slate-900">
+                {mutasiBarang.gudang ? `${mutasiBarang.gudang.kode} - ${mutasiBarang.gudang.name}` : "Belum ditempatkan"}
+              </span>
+            </p>
+            <label className={LABEL}>
+              Gudang tujuan
+              <select className={FIELD} value={mutasiTujuan} onChange={(e) => setMutasiTujuan(e.target.value)}>
+                <option value="">— Di luar gudang (keluarkan) —</option>
+                {gudangOptions.map((g) => (
+                  <option key={g.id} value={String(g.id)}>
+                    {g.kode} - {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={LABEL}>
+              Keterangan (opsional)
+              <textarea
+                className={`${FIELD} h-auto min-h-[80px] py-2.5`}
+                placeholder="cth: pindah rak A"
+                value={mutasiKeterangan}
+                onChange={(e) => setMutasiKeterangan(e.target.value)}
+              />
+            </label>
+          </div>
+        </Modal>
+      )}
+
+      {showBulkMutasi && (
+        <Modal
+          eyebrow="Mutasi massal"
+          title={`${selectedCount} barang terpilih`}
+          onClose={closeAll}
+          footer={
+            <>
+              <button type="button" onClick={closeAll} disabled={busy} className={BTN_GHOST}>
+                Batal
+              </button>
+              <button type="submit" form="bulk-mutasi-form" disabled={busy || selectedCount === 0} className={BTN_PRIMARY}>
+                {busy ? "Menyimpan…" : `Catat mutasi ${selectedCount} barang`}
+              </button>
+            </>
+          }
+        >
+          <form id="bulk-mutasi-form" onSubmit={(e) => void handleBulkMutasi(e)} className="grid gap-3">
+            <ErrorBox msg={crudError} />
+            <p className="text-sm text-slate-600">
+              Semua barang dipindah ke satu tujuan. Asal diambil otomatis dari lokasi kini tiap barang.
+              Jika ada satu pun yang gagal, <span className="font-semibold">seluruh mutasi dibatalkan</span>.
+            </p>
+            <label className={LABEL}>
+              Gudang tujuan
+              <select className={FIELD} value={bulkTujuan} onChange={(e) => setBulkTujuan(e.target.value)}>
+                <option value="">— Di luar gudang (keluarkan semua) —</option>
+                {gudangOptions.map((g) => (
+                  <option key={g.id} value={String(g.id)}>
+                    {g.kode} - {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={LABEL}>
+              Keterangan (opsional)
+              <textarea
+                className={`${FIELD} h-auto min-h-[80px] py-2.5`}
+                placeholder="cth: pindah rak A"
+                value={bulkKeterangan}
+                onChange={(e) => setBulkKeterangan(e.target.value)}
               />
             </label>
           </form>

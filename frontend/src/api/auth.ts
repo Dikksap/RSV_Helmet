@@ -42,6 +42,8 @@ export async function logout(token: string): Promise<void> {
   });
 }
 
+const PERM_KEY = "rsv_auth_permissions";
+
 export async function checkSession(): Promise<string | null> {
   const token = getToken();
   if (!token) return null;
@@ -49,13 +51,29 @@ export async function checkSession(): Promise<string | null> {
     const response = await fetch(`${apiUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     if (response.status === 401) return null;
     if (!response.ok) return getUser()?.role ?? null;
-    const { user } = (await response.json()) as { user: User };
+    const { user, permissions } = (await response.json()) as { user: User; permissions?: string[] };
     localStorage.setItem(USER_KEY, JSON.stringify(user));
+    localStorage.setItem(PERM_KEY, JSON.stringify(permissions ?? []));
     return user.role;
   } catch {
     return getUser()?.role ?? null;
   }
 }
+
+/** Permission user yang login (dari /auth/me terakhir). Admin mendapat seluruh permission dari backend. */
+export function getUserPermissions(): string[] {
+  try {
+    const raw = localStorage.getItem(PERM_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function hasPermission(kode: string): boolean {
+  return getUserPermissions().includes(kode);
+}
+
 
 const TOKEN_KEY = "rsv_auth_token";
 const USER_KEY = "rsv_auth_user";
@@ -68,6 +86,7 @@ export function setAuth(token: string, user: User) {
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(PERM_KEY);
 }
 
 export function getToken(): string | null {
@@ -106,6 +125,7 @@ export function redirectToLogin(): void {
 
 export function homeForRole(role: string | undefined): string {
   if (role === "admin") return "/admin/home";
+  if (role === "gudang") return "/gudang/barang";
   if (role === "user") return "/scan-qr";
   return "/";
 }

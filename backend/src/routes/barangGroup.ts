@@ -9,11 +9,11 @@ import {
   assignBarangHandler,
   unassignBarangHandler,
 } from "../controller/barangGroup/barangGroup.js";
-import { authenticate, requireRole } from "../middleware/auth.js";
+import { authenticate, authorize, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
-router.use(authenticate, requireRole("admin", "user"));
+router.use(authenticate, authorize, requireRole("admin", "user", "gudang"));
 
 router.get("/", getBarangGroupListHandler);
 router.get("/:id", getBarangGroupDetailHandler);

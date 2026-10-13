@@ -6,15 +6,20 @@ import {
   updateUser,
   deleteUser,
 } from "../../model/user/user.js";
+import { getRoleKodes } from "../../model/role/role.js";
 
-const ROLES = ["admin", "user", "gudang"] as const;
+const DEFAULT_ROLE = "user";
 
-const ROLE_ERROR = "Field 'role' harus 'admin', 'user', atau 'gudang'";
+function roleError(kodes: string[]): string {
+  return `Field 'role' harus salah satu dari: ${kodes.join(", ")}`;
+}
 
-function normalizeRole(role: unknown): string | null {
-  if (typeof role !== "string") return null;
-  const trimmed = role.trim();
-  return (ROLES as readonly string[]).includes(trimmed) ? trimmed : null;
+/** Normalisasi + validasi role terhadap tabel Role (bukan daftar hardcode). */
+async function normalizeRole(role: unknown): Promise<{ role: string } | { error: string }> {
+  const kodes = await getRoleKodes();
+  if (typeof role !== "string") return { error: roleError(kodes) };
+  const trimmed = role.trim().toLowerCase();
+  return kodes.includes(trimmed) ? { role: trimmed } : { error: roleError(kodes) };
 }
 
 function parseId(raw: string) {
@@ -49,20 +54,20 @@ export async function getUserDetail(req: Request, res: Response) {
   }
 }
 
-function validateCreate(body: any): { error: string } | { data: { name: string; email: string; password: string; role: string } } {
+async function validateCreate(body: any): Promise<{ error: string } | { data: { name: string; email: string; password: string; role: string } }> {
   const { name, email, password, role } = body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) return { error: "Field 'name' wajib diisi" };
   if (!email || typeof email !== "string" || !email.trim()) return { error: "Field 'email' wajib diisi" };
   if (!password || typeof password !== "string" || password.length < 6) return { error: "Field 'password' wajib diisi minimal 6 karakter" };
-  const resolvedRole = role === undefined ? "user" : normalizeRole(role);
-  if (resolvedRole === null) return { error: ROLE_ERROR };
-  return { data: { name: name.trim(), email: email.trim(), password, role: resolvedRole } };
+  const resolved = role === undefined ? { role: DEFAULT_ROLE } : await normalizeRole(role);
+  if ("error" in resolved) return resolved;
+  return { data: { name: name.trim(), email: email.trim(), password, role: resolved.role } };
 }
 
 // POST /api/users
 export async function createUserHandler(req: Request, res: Response) {
   try {
-    const parsed = validateCreate(req.body);
+    const parsed = await validateCreate(req.body);
     if ("error" in parsed) {
       return res.status(400).json({ message: parsed.error });
     }
@@ -90,13 +95,17 @@ export async function updateUserHandler(req: Request, res: Response) {
     if (name !== undefined && (typeof name !== "string" || !name.trim())) return res.status(400).json({ message: "Field 'name' tidak valid" });
     if (email !== undefined && (typeof email !== "string" || !email.trim())) return res.status(400).json({ message: "Field 'email' tidak valid" });
     if (password !== undefined && (typeof password !== "string" || password.length < 6)) return res.status(400).json({ message: "Field 'password' minimal 6 karakter" });
-    const resolvedRole = role === undefined ? null : normalizeRole(role);
-    if (role !== undefined && resolvedRole === null) return res.status(400).json({ message: ROLE_ERROR });
+    let roleValue: string | undefined;
+    if (role !== undefined) {
+      const resolved = await normalizeRole(role);
+      if ("error" in resolved) return res.status(400).json({ message: resolved.error });
+      roleValue = resolved.role;
+    }
     const user = await updateUser(id, {
       ...(name !== undefined ? { name: name.trim() } : {}),
       ...(email !== undefined ? { email: email.trim() } : {}),
       ...(password !== undefined ? { password } : {}),
-      ...(resolvedRole !== null ? { role: resolvedRole } : {}),
+      ...(roleValue !== undefined ? { role: roleValue } : {}),
     });
     res.status(200).json(user);
   } catch (error: any) {

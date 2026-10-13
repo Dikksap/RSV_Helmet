@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { listBarang } from "../../model/barang/barang.js";
 import type { StatusBarang } from "../../model/barang/barang.js";
-import { getValidStatusList, isValidStatus } from "./helpers.js";
+import { getValidStatusList, isValidStatus, barangScope, isStatusInView, statusDeniedMessage } from "./helpers.js";
 
 function toStartOfDay(d: Date): Date {
   const c = new Date(d);
@@ -39,7 +39,8 @@ export async function exportBarangHandler(req: Request, res: Response) {
       10000,
       Math.max(1, Number(req.query.limit) || 10000),
     );
-    const { variantId, batchId, tanpaDus, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } = req.query;
+    const { variantId, batchId, tanpaDus, gudangId, tanpaGudang, status, tanggalAwal, tanggalAkhir, pernahRetur, styleId, colorId, sizeId } = req.query;
+    const scope = barangScope(req);
 
     if (status && !(await isValidStatus(status))) {
       return res.status(400).json({
@@ -47,16 +48,32 @@ export async function exportBarangHandler(req: Request, res: Response) {
       });
     }
 
+    if (status && !isStatusInView(scope, status)) {
+      return res.status(403).json({ message: statusDeniedMessage(String(status)) });
+    }
+
     const filter: Parameters<typeof listBarang>[0] = {
       page,
       limit,
       status: status as StatusBarang | undefined,
+      statusScope: scope,
     };
     if (pernahRetur === "true" || pernahRetur === "1") {
       filter.pernahRetur = true;
     }
     if (tanpaDus === "true" || tanpaDus === "1") {
       filter.tanpaDus = true;
+    }
+    if (gudangId !== undefined) {
+      const g = Number(gudangId);
+      if (Number.isNaN(g)) {
+        return res
+          .status(400)
+          .json({ message: "Parameter 'gudangId' harus angka" });
+      }
+      filter.gudangId = g;
+    } else if (tanpaGudang === "true" || tanpaGudang === "1") {
+      filter.tanpaGudang = true;
     }
 
     if (variantId !== undefined) {
@@ -153,6 +170,7 @@ export async function exportBarangHandler(req: Request, res: Response) {
       "size",
       "batchId",
       "nomorBatch",
+      "gudang",
       "pernahRetur",
       "jumlahRetur",
       "tanggalReturTerakhir",
@@ -162,6 +180,7 @@ export async function exportBarangHandler(req: Request, res: Response) {
     for (const b of result.data) {
       const v = (b as any).variant;
       const batch = (b as any).batch;
+      const gudang = (b as any).gudang;
       lines.push(
         [
           (b as any).id,
@@ -180,6 +199,7 @@ export async function exportBarangHandler(req: Request, res: Response) {
           batch?.nomorBatch
             ? `BC${String(batch.nomorBatch).padStart(3, "0")}`
             : "",
+          gudang ? `${gudang.kode} - ${gudang.name}` : "",
           (b as any).pernahRetur ? "YA" : "",
           (b as any).jumlahRetur ?? "",
           (b as any).tanggalReturTerakhir instanceof Date

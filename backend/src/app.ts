@@ -19,6 +19,11 @@ import permintaanBarangRouter from "./routes/permintaan-barang.js";
 import divisiRouter from "./routes/divisi.js";
 import batchesRouter from "./routes/batch.js";
 import userRouter from "./routes/user.js";
+import roleRouter from "./routes/role.js";
+import itemRouter from "./routes/item.js";
+import stokOpnameRouter from "./routes/stokOpname.js";
+import gudangRouter from "./routes/gudang.js";
+import mutasiGudangRouter from "./routes/mutasiGudang.js";
 import notificationsRouter from "./routes/notifications.js";
 
 dotenv.config();
@@ -51,6 +56,11 @@ app.use("/api/permintaan-barang", permintaanBarangRouter);
 app.use("/api/divisi", divisiRouter);
 app.use("/api/batches", batchesRouter);
 app.use("/api/users", userRouter);
+app.use("/api/roles", roleRouter);
+app.use("/api/items", itemRouter);
+app.use("/api/stok-opname", stokOpnameRouter);
+app.use("/api/gudang", gudangRouter);
+app.use("/api/mutasi-gudang", mutasiGudangRouter);
 app.use("/api/notifications", notificationsRouter);
 
 

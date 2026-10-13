@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { bulkScanBarang, scanBarang } from "../../model/barang/barang.js";
 import { broadcast } from "../../websocket/socket.js";
-import { errorMessage, errorStatus, isValidStatus, getValidStatusList } from "./helpers.js";
+import { errorMessage, errorStatus, isValidStatus, getValidStatusList, barangScope, isStatusInView, statusDeniedMessage } from "./helpers.js";
 
 export async function scanBarangHandler(req: Request, res: Response) {
   try {
@@ -14,6 +14,11 @@ export async function scanBarangHandler(req: Request, res: Response) {
     }
 
     const barang = await scanBarang(kodeBarang);
+
+    if (!isStatusInView(barangScope(req), barang.status)) {
+      return res.status(403).json({ message: statusDeniedMessage(String(barang.status)) });
+    }
+
     res.status(200).json(barang);
   } catch (error) {
     const message = errorMessage(error, "Gagal scan barang");

@@ -22,6 +22,72 @@ model User {
   role      String   @default("user")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  roleRef Role @relation("UserRole", fields: [role], references: [kode], onDelete: Restrict)
+  riwayatMutasiGudang RiwayatMutasiGudang[]
+  stokItemMutasi      StokItemMutasi[]
+  stokOpnameSesi      StokOpnameSesi[]
+
+  @@index([role], map: "User_role_fkey")
+}
+
+// =============================================
+// RBAC: role master + permission master + matriks akses
+// Kode role/permission disimpan lowercase; input API dinormalisasi
+// supaya "ADMIN" dan "admin" menunjuk role yang sama.
+// =============================================
+
+model Role {
+  id        Int      @id @default(autoincrement())
+  kode      String   @unique
+  nama      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]                       @relation("UserRole")
+  permissions  RolePermission[]
+  barangStatus RoleBarangStatusPermission[]
+}
+
+model Permission {
+  id        Int      @id @default(autoincrement())
+  kode      String   @unique
+  nama      String
+  kelompok  String   @default("BARANG")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles RolePermission[]
+}
+
+// Grant permission tingkat aksi ke sebuah role. Baris hilang otomatis saat
+// role atau permission dihapus.
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId], map: "RolePermission_permissionId_fkey")
+}
+
+// Visibilitas per status barang. STATUS_ADMIN (lihat middleware/auth.ts)
+// melewati matriks ini dan selalu melihat semua status.
+model RoleBarangStatusPermission {
+  roleId     Int
+  statusKode String
+  canView    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  role   Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  status StatusBarang @relation(fields: [statusKode], references: [kode], onDelete: Cascade)
+
+  @@id([roleId, statusKode])
+  @@index([statusKode], map: "RoleBarangStatusPermission_statusKode_fkey")
 }
 
 model Product {
@@ -74,6 +140,71 @@ model Divisi {
   updatedAt DateTime @updatedAt
 
   karyawan Karyawan[]
+  items    Item[]
+}
+
+// =============================================
+// Master Item (pilihan permintaan barang, bukan unit fisik helm)
+// =============================================
+
+model Item {
+  id        Int      @id @default(autoincrement())
+  kode      String   @unique
+  nama      String
+  divisiId  Int?
+  unit      String   @default("pcs")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  divisi Divisi? @relation(fields: [divisiId], references: [id], onDelete: SetNull)
+  permintaanItems PermintaanBarangItem[]
+  stokMutasi      StokItemMutasi[]
+  opnameBaris     StokOpnameBaris[]
+
+  @@index([divisiId], map: "Item_divisiId_fkey")
+}
+
+// =============================================
+// Master Gudang (lokasi penyimpanan)
+// Jumlah barang dihitung via _count, bukan kolom stok.
+// =============================================
+
+model Gudang {
+  id        Int      @id @default(autoincrement())
+  kode      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  barang       Barang[]
+  mutasiKeluar RiwayatMutasiGudang[] @relation("MutasiGudangAsal")
+  mutasiMasuk  RiwayatMutasiGudang[] @relation("MutasiGudangTujuan")
+}
+
+// Riwayat perpindahan lokasi barang. Append-only: tidak ada
+// endpoint ubah/hapus; koreksi dilakukan lewat mutasi balik.
+model RiwayatMutasiGudang {
+  id             Int      @id @default(autoincrement())
+  barangId       Int
+  gudangAsalId   Int?
+  gudangTujuanId Int?
+  jumlah         Int      @default(1)
+  tanggal        DateTime @default(now())
+  keterangan     String?
+  userId         Int?
+  createdAt      DateTime @default(now())
+
+  barang       Barang  @relation(fields: [barangId], references: [id], onDelete: Restrict)
+  gudangAsal   Gudang? @relation("MutasiGudangAsal", fields: [gudangAsalId], references: [id], onDelete: SetNull)
+  gudangTujuan Gudang? @relation("MutasiGudangTujuan", fields: [gudangTujuanId], references: [id], onDelete: SetNull)
+  user         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([barangId, tanggal])
+  @@index([gudangAsalId], map: "RiwayatMutasiGudang_gudangAsalId_fkey")
+  @@index([gudangTujuanId], map: "RiwayatMutasiGudang_gudangTujuanId_fkey")
+  @@index([userId], map: "RiwayatMutasiGudang_userId_fkey")
 }
 
 model Size {
@@ -161,6 +292,7 @@ model StatusBarang {
   riwayat RiwayatBarang[] @relation("RiwayatStatus")
   transisiDari StatusTransition[] @relation("TransitionFrom")
   transisiKe   StatusTransition[] @relation("TransitionTo")
+  rolePermissions RoleBarangStatusPermission[]
 }
 
 // Transisi status barang yang diizinkan. Kosong untuk suatu fromKode =
@@ -198,6 +330,7 @@ model Barang {
   variantId  Int
   batchId    Int?
   groupId    Int?
+  gudangId   Int?
   tanggal    DateTime?
   status     String   @default("REGISTER")
 
@@ -207,12 +340,15 @@ model Barang {
   variant   ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
   batch     ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
   group     BarangGroup?     @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  gudang    Gudang?          @relation(fields: [gudangId], references: [id], onDelete: SetNull)
   statusRef StatusBarang     @relation("BarangStatus", fields: [status], references: [kode])
   riwayat   RiwayatBarang[]
+  riwayatMutasiGudang RiwayatMutasiGudang[]
 
   @@index([variantId])
   @@index([batchId])
   @@index([groupId])
+  @@index([gudangId], map: "Barang_gudangId_fkey")
   @@index([status])
 }
 
@@ -418,6 +554,75 @@ enum StatusApprovalPermintaan {
   DISETUJUI
 }
 
+enum StatusKeputusanItem {
+  MENUNGGU
+  DISETUJUI
+  DITOLAK
+}
+
+enum TipeStokItem {
+  MASUK
+  KELUAR
+}
+
+// Ledger stok item master (append-only). Saldo = SUM(MASUK) - SUM(KELUAR).
+// Koreksi dilakukan dengan baris pembalik, tidak pernah ubah/hapus.
+model StokItemMutasi {
+  id                      Int      @id @default(autoincrement())
+  itemId                  Int
+  tipe                    TipeStokItem
+  jumlah                  Int
+  sumberPermintaanItemId  Int?
+  sumberOpnameBarisId    Int?
+  keterangan              String?
+  userId                  Int?
+  tanggal                 DateTime @default(now())
+  createdAt               DateTime @default(now())
+
+  item           Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  sumberPermintaan PermintaanBarangItem? @relation(fields: [sumberPermintaanItemId], references: [id], onDelete: SetNull)
+  sumberOpname   StokOpnameBaris?      @relation(fields: [sumberOpnameBarisId], references: [id], onDelete: SetNull)
+  user           User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, tanggal])
+  @@index([sumberPermintaanItemId], map: "StokItemMutasi_sumberPermintaanItemId_fkey")
+  @@index([sumberOpnameBarisId], map: "StokItemMutasi_sumberOpnameBarisId_fkey")
+  @@index([userId], map: "StokItemMutasi_userId_fkey")
+}
+
+// Stok opname massal: satu sesi berisi banyak baris hitung fisik.
+// Baris selalu disimpan (termasuk selisih 0) sebagai bukti sudah dihitung.
+// Selisih != 0 otomatis membuat baris ledger penyeimbang (MASUK/KELUAR).
+model StokOpnameSesi {
+  id         Int      @id @default(autoincrement())
+  tanggal    DateTime @default(now())
+  keterangan String?
+  userId     Int?
+  createdAt  DateTime @default(now())
+
+  user  User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  baris StokOpnameBaris[]
+
+  @@index([tanggal])
+  @@index([userId], map: "StokOpnameSesi_userId_fkey")
+}
+
+model StokOpnameBaris {
+  id         Int @id @default(autoincrement())
+  sesiId     Int
+  itemId     Int
+  stokSistem Int
+  stokFisik  Int
+  selisih    Int
+
+  sesi   StokOpnameSesi @relation(fields: [sesiId], references: [id], onDelete: Cascade)
+  item   Item           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  ledger StokItemMutasi[]
+
+  @@unique([sesiId, itemId])
+  @@index([itemId], map: "StokOpnameBaris_itemId_fkey")
+}
+
 // Permintaan barang/bahan baku dari departemen ke gudang (form FRM-PRD-001).
 // Item bebas teks (bukan FK ProductVariant) karena dapat berupa bahan baku
 // yang tidak ada di master variant.
@@ -444,14 +649,20 @@ model PermintaanBarang {
 model PermintaanBarangItem {
   id           Int      @id @default(autoincrement())
   permintaanId Int
-  nama         String
-  spesifikasi  String?
-  jumlah       Int
-  satuan       String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  itemId          Int?
+  nama            String
+  spesifikasi     String?
+  jumlah          Int
+  satuan          String?
+  statusKeputusan StatusKeputusanItem @default(MENUNGGU)
+  jumlahDisetujui Int?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   permintaan PermintaanBarang @relation(fields: [permintaanId], references: [id], onDelete: Cascade)
+  item       Item?            @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  stokMutasi StokItemMutasi[]
 
   @@index([permintaanId], map: "PermintaanBarangItem_permintaanId_fkey")
+  @@index([itemId], map: "PermintaanBarangItem_itemId_fkey")
 }

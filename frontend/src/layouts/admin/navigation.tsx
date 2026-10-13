@@ -9,6 +9,7 @@ import {
   faFileLines,
   faGear,
   faHouse,
+  faKey,
   faLayerGroup,
   faPlug,
   faSitemap,
@@ -91,6 +92,30 @@ export const WAREHOUSE: typeof MANAJEMEN = {
       icon: faClipboardList,
       end: true,
     },
+    {
+      to: "/admin/item",
+      label: "Kelola Item",
+      icon: faTags,
+      end: true,
+    },
+    {
+      to: "/admin/stok-opname",
+      label: "Opname Stok",
+      icon: faClipboardCheck,
+      end: true,
+    },
+    {
+      to: "/admin/gudang",
+      label: "Kelola Gudang",
+      icon: faArchive,
+      end: true,
+    },
+    {
+      to: "/admin/mutasi-gudang",
+      label: "Riwayat Mutasi",
+      icon: faFileLines,
+      end: true,
+    },
   ],
 };
 
@@ -114,6 +139,12 @@ export const KARYAWAN: typeof MANAJEMEN = {
       to: "/admin/user",
       label: "Kelola User",
       icon: faUsers,
+      end: true,
+    },
+    {
+      to: "/admin/role",
+      label: "Kelola Permission",
+      icon: faKey,
       end: true,
     },
   ],

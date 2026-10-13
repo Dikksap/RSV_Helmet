@@ -21,6 +21,10 @@ services:
 
       REDIS_URL: redis://redis:6379
 
+      # Chromium milik prisma-erd-generator menolak jalan sebagai root di
+      # container, jadi ERD hanya digenerate di host.
+      DISABLE_ERD: "true"
+
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
 

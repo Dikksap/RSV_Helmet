@@ -8,6 +8,12 @@ vi.mock("../src/model/user/user.js", () => ({
   getUserRole: vi.fn(),
 }));
 
+vi.mock("../src/model/role/role.js", () => ({
+  ADMIN_ROLE: "admin",
+  getRoleAccess: vi.fn(),
+  getRoleKodes: vi.fn(),
+}));
+
 vi.mock("../src/lib/redis.js", () => ({
   default: {
     setex: vi.fn().mockResolvedValue("OK"),
@@ -18,11 +24,13 @@ vi.mock("../src/lib/redis.js", () => ({
 import authRouter from "../src/routes/auth.js";
 import { authenticate, adminOnly, requireRole } from "../src/middleware/auth.js";
 import { findUserByEmail, getUserRole } from "../src/model/user/user.js";
+import { getRoleAccess } from "../src/model/role/role.js";
 import { signToken, verifyToken, type TokenPayload } from "../src/lib/jwt.js";
 import redis from "../src/lib/redis.js";
 
 const mockedFindUserByEmail = vi.mocked(findUserByEmail);
 const mockedGetUserRole = vi.mocked(getUserRole);
+const mockedGetRoleAccess = vi.mocked(getRoleAccess);
 const mockedRedis = {
   setex: vi.mocked(redis.setex),
   exists: vi.mocked(redis.exists),
@@ -66,6 +74,11 @@ beforeEach(() => {
   mockedRedis.setex.mockResolvedValue("OK");
   mockedRedis.exists.mockResolvedValue(0);
   mockedGetUserRole.mockResolvedValue("admin");
+  mockedGetRoleAccess.mockResolvedValue({
+    role: "admin",
+    permissions: ["BARANG_LIHAT", "ROLE_KELOLA"],
+    statusView: null,
+  });
 });
 
 // =============================================
@@ -352,6 +365,25 @@ describe("GET /api/auth/me", () => {
     const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.user).toEqual({ id: 1, name: "Admin", email: "admin@example.com", role: "admin" });
+    expect(res.body.permissions).toEqual(["BARANG_LIHAT", "ROLE_KELOLA"]);
+    expect(res.body.statusView).toBeNull();
     expect(typeof res.body.exp).toBe("number");
+  });
+
+  it("401 jika akun sudah dihapus", async () => {
+    mockedGetRoleAccess.mockResolvedValue(null);
+    const token = signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
+    const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(401);
+    expect(res.body.message).toContain("Akun tidak ditemukan");
+  });
+
+  it("statusView ikut dikembalikan untuk role terbatas", async () => {
+    mockedGetRoleAccess.mockResolvedValue({ role: "gudang", permissions: ["BARANG_LIHAT"], statusView: ["FINISHGOOD", "RETUR"] });
+    const token = signToken({ id: 3, email: "gudang@example.com", name: "Gudang", role: "gudang" });
+    const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe("gudang");
+    expect(res.body.statusView).toEqual(["FINISHGOOD", "RETUR"]);
   });
 });

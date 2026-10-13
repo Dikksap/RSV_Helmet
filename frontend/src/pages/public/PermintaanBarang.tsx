@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBuilding,
@@ -7,21 +7,16 @@ import {
   faClipboardList,
   faExclamationTriangle,
   faPlus,
-  faTrash,
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { createPermintaan } from "../../api/permintaanBarang";
+import { getItems, type Item } from "../../api/item";
 import { buildPermintaanPdf, sharePdfFile, whatsappText } from "../../lib/permintaanPdf";
-
-type Baris = {
-  nama: string;
-  spesifikasi: string;
-  jumlah: string;
-  satuan: string;
-};
-
-type Notice = { tone: "error" | "success"; text: string };
+import { inputCls, labelCls, req } from "../../components/PermintaanBarang/formUi";
+import { Section } from "../../components/PermintaanBarang/Section";
+import { BarisBarangCard } from "../../components/PermintaanBarang/BarisBarangCard";
+import { BARIS_KOSONG, type Baris, type Notice } from "../../components/PermintaanBarang/types";
 
 const BULAN_ID = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -42,15 +37,6 @@ const formatTanggalID = (iso: string): string => {
   return `${d} ${BULAN_ID[m - 1]} ${y}`;
 };
 
-/* ---------- Design tokens (kelas input) ---------- */
-const inputBase =
-  "w-full rounded-lg border border-[#DADADA] bg-white px-3.5 py-2.5 text-[0.95rem] text-[#171717] " +
-  "placeholder:text-[#A3A3A3] transition focus:outline-none focus:ring-4 " +
-  "focus:ring-[#E30613]/10 focus:border-[#E30613] disabled:bg-[#F3F3F3]";
-const inputCls = inputBase;
-const labelCls = "mb-1.5 block text-[0.82rem] font-semibold uppercase tracking-wide text-[#171717]";
-const req = <span className="text-[#E30613]">*</span>;
-
 /* ---------- Style layar ---------- */
 const SCREEN_STYLE = `
   @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
@@ -62,37 +48,6 @@ const SCREEN_STYLE = `
   @media screen and (max-width: 460px) { .paper-zoom { zoom: .34; } }
 `;
 
-function Section({
-  no,
-  title,
-  subtitle,
-  children,
-}: {
-  no: string;
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-5 rounded-lg border border-[#E5E5E5] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] sm:p-6">
-      <div className="mb-5 flex items-start gap-4 border-b border-[#E5E5E5] pb-4">
-        <span className="text-[2rem] font-black leading-none tracking-tight text-[#E30613]">
-          {no}
-        </span>
-        <span className="border-l-2 border-[#E30613] pl-4">
-          <h2 className="text-[1.05rem] font-extrabold uppercase tracking-wide text-[#0B0B0B]">
-            {title}
-          </h2>
-          <p className="mt-0.5 text-[0.78rem] font-medium uppercase tracking-[0.14em] text-[#A3A3A3]">
-            {subtitle}
-          </p>
-        </span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
 function PermintaanBarang() {
   const [noPermintaan, setNoPermintaan] = useState("");
   const [saving, setSaving] = useState(false);
@@ -103,10 +58,60 @@ function PermintaanBarang() {
   const [prioritas, setPrioritas] = useState("Normal");
   const [tanggalDibutuhkan, setTanggalDibutuhkan] = useState("");
   const [alasan, setAlasan] = useState("");
-  const [baris, setBaris] = useState<Baris[]>([
-    { nama: "", spesifikasi: "", jumlah: "", satuan: "" },
-  ]);
+  const [baris, setBaris] = useState<Baris[]>([{ ...BARIS_KOSONG }]);
+  const [masterItem, setMasterItem] = useState<Item[]>([]);
+  const [masterState, setMasterState] = useState<"loading" | "ready" | "error">("loading");
+  const [divisiList, setDivisiList] = useState<{ id: number; nama: string }[]>([]);
+  const [divisiManual, setDivisiManual] = useState(false);
+  const [triedSubmit, setTriedSubmit] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+
+  const muatMaster = () => {
+    setMasterState("loading");
+    getItems({ aktif: true })
+      .then((rows) => {
+        setMasterItem(rows);
+        setMasterState("ready");
+      })
+      .catch(() => {
+        setMasterItem([]);
+        setMasterState("error");
+      });
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat master sekali saat mount
+    muatMaster();
+    // Fetch polos (tanpa redirect login ala api client) karena halaman publik.
+    fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8000/api"}/divisi`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: unknown) => {
+        if (Array.isArray(rows)) {
+          setDivisiList(
+            rows
+              .filter((d): d is { id: number; nama: string } =>
+                typeof d === "object" && d !== null &&
+                typeof (d as { id?: unknown }).id === "number" &&
+                typeof (d as { nama?: unknown }).nama === "string",
+              )
+              .sort((a, b) => a.nama.localeCompare(b.nama)),
+          );
+        }
+      })
+      .catch(() => setDivisiList([]));
+  }, []);
+
+  const pilihItem = (index: number, id: string) =>
+    setBaris((prev) =>
+      prev.map((b, i) => {
+        if (i !== index) return b;
+        if (!id) return { ...b, itemId: "", kode: "", divisi: "" };
+        const m = masterItem.find((x) => String(x.id) === id);
+        if (!m) return { ...b, itemId: "", kode: "", divisi: "" };
+        // Detail ikut master database: kode, nama, satuan, divisi dikunci.
+        return { ...b, itemId: id, kode: m.kode, nama: m.nama, satuan: m.unit, divisi: m.divisi?.nama ?? "" };
+      }),
+    );
 
   const noticeRef = useRef<HTMLDivElement>(null);
 
@@ -121,8 +126,22 @@ function PermintaanBarang() {
   const updateBaris = (index: number, field: keyof Baris, value: string) =>
     setBaris((prev) => prev.map((b, i) => (i === index ? { ...b, [field]: value } : b)));
 
+  const namaBebas = (index: number, text: string) =>
+    setBaris((prev) =>
+      prev.map((b, i) => (i === index ? { ...b, itemId: "", nama: text } : b)),
+    );
+
+  const rowError = (b: Baris, i: number): string | null => {
+    if (!b.nama.trim()) return `Nama barang pada baris ${i + 1} wajib diisi.`;
+    const n = Number(b.jumlah);
+    if (!b.jumlah || !Number.isInteger(n) || n <= 0) {
+      return `Jumlah barang pada baris ${i + 1} harus bilangan bulat lebih dari 0.`;
+    }
+    return null;
+  };
+
   const tambahBarang = () =>
-    setBaris((prev) => [...prev, { nama: "", spesifikasi: "", jumlah: "", satuan: "" }]);
+    setBaris((prev) => [...prev, { ...BARIS_KOSONG }]);
 
   const hapusBarang = (index: number) => {
     if (baris.length <= 1) {
@@ -133,22 +152,37 @@ function PermintaanBarang() {
   };
 
   const cekBaris = (): boolean => {
+    setTriedSubmit(true);
     if (baris.length === 0) {
       notify("error", "Anda belum menambahkan data barang.");
       return false;
     }
     for (let i = 0; i < baris.length; i++) {
-      const b = baris[i];
-      if (!b.nama.trim()) {
-        notify("error", `Nama barang pada baris ${i + 1} wajib diisi.`);
-        return false;
-      }
-      if (!b.jumlah || Number(b.jumlah) <= 0) {
-        notify("error", `Jumlah barang pada baris ${i + 1} harus lebih dari 0.`);
+      const err = rowError(baris[i], i);
+      if (err) {
+        notify("error", err);
         return false;
       }
     }
     return true;
+  };
+
+  const ringkasan = baris.reduce(
+    (acc, b) => {
+      const n = Number(b.jumlah);
+      if (b.nama.trim() && Number.isInteger(n) && n > 0) {
+        acc.jenis += 1;
+        acc.qty += n;
+      }
+      return acc;
+    },
+    { jenis: 0, qty: 0 },
+  );
+
+  const stepJumlah = (index: number, delta: 1 | -1) => {
+    const cur = Number(baris[index]?.jumlah);
+    const next = delta === 1 ? (Number.isFinite(cur) ? Math.floor(cur) + 1 : 1) : Math.max(1, (Number.isFinite(cur) ? Math.ceil(cur) : 2) - 1);
+    updateBaris(index, "jumlah", String(next));
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -168,6 +202,7 @@ function PermintaanBarang() {
         tanggalDibutuhkan: tanggalDibutuhkan || null,
         alasan: alasan.trim(),
         items: baris.map((b) => ({
+          itemId: b.itemId ? Number(b.itemId) : null,
           nama: b.nama.trim(),
           spesifikasi: b.spesifikasi.trim() || null,
           jumlah: Number(b.jumlah),
@@ -306,14 +341,51 @@ function PermintaanBarang() {
                   <FontAwesomeIcon icon={faBuilding} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
                   DIVISI {req}
                 </label>
-                <input
-                  id="f-departemen"
-                  required
-                  value={departemen}
-                  onChange={(e) => setDepartemen(e.target.value)}
-                  placeholder="Contoh: Produksi"
-                  className={inputCls}
-                />
+                {divisiList.length > 0 && !divisiManual ? (
+                  <select
+                    id="f-departemen"
+                    required
+                    value={departemen}
+                    onChange={(e) => {
+                      if (e.target.value === "__manual__") {
+                        setDivisiManual(true);
+                        setDepartemen("");
+                      } else {
+                        setDepartemen(e.target.value);
+                      }
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">— Pilih divisi —</option>
+                    {divisiList.map((d) => (
+                      <option key={d.id} value={d.nama}>{d.nama}</option>
+                    ))}
+                    <option value="__manual__">Lainnya — tulis manual</option>
+                  </select>
+                ) : (
+                  <>
+                    <input
+                      id="f-departemen"
+                      required
+                      value={departemen}
+                      onChange={(e) => setDepartemen(e.target.value)}
+                      placeholder="Contoh: Produksi"
+                      className={inputCls}
+                    />
+                    {divisiList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDivisiManual(false);
+                          setDepartemen("");
+                        }}
+                        className="mt-1 text-[0.78rem] font-semibold text-[#E30613] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E30613]/40"
+                      >
+                        ← Kembali pilih dari daftar
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
              
               <div>
@@ -360,167 +432,66 @@ function PermintaanBarang() {
           </Section>
 
           <Section no="02" title="Detail Barang" subtitle="Item Details">
-            {/* Desktop: tabel editor */}
-            <div className="hidden overflow-x-auto rounded-lg border border-[#E5E5E5] md:block">
-              <table className="w-full border-collapse bg-white text-left text-[0.9rem]">
-                <thead>
-                  <tr className="bg-[#0B0B0B] text-white">
-                    <th className="w-12 border-b-2 border-[#E30613] px-4 py-3 text-center text-xs font-bold">#</th>
-                    <th className="border-b-2 border-[#E30613] px-4 py-3 text-xs font-bold uppercase tracking-wider">Nama Barang</th>
-                    <th className="border-b-2 border-[#E30613] px-4 py-3 text-xs font-bold uppercase tracking-wider">Spesifikasi</th>
-                    <th className="w-24 border-b-2 border-[#E30613] px-4 py-3 text-center text-xs font-bold uppercase tracking-wider">Qty</th>
-                    <th className="w-28 border-b-2 border-[#E30613] px-4 py-3 text-center text-xs font-bold uppercase tracking-wider">Satuan</th>
-                    <th className="w-14 border-b-2 border-[#E30613] px-4 py-3" aria-label="Aksi" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E5E5]">
-                  {baris.map((b, i) => (
-                    <tr key={i} className="align-top">
-                      <td className="px-4 py-2.5 text-center text-[1rem] font-black text-[#E30613]">
-                        {String(i + 1).padStart(2, "0")}
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          id={`b-nama-${i}`}
-                          aria-label={`Nama barang baris ${i + 1}`}
-                          value={b.nama}
-                          onChange={(e) => updateBaris(i, "nama", e.target.value)}
-                          placeholder="Contoh: Kertas A4"
-                          className={`${inputCls} border-0 px-2 py-2 focus:ring-2`}
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          id={`b-spek-${i}`}
-                          aria-label={`Spesifikasi baris ${i + 1}`}
-                          value={b.spesifikasi}
-                          onChange={(e) => updateBaris(i, "spesifikasi", e.target.value)}
-                          placeholder="Merek / ukuran"
-                          className={`${inputCls} border-0 px-2 py-2 focus:ring-2`}
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          id={`b-jml-${i}`}
-                          aria-label={`Jumlah baris ${i + 1}`}
-                          type="number"
-                          min="1"
-                          value={b.jumlah}
-                          onChange={(e) => updateBaris(i, "jumlah", e.target.value)}
-                          placeholder="0"
-                          className={`${inputCls} border-0 px-2 py-2 text-center font-bold focus:ring-2`}
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          id={`b-sat-${i}`}
-                          aria-label={`Satuan baris ${i + 1}`}
-                          value={b.satuan}
-                          onChange={(e) => updateBaris(i, "satuan", e.target.value)}
-                          placeholder="Pcs"
-                          className={`${inputCls} border-0 px-2 py-2 text-center focus:ring-2`}
-                        />
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => hapusBarang(i)}
-                          disabled={baris.length <= 1}
-                          title={baris.length <= 1 ? "Minimal 1 barang" : "Hapus barang"}
-                          aria-label={`Hapus barang baris ${i + 1}`}
-                          className="rounded p-1.5 text-[#A3A3A3] transition hover:bg-[#E30613]/10 hover:text-[#E30613] disabled:cursor-not-allowed disabled:opacity-30"
-                        >
-                          <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Status master item */}
+            {masterState === "loading" && (
+              <p role="status" className="animate-pulse text-[0.85rem] text-[#A3A3A3]">
+                Memuat master item dari database...
+              </p>
+            )}
+            {masterState === "error" && (
+              <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-[#E30613]/30 bg-[#E30613]/5 px-4 py-3 text-[0.85rem] text-[#171717]">
+                <span>Gagal memuat master item — silakan tulis nama barang manual.</span>
+                <button
+                  type="button"
+                  onClick={muatMaster}
+                  className="rounded-lg border border-[#E30613]/40 px-3 py-1.5 font-semibold text-[#E30613] transition hover:bg-[#E30613]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E30613]/40"
+                >
+                  Coba lagi
+                </button>
+              </div>
+            )}
+
+            {/* Kartu barang responsif: satu render untuk desktop & HP */}
+            <div className="flex flex-col gap-4">
+              {baris.map((b, i) => (
+                <BarisBarangCard
+                  key={i}
+                  b={b}
+                  index={i}
+                  canDelete={baris.length > 1}
+                  masterItems={masterItem}
+                  error={triedSubmit ? rowError(b, i) : null}
+                  onPick={(id) => pilihItem(i, id)}
+                  onNama={(text) => namaBebas(i, text)}
+                  onField={(field, value) => updateBaris(i, field, value)}
+                  onStep={(delta) => stepJumlah(i, delta)}
+                  onHapus={() => hapusBarang(i)}
+                />
+              ))}
             </div>
 
-            {/* Mobile: kartu */}
-            <div className="flex flex-col gap-3 md:hidden">
-              {baris.map((b, i) => (
-                <div key={i} className="rounded-lg border border-[#E5E5E5] bg-[#F3F3F3]/50 p-3.5">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-[1rem] font-black text-[#E30613]">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => hapusBarang(i)}
-                      disabled={baris.length <= 1}
-                      aria-label={`Hapus barang baris ${i + 1}`}
-                      className="rounded p-1.5 text-[#A3A3A3] transition hover:bg-[#E30613]/10 hover:text-[#E30613] disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <FontAwesomeIcon icon={faTrash} className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <label htmlFor={`b-nama-${i}`} className={labelCls}>
-                        Nama Barang / Bahan {req}
-                      </label>
-                      <input
-                        id={`b-nama-${i}`}
-                        value={b.nama}
-                        onChange={(e) => updateBaris(i, "nama", e.target.value)}
-                        placeholder="Contoh: Kertas A4"
-                        className={inputCls}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor={`b-spek-${i}`} className={labelCls}>
-                        Spesifikasi
-                      </label>
-                      <input
-                        id={`b-spek-${i}`}
-                        value={b.spesifikasi}
-                        onChange={(e) => updateBaris(i, "spesifikasi", e.target.value)}
-                        placeholder="Merek / ukuran"
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor={`b-jml-${i}`} className={labelCls}>
-                          Jumlah {req}
-                        </label>
-                        <input
-                          id={`b-jml-${i}`}
-                          type="number"
-                          min="1"
-                          value={b.jumlah}
-                          onChange={(e) => updateBaris(i, "jumlah", e.target.value)}
-                          className={inputCls}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor={`b-sat-${i}`} className={labelCls}>
-                          Satuan
-                        </label>
-                        <input
-                          id={`b-sat-${i}`}
-                          value={b.satuan}
-                          onChange={(e) => updateBaris(i, "satuan", e.target.value)}
-                          placeholder="Pcs"
-                          className={inputCls}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            {/* Ringkasan otomatis */}
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg bg-[#0B0B0B] px-5 py-3 text-white"
+            >
+              <span className="text-[0.85rem]">
+                Jenis barang: <strong className="tabular-nums">{ringkasan.jenis}</strong>
+              </span>
+              <span className="text-[0.85rem]">
+                Total kuantitas valid: <strong className="tabular-nums">{ringkasan.qty.toLocaleString("id-ID")}</strong>
+              </span>
             </div>
 
             <button
               type="button"
               onClick={tambahBarang}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#A3A3A3] bg-white px-5 py-3 text-[0.85rem] font-bold uppercase tracking-wider text-[#171717] transition hover:border-[#E30613] hover:text-[#E30613]"
+              aria-label={`Tambah barang (saat ini ${baris.length} baris)`}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#0B0B0B] px-5 py-3.5 text-[0.9rem] font-bold uppercase tracking-wider text-white transition hover:bg-[#E30613] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#E30613]/30"
             >
-              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
-              Tambah Barang
+              <FontAwesomeIcon icon={faPlus} className="h-4 w-4" />
+              + Tambah Barang
             </button>
           </Section>
 

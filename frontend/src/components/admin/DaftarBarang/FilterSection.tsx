@@ -26,6 +26,10 @@ type FilterSectionProps = {
   styleOptions: { id: number; nama: string }[];
   colorOptions: { id: number; nama: string }[];
   sizeOptions: { id: number; nama: string }[];
+  gudangFilter: string;
+  gudangOptions: { id: number; nama: string }[];
+  tanpaGudang?: boolean;
+  onTanpaGudangChange?: (value: boolean) => void;
   currentPage: number;
   totalPages: number;
   hasActiveFilters: boolean;
@@ -42,6 +46,7 @@ type FilterSectionProps = {
   onStyleChange: (value: string) => void;
   onColorChange: (value: string) => void;
   onSizeChange: (value: string) => void;
+  onGudangChange: (value: string) => void;
   onDatePresetChange: (value: string) => void;
   onTanggalAwalChange: (value: string) => void;
   onTanggalAkhirChange: (value: string) => void;
@@ -66,6 +71,10 @@ export function FilterSection({
   styleOptions,
   colorOptions,
   sizeOptions,
+  gudangFilter,
+  gudangOptions,
+  tanpaGudang,
+  onTanpaGudangChange,
   currentPage,
   totalPages,
   hasActiveFilters,
@@ -82,6 +91,7 @@ export function FilterSection({
   onStyleChange,
   onColorChange,
   onSizeChange,
+  onGudangChange,
   onDatePresetChange,
   onTanggalAwalChange,
   onTanggalAkhirChange,
@@ -91,7 +101,7 @@ export function FilterSection({
   const { options: statusOptions } = useStatusOptions();
   const inputCls = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
   const labelCls = "flex flex-col gap-1 text-xs font-semibold text-slate-600";
-  const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, tanpaDus].filter(Boolean).length;
+  const activeCount = [search, statusFilter, variantFilter, styleFilter, colorFilter, sizeFilter, gudangFilter, tanggalAwal, tanggalAkhir, hanyaPernahRetur, tanpaDus, tanpaGudang].filter(Boolean).length;
 
   const handleDatePresetChange = (value: string) => {
     onDatePresetChange(value);
@@ -222,6 +232,16 @@ export function FilterSection({
           </label>
 
           <label className={labelCls}>
+            <span>Gudang</span>
+            <select className={`${inputCls} truncate`} value={gudangFilter} onChange={(e) => onGudangChange(e.target.value)}>
+              <option value="">Semua Gudang</option>
+              {gudangOptions.map((opt) => (
+                <option key={opt.id} value={String(opt.id)}>{opt.nama}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={labelCls}>
             <span>Periode</span>
             <select className={inputCls} value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
               <option value="">Pilih periode...</option>
@@ -259,6 +279,16 @@ export function FilterSection({
               className="h-4 w-4 accent-[#1E3A5F]"
             />
             Tanpa dus
+          </label>
+
+          <label className="flex h-10 items-center gap-2 self-end rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(tanpaGudang)}
+              onChange={(e) => onTanpaGudangChange?.(e.target.checked)}
+              className="h-4 w-4 accent-[#1E3A5F]"
+            />
+            Tanpa gudang
           </label>
 
           <div className="flex items-end">

@@ -5,6 +5,7 @@ const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 export type ApprovalPermintaan = "BELUM_DISETUJUI" | "DISETUJUI";
 
 export interface PermintaanItemInput {
+  itemId?: number | null;
   nama: string;
   spesifikasi?: string | null;
   jumlah: number;
@@ -22,13 +23,24 @@ export interface CreatePermintaanPayload {
   items: PermintaanItemInput[];
 }
 
+export type StatusKeputusanItem = "MENUNGGU" | "DISETUJUI" | "DITOLAK";
+
+export interface KeputusanItemInput {
+  id: number;
+  jumlahDisetujui: number;
+}
+
 export interface PermintaanItemRecord {
   id: number;
   permintaanId: number;
+  itemId: number | null;
   nama: string;
+  statusKeputusan: StatusKeputusanItem;
+  jumlahDisetujui: number | null;
   spesifikasi: string | null;
   jumlah: number;
   satuan: string | null;
+  item?: { id: number; kode: string; nama: string; unit: string } | null;
 }
 
 export interface PermintaanBarangRecord {
@@ -95,14 +107,29 @@ export async function listPermintaan(
   return response.json() as Promise<PermintaanListResponse>;
 }
 
+export async function petakanItemPermintaan(
+  permintaanId: number,
+  barangItemId: number,
+  itemId: number,
+): Promise<PermintaanItemRecord> {
+  const response = await fetch(`${apiUrl}/permintaan-barang/${permintaanId}/items/${barangItemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ itemId }),
+  });
+  if (!response.ok) await parseListError(response, "Gagal memetakan item ke master");
+  return response.json() as Promise<PermintaanItemRecord>;
+}
+
 export async function setApprovalPermintaan(
   id: number,
   approval: ApprovalPermintaan,
+  items?: KeputusanItemInput[],
 ): Promise<PermintaanBarangRecord> {
   const response = await fetch(`${apiUrl}/permintaan-barang/${id}/approval`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ approval }),
+    body: JSON.stringify(items ? { approval, items } : { approval }),
   });
   if (!response.ok) await parseListError(response, "Gagal memperbarui status approval");
   return response.json() as Promise<PermintaanBarangRecord>;

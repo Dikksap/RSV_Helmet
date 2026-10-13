@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { getUser, homeForRole, isAuthenticated, login, setAuth } from "../../api/auth";
+import { checkSession, getUser, homeForRole, isAuthenticated, login, setAuth } from "../../api/auth";
 import logoUrl from "../../assets/logo.png";
 
 const inputClass =
@@ -29,6 +29,7 @@ function Login() {
     try {
       const response = await login({ email, password });
       setAuth(response.token, response.user);
+      await checkSession();
       navigate(homeForRole(response.user.role), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");

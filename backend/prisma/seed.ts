@@ -17,18 +17,21 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log("Seeding database...");
 
-  // ── Users ──────────────────────────────────────────────────────────────
+  // ── Users ─────────────────────────────────────────────────────────────
   const users = [
-    { name: "Admin",        email: "admin@example.com", password: "admin123", role: "admin" },
-    { name: "Budi Santoso", email: "budi@example.com",  password: "budi123",  role: "user" },
-    { name: "Siti Rahayu",  email: "siti@example.com",  password: "siti123",  role: "user" },
+    { name: "Admin",        email: "admin@example.com",    password: "admin123",    role: "admin" },
+    { name: "Budi Santoso", email: "budi@example.com",     password: "budi123",     role: "user" },
+    { name: "Siti Rahayu",  email: "siti@example.com",     password: "siti123",     role: "user" },
+    { name: "Petugas Gudang", email: "gudang@example.com", password: "gudang123",   role: "gudang" },
+    { name: "Operator Produksi", email: "produksi@example.com", password: "produksi123", role: "produksi" },
+    { name: "Petugas QC",   email: "qc@example.com",       password: "qc123",       role: "qc" },
   ];
 
   for (const user of users) {
     const hashedPassword = await bcrypt.hash(user.password, 10);
     await prisma.user.upsert({
       where: { email: user.email },
-      update: {},
+      update: { role: user.role },
       create: { name: user.name, email: user.email, password: hashedPassword, role: user.role },
     });
     console.log(`✓ User "${user.name}" (${user.email})`);
@@ -50,6 +53,75 @@ async function main() {
     });
   }
   console.log(`✓ ${statusSeed.length} StatusBarang selesai`);
+
+  // ── RBAC: grant permission + matriks visibilitas status barang ─────────
+  // Role dan permission master dibuat oleh migration add_rbac_role_permission.
+  // Role "admin" sengaja tanpa baris: ia melewati matriks dan selalu punya
+  // seluruh permission (lihat model/role/role.ts).
+  const permissionGrants: Record<string, string[]> = {
+    user: [
+      "BARANG_LIHAT",
+      "BARANG_STATISTIK_LIHAT",
+      "BARANG_SCAN",
+      "BARANG_UBAH_STATUS",
+      "BARANG_GENERATE",
+      "BARANG_KELOLA",
+      "MUTASI_GUDANG",
+      "KELOLA_ITEM",
+    ],
+    produksi: [
+      "BARANG_LIHAT",
+      "BARANG_STATISTIK_LIHAT",
+      "BARANG_SCAN",
+      "BARANG_UBAH_STATUS",
+      "BARANG_GENERATE",
+    ],
+    qc: ["BARANG_LIHAT", "BARANG_STATISTIK_LIHAT", "BARANG_SCAN", "BARANG_UBAH_STATUS"],
+    gudang: ["BARANG_LIHAT", "MUTASI_GUDANG", "KELOLA_ITEM"],
+  };
+
+  const allStatus = statusSeed.map((s) => s.kode);
+  const lihatSemua = Object.fromEntries(allStatus.map((k) => [k, true]));
+  const statusViewGrants: Record<string, Record<string, boolean>> = {
+    user: lihatSemua,
+    produksi: lihatSemua,
+    qc: lihatSemua,
+    // Gudang hanya boleh melihat barang jadi dan retur.
+    gudang: { REGISTER: false, FINISHGOOD: true, RETUR: true, OUT: false, BAD: false },
+  };
+
+  await prisma.permission.upsert({
+    where: { kode: "KELOLA_ITEM" },
+    update: { nama: "Kelola (tambah/ubah/hapus) item", kelompok: "ITEM" },
+    create: { kode: "KELOLA_ITEM", nama: "Kelola (tambah/ubah/hapus) item", kelompok: "ITEM" },
+  });
+
+  const permissionId = new Map(
+    (await prisma.permission.findMany()).map((p) => [p.kode, p.id]),
+  );
+
+  for (const [roleKode, kodes] of Object.entries(permissionGrants)) {
+    const role = await prisma.role.findUnique({ where: { kode: roleKode } });
+    if (!role) throw new Error(`Role "${roleKode}" tidak ada. Jalankan migration add_rbac_role_permission.`);
+
+    await prisma.rolePermission.createMany({
+      data: kodes
+        .filter((kode) => permissionId.has(kode))
+        .map((kode) => ({ roleId: role.id, permissionId: permissionId.get(kode)! })),
+      skipDuplicates: true,
+    });
+
+    const statusGrant = statusViewGrants[roleKode] ?? {};
+    for (const [statusKode, canView] of Object.entries(statusGrant)) {
+      await prisma.roleBarangStatusPermission.upsert({
+        where: { roleId_statusKode: { roleId: role.id, statusKode } },
+        update: { canView },
+        create: { roleId: role.id, statusKode, canView },
+      });
+    }
+
+    console.log(`✓ Role "${roleKode}": ${kodes.length} permission, ${Object.keys(statusGrant).length} status`);
+  }
 
   // ── Divisi (1:1 dengan tahap jadwal produksi, dipakai SPK) ──────────────
   const divisiNames = ["Buffing", "Base Coat", "Decal Solid", "Decal Motif", "Top Coat", "Perakitan", "QC"];
@@ -170,6 +242,15 @@ async function main() {
   console.log(`✓ ${count} ProductVariant selesai`);
 
   // ── Barang (5010 pcs) ─────────────────────────────────────────────────
+  // Generation barang tidak idempoten (tanggal acak -> kodeBarang baru),
+  // jadi lewati kalau data sudah ada supaya seed berulang tidak menumpuk.
+  const existingBarang = await prisma.barang.count();
+  if (existingBarang > 0) {
+    console.log(`~ ${existingBarang} Barang sudah ada, lewati generation`);
+    console.log("\n✅ Seeding selesai.");
+    return;
+  }
+
   const TOTAL_BARANG = 5010;
   const BATCH_KAPASITAS = 5000;
 

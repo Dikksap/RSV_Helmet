@@ -1,15 +1,20 @@
 import type { Request, Response } from "express";
 import {
+  ItemTanpaMasterError,
+  KeputusanItemError,
   PermintaanTerkunciError,
   createPermintaan,
   deletePermintaan,
   getPermintaanById,
   listPermintaan,
+  petakanItemMaster,
   setApproval,
   updatePermintaan,
   type ApprovalPermintaan,
+  type KeputusanItemInput,
   type PermintaanInput,
 } from "../../model/permintaanBarang/permintaanBarang.js";
+import { getItemById } from "../../model/item/item.js";
 
 const KEBUTUHAN_UNTUK = ["Produksi", "Maintenance", "Proyek","Lainya"] as const;
 const PRIORITAS = ["Normal", "Urgent", "Sangat Urgent"] as const;
@@ -55,7 +60,7 @@ function parseEnum<T extends string>(
   return { ok: value as T };
 }
 
-function parseBody(body: unknown): ParseResult {
+async function parseBody(body: unknown): Promise<ParseResult> {
   const { tanggal, departemen, namaPeminta, kebutuhanUntuk, prioritas, tanggalDibutuhkan, alasan, items } =
     (body ?? {}) as Record<string, unknown>;
 
@@ -85,23 +90,40 @@ function parseBody(body: unknown): ParseResult {
     return { error: "Field 'items' wajib diisi minimal 1 barang" };
   }
 
-  const parsedItems: ItemParseResult[] = items.map((raw, index): ItemParseResult => {
-    const item = (raw ?? {}) as Record<string, unknown>;
-    const nama = typeof item.nama === "string" ? item.nama.trim() : "";
+  const parsedItems: ItemParseResult[] = [];
+  for (let index = 0; index < items.length; index++) {
+    const item = ((items[index] ?? {}) as Record<string, unknown>);
+
+    let itemId: number | null = null;
+    let master: { nama: string; unit: string } | null = null;
+    if (item.itemId !== undefined && item.itemId !== null && item.itemId !== "") {
+      const parsed = Number(item.itemId);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        return { error: `items[${index}].itemId harus angka bulat lebih dari 0` };
+      }
+      const row = await getItemById(parsed);
+      if (!row) return { error: `items[${index}].itemId tidak dikenal` };
+      itemId = parsed;
+      master = { nama: row.nama, unit: row.unit };
+    }
+
+    // Snapshot: nama/satuan eksplisit menang; bila kosong dan item dipilih,
+    // pakai nilai master saat ini (tidak ikut berubah bila master diedit).
+    const namaRaw = typeof item.nama === "string" ? item.nama.trim() : "";
+    const nama = namaRaw || master?.nama || "";
     if (!nama) return { error: `items[${index}].nama wajib diisi` };
     const jumlah = Number(item.jumlah);
     if (!Number.isInteger(jumlah) || jumlah <= 0) {
       return { error: `items[${index}].jumlah harus angka bulat lebih dari 0` };
     }
-    return {
+    const satuanRaw = parseOptionalString(item.satuan);
+    parsedItems.push({
+      itemId,
       nama,
       spesifikasi: parseOptionalString(item.spesifikasi),
       jumlah,
-      satuan: parseOptionalString(item.satuan),
-    };
-  });
-  for (const parsed of parsedItems) {
-    if ("error" in parsed) return parsed;
+      satuan: satuanRaw ?? master?.unit ?? null,
+    });
   }
 
   return {
@@ -167,7 +189,7 @@ export async function getPermintaanHandler(req: Request, res: Response) {
 // POST /api/permintaan-barang
 export async function createPermintaanHandler(req: Request, res: Response) {
   try {
-    const parsed = parseBody(req.body);
+    const parsed = await parseBody(req.body);
     if ("error" in parsed) return res.status(400).json({ message: parsed.error });
     const row = await createPermintaan(parsed);
     res.status(201).json(row);
@@ -181,7 +203,7 @@ export async function updatePermintaanHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const parsed = parseBody(req.body);
+    const parsed = await parseBody(req.body);
     if ("error" in parsed) return res.status(400).json({ message: parsed.error });
     const row = await updatePermintaan(id, parsed);
     if (!row) return res.status(404).json({ message: "Permintaan tidak ditemukan" });
@@ -198,18 +220,70 @@ export async function updatePermintaanHandler(req: Request, res: Response) {
 }
 
 // PATCH /api/permintaan-barang/:id/approval
+// Body: { approval, items?: [{ id, jumlahDisetujui }] }. Item yang tidak disebut
+// default ke min(jumlah diminta, stok). jumlahDisetujui 0 berarti item ditolak.
 export async function setApprovalHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const { approval } = (req.body ?? {}) as { approval?: unknown };
+    const { approval, items } = (req.body ?? {}) as { approval?: unknown; items?: unknown };
     const parsed = parseEnum(approval, APPROVAL, null);
     if ("error" in parsed) return res.status(400).json({ message: parsed.error });
-    const row = await setApproval(id, parsed.ok);
+
+    const keputusan: KeputusanItemInput[] = [];
+    if (items !== undefined) {
+      if (!Array.isArray(items)) return res.status(400).json({ message: "Field 'items' harus array" });
+      for (const raw of items) {
+        const row = (raw ?? {}) as { id?: unknown; jumlahDisetujui?: unknown };
+        const itemId = Number(row.id);
+        const jumlah = Number(row.jumlahDisetujui);
+        if (!Number.isInteger(itemId) || itemId <= 0) {
+          return res.status(400).json({ message: "items[].id harus angka bulat positif" });
+        }
+        if (!Number.isInteger(jumlah) || jumlah < 0) {
+          return res.status(400).json({ message: "items[].jumlahDisetujui harus bilangan bulat >= 0" });
+        }
+        keputusan.push({ id: itemId, jumlahDisetujui: jumlah });
+      }
+    }
+
+    const userId = req.user?.id ?? null;
+    const row = await setApproval(id, parsed.ok, keputusan, userId);
     if (!row) return res.status(404).json({ message: "Permintaan tidak ditemukan" });
     res.status(200).json(row);
   } catch (error) {
+    if (error instanceof ItemTanpaMasterError) {
+      return res.status(422).json({ message: error.message, itemIds: error.itemIds });
+    }
+    if (error instanceof KeputusanItemError) {
+      return res.status(422).json({ message: error.message });
+    }
     res.status(500).json({ message: "Gagal memperbarui status approval", error });
+  }
+}
+
+// PATCH /api/permintaan-barang/:id/items/:barangItemId  body: { itemId }
+export async function petakanItemHandler(req: Request, res: Response) {
+  try {
+    const id = parseId(req.params.id);
+    const barangItemId = parseId(req.params.barangItemId);
+    if (!id || !barangItemId) return res.status(400).json({ message: "ID harus angka bulat positif" });
+    const { itemId } = (req.body ?? {}) as { itemId?: unknown };
+    const masterId = Number(itemId);
+    if (!Number.isInteger(masterId) || masterId <= 0) {
+      return res.status(400).json({ message: "Field 'itemId' harus angka bulat positif" });
+    }
+    const row = await petakanItemMaster(id, barangItemId, masterId);
+    if (!row) return res.status(404).json({ message: "Permintaan atau baris item tidak ditemukan" });
+    if ("error" in (row as object) && (row as { error?: string }).error === "NOT_FOUND_MASTER") {
+      return res.status(404).json({ message: "Item master tidak ditemukan" });
+    }
+    res.status(200).json(row);
+  } catch (error) {
+    if (error instanceof PermintaanTerkunciError) {
+      return res.status(409).json({ message: error.message });
+    }
+    res.status(500).json({ message: "Gagal memetakan item ke master", error });
   }
 }
 

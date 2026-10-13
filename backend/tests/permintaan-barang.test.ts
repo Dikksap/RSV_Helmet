@@ -10,22 +10,57 @@ vi.mock("../src/model/permintaanBarang/permintaanBarang.js", () => {
       this.name = "PermintaanTerkunciError";
     }
   }
+  class ItemTanpaMasterError extends Error {
+      readonly code = "ITEM_TANPA_MASTER";
+      constructor(readonly itemIds: number[]) {
+        super("Item belum terdaftar di master.");
+        this.name = "ItemTanpaMasterError";
+      }
+    }
+    class KeputusanItemError extends Error {
+      readonly code = "KEPUTUSAN_ITEM_INVALID";
+      constructor(message: string) {
+        super(message);
+        this.name = "KeputusanItemError";
+      }
+    }
   return {
     PermintaanTerkunciError,
+    ItemTanpaMasterError,
+    KeputusanItemError,
     createPermintaan: vi.fn(),
     listPermintaan: vi.fn(),
     getPermintaanById: vi.fn(),
     updatePermintaan: vi.fn(),
     setApproval: vi.fn(),
+    petakanItemMaster: vi.fn(),
     deletePermintaan: vi.fn(),
   };
 });
 
-vi.mock("../src/middleware/auth.js", () => ({
-  authenticate: (_req: any, _res: any, next: any) => next(),
-  adminOnly: (_req: any, _res: any, next: any) => next(),
-  requireRole: () => (_req: any, _res: any, next: any) => next(),
-}));
+let currentAccess: { role: string; permissions: string[]; statusView: null } = {
+  role: "user",
+  permissions: ["KELOLA_ITEM"],
+  statusView: null,
+};
+
+vi.mock("../src/middleware/auth.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/middleware/auth.js")>();
+  return {
+    ...actual,
+    authenticate: (_req: any, _res: any, next: any) => next(),
+    adminOnly: (_req: any, _res: any, next: any) => next(),
+    requireRole: () => (_req: any, _res: any, next: any) => next(),
+    authorize: (req: any, _res: any, next: any) => {
+      req.access = currentAccess;
+      next();
+    },
+  };
+});
+
+const setAccess = (permissions: string[]) => {
+  currentAccess = { role: "user", permissions, statusView: null };
+};
 
 import permintaanBarangRouter from "../src/routes/permintaan-barang.js";
 import {
@@ -34,8 +69,11 @@ import {
   getPermintaanById,
   updatePermintaan,
   setApproval,
+  petakanItemMaster,
   deletePermintaan,
   PermintaanTerkunciError,
+  ItemTanpaMasterError,
+  KeputusanItemError,
 } from "../src/model/permintaanBarang/permintaanBarang.js";
 
 const mocked = {
@@ -44,6 +82,7 @@ const mocked = {
   getPermintaanById: vi.mocked(getPermintaanById),
   updatePermintaan: vi.mocked(updatePermintaan),
   setApproval: vi.mocked(setApproval),
+  petakanItemMaster: vi.mocked(petakanItemMaster),
   deletePermintaan: vi.mocked(deletePermintaan),
 };
 
@@ -78,6 +117,7 @@ const validBody = () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setAccess(["KELOLA_ITEM"]);
 });
 
 describe("POST /api/permintaan-barang", () => {
@@ -202,6 +242,46 @@ describe("PATCH /api/permintaan-barang/:id/approval", () => {
     expect(res.body.approval).toBe("DISETUJUI");
   });
 
+  it("keputusan per item diteruskan ke model (id + jumlahDisetujui)", async () => {
+    mocked.setApproval.mockResolvedValue(record({ approval: "DISETUJUI" }) as never);
+    await request(app)
+      .patch("/api/permintaan-barang/1/approval")
+      .send({ approval: "DISETUJUI", items: [{ id: 3, jumlahDisetujui: 5 }, { id: 4, jumlahDisetujui: 0 }] });
+    expect(mocked.setApproval).toHaveBeenCalledWith(
+      1,
+      "DISETUJUI",
+      [{ id: 3, jumlahDisetujui: 5 }, { id: 4, jumlahDisetujui: 0 }],
+      null,
+    );
+  });
+
+  it("400 jika jumlahDisetujui negatif atau bukan bilangan bulat", async () => {
+    const res = await request(app)
+      .patch("/api/permintaan-barang/1/approval")
+      .send({ approval: "DISETUJUI", items: [{ id: 3, jumlahDisetujui: -1 }] });
+    expect(res.status).toBe(400);
+    const res2 = await request(app)
+      .patch("/api/permintaan-barang/1/approval")
+      .send({ approval: "DISETUJUI", items: [{ id: 3, jumlahDisetujui: 1.5 }] });
+    expect(res2.status).toBe(400);
+    expect(mocked.setApproval).not.toHaveBeenCalled();
+  });
+
+  it("422 jika ada item belum terdaftar di master", async () => {
+    mocked.setApproval.mockRejectedValue(new ItemTanpaMasterError([7]));
+    const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "DISETUJUI" });
+    expect(res.status).toBe(422);
+    expect(res.body.itemIds).toEqual([7]);
+  });
+
+  it("422 jika jumlah disetujui melebihi stok", async () => {
+    mocked.setApproval.mockRejectedValue(new KeputusanItemError("melebihi batas"));
+    const res = await request(app)
+      .patch("/api/permintaan-barang/1/approval")
+      .send({ approval: "DISETUJUI", items: [{ id: 3, jumlahDisetujui: 99 }] });
+    expect(res.status).toBe(422);
+  });
+
   it("400 jika approval tidak valid", async () => {
     const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "MAYBE" });
     expect(res.status).toBe(400);
@@ -211,6 +291,50 @@ describe("PATCH /api/permintaan-barang/:id/approval", () => {
     mocked.setApproval.mockResolvedValue(null as never);
     const res = await request(app).patch("/api/permintaan-barang/99/approval").send({ approval: "DISETUJUI" });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/permintaan-barang/:id/items/:barangItemId", () => {
+  it("200 memetakan baris ke master", async () => {
+    mocked.petakanItemMaster.mockResolvedValue({ id: 7, itemId: 3 } as never);
+    const res = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 3 });
+    expect(res.status).toBe(200);
+    expect(mocked.petakanItemMaster).toHaveBeenCalledWith(1, 7, 3);
+  });
+
+  it("400 jika itemId invalid", async () => {
+    const res = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 0 });
+    expect(res.status).toBe(400);
+    expect(mocked.petakanItemMaster).not.toHaveBeenCalled();
+  });
+
+  it("404 jika master tidak ada", async () => {
+    mocked.petakanItemMaster.mockResolvedValue({ error: "NOT_FOUND_MASTER" } as never);
+    const res = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 99 });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("guard KELOLA_ITEM approval/petakan", () => {
+  it("403 approval tanpa permission", async () => {
+    setAccess(["BARANG_LIHAT"]);
+    const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "DISETUJUI" });
+    expect(res.status).toBe(403);
+    expect(mocked.setApproval).not.toHaveBeenCalled();
+  });
+
+  it("200 approval dengan KELOLA_ITEM (peran gudang)", async () => {
+    setAccess(["BARANG_LIHAT", "KELOLA_ITEM"]);
+    mocked.setApproval.mockResolvedValue(record({ approval: "DISETUJUI" }) as never);
+    const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "DISETUJUI" });
+    expect(res.status).toBe(200);
+  });
+
+  it("403 petakan tanpa permission", async () => {
+    setAccess(["BARANG_LIHAT"]);
+    const res = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 3 });
+    expect(res.status).toBe(403);
+    expect(mocked.petakanItemMaster).not.toHaveBeenCalled();
   });
 });
 

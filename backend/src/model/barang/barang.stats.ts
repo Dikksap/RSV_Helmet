@@ -2,10 +2,12 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import prisma from "../../lib/prisma.js";
 import {
   BARANG_TTL_STATS,
+  barangScopeKey,
   barangStatsKey,
   getBarangCache,
   setBarangCache,
 } from "../../lib/barangCache.js";
+import { statusScopeFilter, type StatusFilter } from "./barang.status.js";
 
 
 export type FinishgoodPerBulanRow = {
@@ -36,23 +38,26 @@ type VariantDetails = {
 };
 type BatchDetails = { id: number; nomorBatch: number };
 
-export async function getStatusSummary(): Promise<{
+export async function getStatusSummary(statusScope?: string[] | null): Promise<{
   total: number;
   perStatus: Record<string, number>;
 }> {
-  const cacheKey = barangStatsKey("status-summary", {});
+  const cacheKey = barangStatsKey("status-summary", { scope: barangScopeKey(statusScope) });
   const cached = await getBarangCache<{ total: number; perStatus: Record<string, number> }>(cacheKey);
   if (cached) return cached;
 
+  const statusFilter = statusScopeFilter(statusScope);
   const groups = await prisma.barang.groupBy({
     by: ["status"],
+    where: statusFilter ? { status: statusFilter } : {},
     _count: { _all: true },
     orderBy: { status: "asc" },
   });
 
   const statusRows = await prisma.statusBarang.findMany({ select: { kode: true }, orderBy: { urutan: "asc" } });
+  const visible = new Set<string>(statusScope ?? statusRows.map((s) => s.kode));
   const perStatus: Record<string, number> = {};
-  for (const s of statusRows) perStatus[s.kode] = 0;
+  for (const s of statusRows) if (visible.has(s.kode)) perStatus[s.kode] = 0;
 
   let total = 0;
   for (const group of groups) {
@@ -70,21 +75,20 @@ export async function getStatusSummary(): Promise<{
 export async function getBarangStats(filter: {
   variantId?: number;
   batchId?: number;
-}): Promise<{
+}, statusScope?: string[] | null): Promise<{
   total: number;
   perStatus: Record<string, number>;
   perVariant: { variantId: number; nama: string; total: number }[];
   perBatch: { batchId: number; nomorBatch: string; total: number }[];
 }> {
-  const where: { variantId?: number; batchId?: number } = {};
-  if (filter.variantId !== undefined) where.variantId = filter.variantId;
-  if (filter.batchId !== undefined) where.batchId = filter.batchId;
-
-  const cacheKey = barangStatsKey("stats", where);
+  const cacheKey = barangStatsKey("stats", {
+    ...filter,
+    scope: barangScopeKey(statusScope),
+  });
   const cachedStats = await getBarangCache<Awaited<ReturnType<typeof getBarangStatsUncached>>>(cacheKey);
   if (cachedStats) return cachedStats;
 
-  const result = await getBarangStatsUncached(filter);
+  const result = await getBarangStatsUncached(filter, statusScope);
   await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
   return result;
 }
@@ -92,18 +96,25 @@ export async function getBarangStats(filter: {
 async function getBarangStatsUncached(filter: {
   variantId?: number;
   batchId?: number;
-}): Promise<{
+}, statusScope?: string[] | null): Promise<{
   total: number;
   perStatus: Record<string, number>;
   perVariant: { variantId: number; nama: string; total: number }[];
   perBatch: { batchId: number; nomorBatch: string; total: number }[];
 }> {
-  const where: { variantId?: number; batchId?: number } = {};
+  const statusFilter = statusScopeFilter(statusScope);
+  const where: { variantId?: number; batchId?: number; status?: StatusFilter } = {};
   if (filter.variantId !== undefined) where.variantId = filter.variantId;
   if (filter.batchId !== undefined) where.batchId = filter.batchId;
+  if (statusFilter) where.status = statusFilter;
 
-  const batchWhere: { variantId?: number; batchId?: number; status?: { not: "REGISTER" } } = {
-    status: { not: "REGISTER" },
+  const visibleNonRegister = statusScope?.filter((s) => s !== "REGISTER");
+  const batchWhere: {
+    variantId?: number;
+    batchId?: number;
+    status?: StatusFilter;
+  } = {
+    status: visibleNonRegister ? { in: visibleNonRegister } : { not: "REGISTER" },
   };
   if (filter.variantId !== undefined) batchWhere.variantId = filter.variantId;
   if (filter.batchId !== undefined) batchWhere.batchId = filter.batchId;
@@ -132,8 +143,9 @@ async function getBarangStatsUncached(filter: {
     ])) as [StatusGroup[], VariantGroup[], BatchGroup[], number];
 
   const statusRows2 = await prisma.statusBarang.findMany({ select: { kode: true }, orderBy: { urutan: "asc" } });
+  const visible2 = new Set<string>(statusScope ?? statusRows2.map((s) => s.kode));
   const perStatus: Record<string, number> = {};
-  for (const s of statusRows2) perStatus[s.kode] = 0;
+  for (const s of statusRows2) if (visible2.has(s.kode)) perStatus[s.kode] = 0;
 
   for (const group of statusGroups) {
     perStatus[group.status] = (group._count as { _all: number })._all ?? 0;

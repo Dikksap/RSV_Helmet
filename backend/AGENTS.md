@@ -5,7 +5,7 @@ Instruksi ini berlaku untuk seluruh project `express-api`. Baca sebelum mengubah
 ## Project Overview
 
 - Backend REST API berbasis Node.js, TypeScript, dan Express.
-- Modul utama: autentikasi + RBAC (`admin`, `user`, `gudang`), user, master data (style, color, size), product, variant produk, barang (group/dus, batch, status, riwayat), production order + jadwal, permintaan barang, karyawan/divisi, notifikasi, dan integrasi jurnal.
+- Modul utama: autentikasi + RBAC (`Role`/`Permission`/`RolePermission`/`RoleBarangStatusPermission`; seed awal `admin`, `user`, `gudang`, `produksi`, `qc`), user, master data (style, color, size, item, gudang), product, variant produk, barang (group/dus, batch, status, riwayat, lokasi gudang, riwayat mutasi), production order + jadwal, permintaan barang, karyawan/divisi, notifikasi, dan integrasi jurnal.
 - Database: MySQL/MariaDB melalui Prisma ORM 7 dan `@prisma/adapter-mariadb`.
 - Auth: JWT dan bcryptjs; Redis dipakai untuk cache product, JWT blacklist, dan pub/sub event WebSocket.
 - Tidak ada library validasi request khusus.
@@ -59,7 +59,7 @@ HTTP request -> Express middleware -> route -> authenticate / requireRole (jika 
 
 Model aktual di `prisma/schema.prisma`:
 
-- `User`: unique `email`, hashed `password`, `role` (`admin`/`user`/`gudang`, default `user`), timestamp.
+- `User`: unique `email`, hashed `password`, `role` (FK ke `Role.kode`, default `user`), timestamp.
 - `Product`: `nama`, `prefix`, dan relasi `variants`.
 - `Style`: unique `nama`.
 - `Color`: unique `nama`.
@@ -93,9 +93,9 @@ Constraint penting:
 
 ### User dan RBAC
 
-- Role valid: `admin`, `user`, `gudang`; create user default `user`.
-- `requireRole(...)` membaca role ulang dari database (bukan dari token) sehingga perubahan role/penghapusan akun langsung berlaku tanpa menunggu JWT kedaluwarsa.
-- Pola proteksi umum: `router.use(authenticate)` untuk semua route; operasi tulis (`POST/PUT/PATCH/DELETE`) ditambah `adminOnly`, kecuali yang eksplisit lain (barang tulis/scan memakai `requireRole("admin", "user")`).
+- Role valid mengikuti tabel `Role` (seed awal: `admin`, `user`, `gudang`, `produksi`, `qc`; input case-insensitive); create user default `user`.
+- `requireRole(...)` membaca role ulang dari database (bukan dari token) sehingga perubahan role/penghapusan akun langsung berlaku tanpa menunggu JWT kedaluwarsa. Endpoint `/api/barang*` dan `/api/roles*` memakai `authorize` + `requirePermission(...)`: akses dan scope visibilitas status dibaca dari `RolePermission`/`RoleBarangStatusPermission` setiap request (`src/model/role/role.ts`); role `admin` melewati matriks dan selalu melihat semua status.
+- Pola proteksi umum: `router.use(authenticate)` untuk semua route; operasi tulis (`POST/PUT/PATCH/DELETE`) ditambah `adminOnly`, kecuali yang eksplisit lain (barang memakai permission per endpoint, lihat tabel Barang di bawah).
 - Pengecualian public: `POST /api/auth/login`, `POST /api/permintaan-barang` (form tanpa login), `GET /api/status-barang`.
 
 ### Permintaan Barang
@@ -329,18 +329,28 @@ Pola sama: `GET` butuh login; `POST/PUT/DELETE` butuh `adminOnly`. Berlaku untuk
 
 ### Barang
 
-Seluruh `/api/barang` butuh login. Baca (list, detail, search, export, stats, summary, riwayat) cukup login; generate, CRUD, scan, dan update status butuh `requireRole("admin", "user")`.
+Seluruh `/api/barang` memakai `authenticate + authorize`. Baca butuh `BARANG_LIHAT`, statistik butuh `BARANG_STATISTIK_LIHAT`, scan butuh `BARANG_SCAN`, ubah status butuh `BARANG_UBAH_STATUS`, generate butuh `BARANG_GENERATE`, CRUD butuh `BARANG_KELOLA`; data difilter ke status dalam scope role (`?status=` di luar scope → `403`). Matriks awal `gudang`: `FINISHGOOD`+`RETUR` terlihat, `REGISTER`/`OUT`/`BAD` tidak.
 
-| Method | Endpoint                       | Auth        | Request                                                                                         |
-| ------ | ------------------------------ | ----------- | ----------------------------------------------------------------------------------------------- |
-| GET    | `/api/barang/generate-info`    | admin/user  | Query `variantId`                                                                               |
-| POST   | `/api/barang/generate`         | admin/user  | `{ variantId, jumlah }`; `jumlah` 1 sampai 50.000                                               |
-| GET    | `/api/barang`                  | login       | Query `page`, `limit`, `variantId`, `batchId`, `status`; default `1`/`20`, maksimum limit `100` |
-| GET    | `/api/barang/scan/:kodeBarang` | admin/user  | Barcode pada path                                                                               |
-| POST   | `/api/barang/scan/bulk`        | admin/user  | `{ kodeBarang: string[], status, keterangan? }`                                                 |
-| PATCH  | `/api/barang/:id/status`       | admin/user  | `{ status, keterangan? }`                                                                       |
-| GET    | `/api/barang/:id`              | login       | id numerik                                                                                      |
-| GET    | `/api/barang/:id/riwayat`      | login       | id numerik; histori descending dan summary                                                      |
+| Method | Endpoint                       | Auth                  | Request                                                                                         |
+| ------ | ------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------- |
+| GET    | `/api/barang/generate-info`    | `BARANG_GENERATE`     | Query `variantId`                                                                               |
+| POST   | `/api/barang/generate`         | `BARANG_GENERATE`     | `{ variantId, jumlah }`; `jumlah` 1 sampai 50.000                                               |
+| GET    | `/api/barang`                  | `BARANG_LIHAT`+scope  | Query `page`, `limit`, `variantId`, `batchId`, `status`; default `1`/`20`, maksimum limit `100` |
+| GET    | `/api/barang/scan/:kodeBarang` | `BARANG_SCAN`+scope   | Barcode pada path                                                                               |
+| POST   | `/api/barang/scan/bulk`        | `BARANG_SCAN`+`BARANG_UBAH_STATUS` | `{ kodeBarang: string[], status, keterangan? }`                                     |
+| PATCH  | `/api/barang/:id/status`       | `BARANG_UBAH_STATUS`  | `{ status, keterangan? }`                                                                       |
+| GET    | `/api/barang/:id`              | `BARANG_LIHAT`+scope  | id numerik                                                                                      |
+| GET    | `/api/barang/:id/riwayat`      | `BARANG_LIHAT`+scope  | id numerik; histori descending dan summary                                                      |
+
+`GET /api/barang` mendukung filter `gudangId` / `tanpaGudang=true`; respons barang menyertakan `gudang {id,kode,name}`.
+
+### Item, gudang, mutasi
+
+`GET /api/items`, `GET /api/items/:id` publik; tulis `adminOnly`. `GET /api/gudang*` butuh login (`_count.barang` ter-scope status); tulis `adminOnly`; hapus gudang → barang `SetNull`. Mutasi: `GET /api/mutasi-gudang*` butuh `BARANG_LIHAT`; `POST` butuh `MUTASI_GUDANG`, `userId` dari token, `jumlah` selalu 1, update lokasi + riwayat atomik. `POST /api/mutasi-gudang/bulk` (`{ barangIds[] maks 500, gudangTujuanId | null, keterangan? }`): satu tujuan, asal otomatis, all-or-nothing satu transaksi. `PermintaanBarangItem.itemId` opsional → `Item` `SetNull`; snapshot `nama`/`satuan` tetap.
+
+### Role & permission
+
+`GET/POST /api/roles`, `GET /api/roles/permissions`, `GET /api/roles/:id`, `PUT /api/roles/:id/permissions`, `PUT /api/roles/:id/barang-status` — semua `authenticate + authorize + requirePermission("ROLE_KELOLA")`. `GET /api/auth/me` mengembalikan `user` + `permissions[]` + `statusView[]`.
 
 ### Permintaan barang
 
@@ -357,7 +367,7 @@ Seluruh `/api/barang` butuh login. Baca (list, detail, search, export, stats, su
 
 | Router | Auth |
 | ------ | ---- |
-| `/api/barang-group` CRUD + `assign`/`unassign` | login; tulis `requireRole("admin", "user")` |
+| `/api/barang-group` CRUD + `assign`/`unassign` | `authenticate + authorize + requireRole("admin", "user")`; barang + `_count` difilter scope status |
 | `/api/status-barang` | `GET` publik; tulis admin |
 | `/api/status-transition` | `GET` login; tulis admin |
 | `/api/production-orders` (CRUD + items/capacities/schedule/realisasi) | semua admin |
@@ -397,9 +407,11 @@ Integrasi MQTT, RFID, IoT, dan EPC tidak ditemukan di repository ini. MQTT/RFID 
 
 ## Testing
 
-- Framework: Vitest dengan Supertest (13 file di `tests/`).
-- `tests/auth.test.ts`: login, JWT middleware, `me`, logout/blacklist, dan Redis fail-open.
-- `tests/user.test.ts`: CRUD user admin-only dan validasi role.
+- Framework: Vitest dengan Supertest (15 file di `tests/`).
+- `tests/auth.test.ts`: login, JWT middleware, `me` (+ `permissions`/`statusView`), logout/blacklist, dan Redis fail-open.
+- `tests/user.test.ts`: CRUD user admin-only dan validasi role terhadap tabel `Role`.
+- `tests/role.test.ts`: gate `/api/roles`, validasi grant/matriks, dan filter status `GET /api/barang` per role.
+- `tests/rbac-status.test.ts`: unit `statusScopeFilter`/`barangScope` (deny-by-default).
 - `tests/variantproduk.test.ts`: filter, detail, create/update/delete variant, validasi, duplicate, foreign key, dan broadcast.
 - `tests/barang.test.ts`: generate info/generate, list/filter/pagination, scan single/bulk, update status, histori, dan broadcast.
 - `tests/permintaan-barang.test.ts`: validasi create, approval terkunci (`409`), dan wiring auth (POST publik, sisanya di belakang `authenticate`).

@@ -1,10 +1,12 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
-import { StatusApprovalPermintaan } from "../../../generated/prisma/enums.js";
+import { StatusApprovalPermintaan, TipeStokItem } from "../../../generated/prisma/enums.js";
+import { catatMutasi, getSaldo, lockItem } from "../stokItem/stokItem.js";
 
 export type ApprovalPermintaan = StatusApprovalPermintaan;
 
 export type PermintaanBarItemInput = {
+  itemId: number | null;
   nama: string;
   spesifikasi: string | null;
   jumlah: number;
@@ -23,7 +25,7 @@ export type PermintaanInput = {
 };
 
 export type PermintaanRecord = Prisma.PermintaanBarangGetPayload<{
-  include: { items: true };
+  include: { items: { include: { item: true } } };
 }>;
 
 export class PermintaanTerkunciError extends Error {
@@ -86,7 +88,7 @@ async function insertPermintaan(tx: PrismaTransactionClient, input: PermintaanIn
       alasan: input.alasan,
       items: { create: input.items },
     },
-    include: { items: true },
+    include: { items: { include: { item: true } } },
   });
 }
 
@@ -120,7 +122,7 @@ export async function listPermintaan(params: {
     prisma.permintaanBarang.count({ where }),
     prisma.permintaanBarang.findMany({
       where,
-      include: { items: true },
+      include: { items: { include: { item: true } } },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -132,7 +134,7 @@ export async function listPermintaan(params: {
 export async function getPermintaanById(id: number): Promise<PermintaanRecord | null> {
   return prisma.permintaanBarang.findUnique({
     where: { id },
-    include: { items: true },
+    include: { items: { include: { item: true } } },
   });
 }
 
@@ -155,22 +157,164 @@ export async function updatePermintaan(id: number, input: PermintaanInput): Prom
         alasan: input.alasan,
         items: { create: input.items },
       },
-      include: { items: true },
+      include: { items: { include: { item: true } } },
     });
   });
 }
 
-export async function setApproval(id: number, approval: ApprovalPermintaan): Promise<PermintaanRecord | null> {
-  try {
-    return await prisma.permintaanBarang.update({
+export type KeputusanItemInput = { id: number; jumlahDisetujui: number };
+
+export class ItemTanpaMasterError extends Error {
+  readonly code = "ITEM_TANPA_MASTER";
+  constructor(readonly itemIds: number[]) {
+    super("Item belum terdaftar di master, pilih item master dulu.");
+    this.name = "ItemTanpaMasterError";
+  }
+}
+
+export class KeputusanItemError extends Error {
+  readonly code = "KEPUTUSAN_ITEM_INVALID";
+  constructor(message: string) {
+    super(message);
+    this.name = "KeputusanItemError";
+  }
+}
+
+/**
+ * Setujui/batalkan permintaan dalam satu transaksi.
+ * - DISETUJUI: tiap item dapat jumlahDisetujui (0 = ditolak), dibatasi
+ *   min(jumlah diminta, saldo stok). Default: min(jumlah, saldo).
+ *   Baris KELUAR dibuat untuk tiap item yang disetujui. Permintaan jadi
+ *   DISETUJUI jika minimal satu item > 0, selain itu tetap BELUM_DISETUJUI.
+ * - BELUM_DISETUJUI: batalkan KELUAR terkait dengan MASUK pembalik, lalu
+ *   reset keputusan item ke MENUNGGU.
+ */
+export async function setApproval(
+  id: number,
+  approval: ApprovalPermintaan,
+  keputusan: KeputusanItemInput[] = [],
+  userId: number | null = null,
+): Promise<PermintaanRecord | null> {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.permintaanBarang.findUnique({
       where: { id },
-      data: { approval },
       include: { items: true },
     });
-  } catch (error) {
-    if ((error as { code?: string } | null)?.code === "P2025") return null;
-    throw error;
-  }
+    if (!existing) return null;
+
+    if (approval === StatusApprovalPermintaan.BELUM_DISETUJUI) {
+      if (existing.approval === StatusApprovalPermintaan.DISETUJUI) {
+        for (const it of existing.items) {
+          if (it.statusKeputusan !== "DISETUJUI" || !it.itemId || !it.jumlahDisetujui) continue;
+          await lockItem(tx, it.itemId);
+          await catatMutasi(tx, {
+            itemId: it.itemId,
+            tipe: TipeStokItem.MASUK,
+            jumlah: it.jumlahDisetujui,
+            sumberPermintaanItemId: it.id,
+            keterangan: `Pembatalan approval ${existing.noPermintaan}`,
+            userId,
+          });
+        }
+        await tx.permintaanBarangItem.updateMany({
+          where: { permintaanId: id },
+          data: { statusKeputusan: "MENUNGGU", jumlahDisetujui: null },
+        });
+      }
+      return tx.permintaanBarang.update({
+        where: { id },
+        data: { approval },
+        include: { items: { include: { item: true } } },
+      });
+    }
+
+    // DISETUJUI
+    if (existing.approval === StatusApprovalPermintaan.DISETUJUI) return getPermintaanInTx(tx, id);
+
+    const tanpaMaster = existing.items.filter((it) => !it.itemId).map((it) => it.id);
+    if (tanpaMaster.length > 0) throw new ItemTanpaMasterError(tanpaMaster);
+
+    const byId = new Map(keputusan.map((k) => [k.id, k.jumlahDisetujui]));
+    for (const it of existing.items) {
+      if (byId.has(it.id)) {
+        const v = byId.get(it.id)!;
+        if (!Number.isInteger(v) || v < 0) {
+          throw new KeputusanItemError(`jumlahDisetujui item ${it.id} harus bilangan bulat >= 0`);
+        }
+      }
+    }
+
+    let adaDisetujui = false;
+    for (const it of existing.items) {
+      const itemId = it.itemId!;
+      await lockItem(tx, itemId);
+      const saldo = await getSaldo(itemId, tx);
+      const batas = Math.min(it.jumlah, Math.max(0, saldo));
+      const diminta = byId.has(it.id) ? byId.get(it.id)! : batas;
+      if (diminta > batas) {
+        throw new KeputusanItemError(
+          `Item "${it.nama}": jumlah disetujui ${diminta} melebihi batas (stok ${saldo}, diminta ${it.jumlah}).`,
+        );
+      }
+      await tx.permintaanBarangItem.update({
+        where: { id: it.id },
+        data: {
+          jumlahDisetujui: diminta,
+          statusKeputusan: diminta > 0 ? "DISETUJUI" : "DITOLAK",
+        },
+      });
+      if (diminta > 0) {
+        adaDisetujui = true;
+        await catatMutasi(tx, {
+          itemId,
+          tipe: TipeStokItem.KELUAR,
+          jumlah: diminta,
+          sumberPermintaanItemId: it.id,
+          keterangan: `Approval ${existing.noPermintaan}`,
+          userId,
+        });
+      }
+    }
+
+    return tx.permintaanBarang.update({
+      where: { id },
+      data: {
+        approval: adaDisetujui ? StatusApprovalPermintaan.DISETUJUI : StatusApprovalPermintaan.BELUM_DISETUJUI,
+      },
+      include: { items: { include: { item: true } } },
+    });
+  });
+}
+
+async function getPermintaanInTx(tx: PrismaTransactionClient, id: number): Promise<PermintaanRecord> {
+  return tx.permintaanBarang.findUniqueOrThrow({
+    where: { id },
+    include: { items: { include: { item: true } } },
+  });
+}
+
+/**
+ * Petakan baris permintaan teks bebas ke master Item. Hanya saat
+ * BELUM_DISETUJUI; snapshot nama/satuan ikut master supaya konsisten.
+ */
+export async function petakanItemMaster(permintaanId: number, barangItemId: number, masterItemId: number) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.permintaanBarang.findUnique({
+      where: { id: permintaanId },
+      select: { approval: true },
+    });
+    if (!existing) return null;
+    if (existing.approval === StatusApprovalPermintaan.DISETUJUI) throw new PermintaanTerkunciError();
+    const baris = await tx.permintaanBarangItem.findUnique({ where: { id: barangItemId } });
+    if (!baris || baris.permintaanId !== permintaanId) return null;
+    const master = await tx.item.findUnique({ where: { id: masterItemId } });
+    if (!master) return { error: "NOT_FOUND_MASTER" as const };
+    return tx.permintaanBarangItem.update({
+      where: { id: barangItemId },
+      data: { itemId: master.id, nama: master.nama, satuan: master.unit },
+      include: { item: true },
+    });
+  });
 }
 
 export async function deletePermintaan(id: number): Promise<boolean> {

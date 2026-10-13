@@ -47,7 +47,12 @@ export async function login(req: Request, res: Response) {
 
 export function me(req: Request, res: Response) {
   const { id, name, email, role, exp } = req.user!;
-  res.status(200).json({ user: { id, name, email, role }, exp });
+  res.status(200).json({
+    user: { id, name, email, role },
+    permissions: req.access?.permissions ?? [],
+    statusView: req.access?.statusView ?? null,
+    exp,
+  });
 }
 
 export async function logout(req: Request, res: Response) {

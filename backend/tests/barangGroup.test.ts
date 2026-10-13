@@ -17,6 +17,11 @@ vi.mock("../src/middleware/auth.js", () => ({
   authenticate: (_req: any, _res: any, next: any) => next(),
   adminOnly: (_req: any, _res: any, next: any) => next(),
   requireRole: () => (_req: any, _res: any, next: any) => next(),
+  authorize: (req: any, _res: any, next: any) => {
+    req.access = { role: "admin", permissions: ["BARANG_LIHAT"], statusView: null };
+    next();
+  },
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 import barangGroupRouter from "../src/routes/barangGroup.js";
@@ -94,7 +99,7 @@ describe("GET /api/barang-group/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.nama).toBe("Gudang A");
-    expect(mocked.getBarangGroupById).toHaveBeenCalledWith(1);
+    expect(mocked.getBarangGroupById).toHaveBeenCalledWith(1, null);
   });
 });
 
@@ -136,7 +141,7 @@ describe("GET /api/barang-group/:id/barangs", () => {
     expect(res.body.group.nama).toBe("Gudang A");
     expect(res.body.barang).toHaveLength(1);
     expect(res.body.barang[0].kodeBarang).toBe("BC001-W001-250826-0001");
-    expect(mocked.getBarangInGroup).toHaveBeenCalledWith(1);
+    expect(mocked.getBarangInGroup).toHaveBeenCalledWith(1, null);
   });
 });
 

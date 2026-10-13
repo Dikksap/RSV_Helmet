@@ -8,6 +8,13 @@ const PREFIX = "barang:";
 export const BARANG_TTL_LIST = 15;
 export const BARANG_TTL_STATS = 30;
 
+/** Signature scope visibilitas status untuk key cache. Tidak boleh ada
+ *  hasil query role A tersaji ke role B. */
+export function barangScopeKey(scope: string[] | null | undefined): string {
+  if (scope === null || scope === undefined) return "*";
+  return [...scope].sort().join(",") || "-";
+}
+
 export function barangListKey(filter: Record<string, unknown>): string {
   const parts = Object.keys(filter)
     .sort()
@@ -18,8 +25,8 @@ export function barangListKey(filter: Record<string, unknown>): string {
   return `${PREFIX}list:${parts.join("&") || "all"}`;
 }
 
-export function barangSearchKey(q: string, limit: number, pernahRetur?: boolean): string {
-  return `${PREFIX}search:${q.toLowerCase()}:${limit}:${pernahRetur ? "retur" : "all"}`;
+export function barangSearchKey(q: string, limit: number, pernahRetur?: boolean, statusScope?: string): string {
+  return `${PREFIX}search:${q.toLowerCase()}:${limit}:${pernahRetur ? "retur" : "all"}:${statusScope ?? "*"}`;
 }
 
 export function barangStatsKey(scope: string, filter: Record<string, unknown>): string {

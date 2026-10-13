@@ -58,26 +58,47 @@
 | PUT | `/api/styles/:id` | — | `{ nama }` |
 | DELETE | `/api/styles/:id` | — | 409 jika dipakai variant |
 | GET/… | `/api/colors`, `/api/sizes` | — | Pola sama dengan styles (sizes ada field `urutan?`) |
-| GET | `/api/barang/generate-info?variantId=` | — | Info batch + nextNumber |
-| POST | `/api/barang/generate` | — | `{ variantId, jumlah }` 1..50000 |
-| POST | `/api/barang` | — | Create single |
-| GET | `/api/barang` | — | List + filter + pagination |
-| GET | `/api/barang/hari-ini` | — | Barang tanggal hari ini (shortcut `?tanggal=<today>`) |
-| GET | `/api/barang/status-summary` | — | `{ total, perStatus }` |
-| GET | `/api/barang/summary` | — | Alias status-summary |
-| GET | `/api/barang/stats?variantId=&batchId=` | — | `{ total, perStatus, perVariant, perBatch }` |
-| GET | `/api/barang/batch-rentang-tanggal` | — | Filter tanggal batch |
-| GET | `/api/barang/finishgood-per-bulan` | — | Group `YYYY-MM` |
-| GET | `/api/barang/search?q=&limit=` | — | LIKE kodeBarang |
-| GET | `/api/barang/export?format=` | — | `json`\|`csv` |
-| GET | `/api/barang/scan/:kodeBarang` | — | Scan single by barcode |
-| POST | `/api/barang/scan/bulk` | — | `{ kodeBarang[], status, keterangan? }` |
-| POST | `/api/barang/bulk-status` | — | `{ items: [{id,status,keterangan?}] }` max 500 |
-| PUT | `/api/barang/:id` | — | Update parsial |
-| DELETE | `/api/barang/:id` | — | Hapus + decrement batch |
-| PATCH | `/api/barang/:id/status` | — | `{ status, keterangan? }` |
-| GET | `/api/barang/:id/riwayat` | — | `{ data[], summary }` |
-| GET | `/api/barang/:id` | — | Detail (paling akhir agar tidak telan route di atas) |
+| GET | `/api/barang/generate-info?variantId=` | Bearer + `BARANG_GENERATE` | Info batch + nextNumber |
+| POST | `/api/barang/generate` | Bearer + `BARANG_GENERATE` | `{ variantId, jumlah }` 1..50000 |
+| POST | `/api/barang` | Bearer + `BARANG_KELOLA` | Create single |
+| GET | `/api/barang` | Bearer + `BARANG_LIHAT` + scope status | List + filter + pagination; `?status=` di luar scope → 403; filter `gudangId` / `tanpaGudang=true`; respons sertakan `gudang {id,kode,name}` |
+| GET | `/api/barang/hari-ini` | Bearer + `BARANG_LIHAT` + scope | Barang tanggal hari ini (shortcut `?tanggal=<today>`) |
+| GET | `/api/barang/status-summary` | Bearer + `BARANG_STATISTIK_LIHAT` + scope | `{ total, perStatus }` |
+| GET | `/api/barang/summary` | Bearer + `BARANG_STATISTIK_LIHAT` + scope | Alias status-summary |
+| GET | `/api/barang/stats?variantId=&batchId=` | Bearer + `BARANG_STATISTIK_LIHAT` + scope | `{ total, perStatus, perVariant, perBatch }` |
+| GET | `/api/barang/batch-rentang-tanggal` | Bearer + `BARANG_STATISTIK_LIHAT` | Filter tanggal batch |
+| GET | `/api/barang/finishgood-per-bulan` | Bearer + `BARANG_STATISTIK_LIHAT` | Group `YYYY-MM` |
+| GET | `/api/barang/search?q=&limit=` | Bearer + `BARANG_LIHAT` + scope | LIKE kodeBarang |
+| GET | `/api/barang/export?format=` | Bearer + `BARANG_LIHAT` + scope | `json`\|`csv` |
+| GET | `/api/barang/scan/:kodeBarang` | Bearer + `BARANG_SCAN` + scope | Scan single by barcode |
+| POST | `/api/barang/scan/bulk` | Bearer + `BARANG_SCAN` + `BARANG_UBAH_STATUS` | `{ kodeBarang[], status, keterangan? }` |
+| POST | `/api/barang/bulk-status` | Bearer + `BARANG_UBAH_STATUS` | `{ items: [{id,status,keterangan?}] }` max 500 |
+| PUT | `/api/barang/:id` | Bearer + `BARANG_KELOLA` | Update parsial |
+| DELETE | `/api/barang/:id` | Bearer + `BARANG_KELOLA` | Hapus + decrement batch |
+| PATCH | `/api/barang/:id/status` | Bearer + `BARANG_UBAH_STATUS` | `{ status, keterangan? }` |
+| GET | `/api/barang/:id/riwayat` | Bearer + `BARANG_LIHAT` + scope | `{ data[], summary }`; status di luar scope → 403 |
+| GET | `/api/barang/:id` | Bearer + `BARANG_LIHAT` + scope | Detail, status di luar scope → 403 (paling akhir agar tidak telan route di atas) |
+| GET | `/api/roles`, `/api/roles/:id` | Bearer + `ROLE_KELOLA` | Lihat RBAC (lihat §4.5) |
+| POST | `/api/roles` | Bearer + `ROLE_KELOLA` | `{ kode, nama }` |
+| GET | `/api/roles/permissions` | Bearer + `ROLE_KELOLA` | Permission master |
+| PUT | `/api/roles/:id/permissions` | Bearer + `ROLE_KELOLA` | Replace grant `{ permissions[] }` |
+| PUT | `/api/roles/:id/barang-status` | Bearer + `ROLE_KELOLA` | Replace matriks `{ statusView }` |
+| GET | `/api/auth/me` | Bearer | `user` + `permissions[]` + `statusView[]` |
+| GET | `/api/items?q=&divisiId=&aktif=` | publik | Master item (dropdown form permintaan) |
+| GET | `/api/items/:id` | publik | Detail + divisi |
+| POST | `/api/items` | Bearer + admin | `{ kode, nama, divisiId?, unit?, isActive? }` → 409 kode duplikat |
+| PUT | `/api/items/:id` | Bearer + admin | Parsial → 404/409 |
+| DELETE | `/api/items/:id` | Bearer + admin | Rincian permintaan ikut SetNull, snapshot utuh |
+| GET | `/api/gudang` | Bearer | List + `_count.barang` ter-scope status |
+| GET | `/api/gudang/:id` | Bearer | Detail + `_count` |
+| POST | `/api/gudang` | Bearer + admin | `{ kode, name, isActive? }` → 409 |
+| PUT | `/api/gudang/:id` | Bearer + admin | Parsial → 404/409 |
+| DELETE | `/api/gudang/:id` | Bearer + admin | Barang ikut SetNull, riwayat utuh |
+| GET | `/api/mutasi-gudang?barangId=&kodeBarang=&gudangId=&dari=&sampai=` | Bearer + `BARANG_LIHAT` | List + pagination |
+| GET | `/api/mutasi-gudang/barang/:barangId` | Bearer + `BARANG_LIHAT` | Riwayat per barang |
+| GET | `/api/mutasi-gudang/gudang/:gudangId` | Bearer + `BARANG_LIHAT` | Riwayat per gudang |
+| POST | `/api/mutasi-gudang` | Bearer + `MUTASI_GUDANG` | `{ barangId\|kodeBarang, gudangAsalId?, gudangTujuanId?, keterangan? }`, `userId` dari token, atomik |
+| POST | `/api/mutasi-gudang/bulk` | Bearer + `MUTASI_GUDANG` | `{ barangIds[] (maks 500), gudangTujuanId \| null, keterangan? }` — satu tujuan, asal otomatis dari lokasi kini, all-or-nothing dalam satu transaksi |
 | GET | `/api/production-orders` | — | List header + `_count.items`, tanpa pagination/filter |
 | GET | `/api/production-orders/:id?summary=1` | — | Detail + items; `summary=1` menambah `ringkasan` |
 | POST | `/api/production-orders` | — | `{ nomor, periode, label?, status?, items? }` |
@@ -90,13 +111,18 @@
 | PUT | `/api/production-orders/:id/capacities` | — | Replace-all kapasitas, body array |
 | GET | `/api/production-orders/:id/schedule?prep=&qc=` | — | Jadwal otomatis (fungsi murni, tanpa tabel) |
 
-### 0.2 Auth matrix — hanya 2 endpoint pakai middleware
+### 0.2 Auth matrix
 
 | Endpoint | Middleware (`src/routes/*.ts`) |
 |----------|-------------------------------|
-| `POST /api/auth/logout` | `authenticate` (`src/routes/auth.ts:8`) |
-| `GET /api/admin/dashboard` | `authenticate` + `adminOnly` (`src/routes/admin.ts:6`) |
-| **Semua endpoint lain** | **tanpa auth** — bisa dipanggil tanpa `Authorization` header |
+| `POST /api/auth/logout`, `GET /api/auth/me` | `authenticate` (+ `authorize` untuk `/me`) (`src/routes/auth.ts`) |
+| `GET /api/admin/dashboard` | `authenticate` + `adminOnly` (`src/routes/admin.ts`) |
+| `GET /api/barang*` | `authenticate` + `authorize` + `requirePermission(...)` per endpoint (lihat §4.5) |
+| `GET /api/barang-group*` | `authenticate` + `authorize` + `requireRole("admin","user")` |
+| `GET /api/roles*` | `authenticate` + `authorize` + `requirePermission("ROLE_KELOLA")` |
+| `GET /api/users*` | `authenticate` + `adminOnly` |
+| Hampir semua router lain | `authenticate`; write (POST/PUT/PATCH/DELETE) + `adminOnly` kecuali yang eksplisit lain (lihat `src/middleware/auth.ts` + tiap `src/routes/*.ts`) |
+| Pengecualian publik | `POST /api/auth/login`, `POST /api/permintaan-barang`, `GET /api/status-barang` |
 
 ### 0.3 Enum yang harus di-hardcode di konsumen
 
@@ -116,7 +142,7 @@ type StatusProductionOrder = "DRAFT" | "AKTIF" | "SELESAI" | "BATAL";
 
 ### 0.4 Yang TIDAK ada (jangan diasumsikan)
 
-- Tidak ada CRUD User. Tidak ada register endpoint.
+- Tidak ada register endpoint publik (user dibuat admin via `POST /api/users` dengan role dari tabel `Role`).
 - Tidak ada MQTT / RFID / IoT / EPC di repo ini. Jangan bikin topic/payload IoT.
 - Tidak ada endpoint update status ProductVariant; field status variant sudah tidak ada di schema.
 - Tidak ada pagination di `GET /api/products` dan `GET /api/variant-produk`.
@@ -197,6 +223,44 @@ Route `src/routes/auth.ts`, controller `src/controller/auth/auth.ts:7`, model `s
 ### GET /api/admin/dashboard
 - `authenticate` + `adminOnly` (`role === "admin"`, else `403 { message: "Akses ditolak. Memerlukan akses admin." }`).
 - `200 { message: "Admin dashboard", user: { id, email, name, role, iat, exp } }`.
+
+---
+
+## 4.5 Role & Permission (RBAC barang)
+
+Router `src/routes/role.ts`, controller `src/controller/role/role.ts`, model `src/model/role/role.ts`, middleware `authorize` + `requirePermission` di `src/middleware/auth.ts`.
+
+Matriks akses disimpan di database (`Role`, `Permission`, `RolePermission`, `RoleBarangStatusPermission`); `ADMIN` melewati matriks dan selalu melihat semua status. Kode role/permission dinormalisasi (input case-insensitive, disimpan canonical).
+
+| Endpoint | Auth | Deskripsi |
+|----------|------|-----------|
+| GET `/api/roles` | Bearer + `ROLE_KELOLA` | List role + grant permission + matriks status |
+| POST `/api/roles` | Bearer + `ROLE_KELOLA` | `{ kode, nama }` → 201 / 400 kode invalid / 409 duplikat |
+| GET `/api/roles/permissions` | Bearer + `ROLE_KELOLA` | Permission master |
+| GET `/api/roles/:id` | Bearer + `ROLE_KELOLA` | Detail role → 404 jika tidak ada |
+| PUT `/api/roles/:id/permissions` | Bearer + `ROLE_KELOLA` | `{ permissions: string[] }` replace grant → 400 kode asing / 404 |
+| PUT `/api/roles/:id/barang-status` | Bearer + `ROLE_KELOLA` | `{ statusView: { KODE: boolean } }` → 400 status asing / nilai non-boolean / role admin dikunci |
+| GET `/api/auth/me` | Bearer | `user` + `permissions[]` + `statusView[]` (null untuk admin) |
+
+Gate permission di `GET /api/barang*` (seluruh router memakai `authenticate` + `authorize`):
+
+| Permission | Endpoint |
+|------------|----------|
+| `BARANG_LIHAT` | `GET /`, `/hari-ini`, `/search`, `/export`, `/:id`, `/:id/riwayat` |
+| `BARANG_STATISTIK_LIHAT` | `GET /status-summary`, `/summary`, `/stats`, `/batch-rentang-tanggal`, `/finishgood-per-bulan` |
+| `BARANG_SCAN` | `GET /scan/:kodeBarang`, `POST /scan/bulk` (bulk juga butuh `BARANG_UBAH_STATUS`) |
+| `BARANG_UBAH_STATUS` | `PATCH /:id/status`, `POST /bulk-status`, `POST /scan/bulk` |
+| `BARANG_GENERATE` | `GET /generate-info`, `POST /generate` |
+| `BARANG_KELOLA` | `POST /`, `PUT /:id`, `DELETE /:id` |
+| `MUTASI_GUDANG` | `POST /api/mutasi-gudang` (seed ke `user`, `gudang`) |
+| `ROLE_KELOLA` | `/api/roles*` |
+
+Filter status per role: `GET /api/barang*` hanya mengembalikan status dalam `statusView` role; `?status=` di luar scope → `403`; tanpa token → `401`; tanpa permission → `403`. Matriks awal role `gudang`: `FINISHGOOD`+`RETUR` terlihat, `REGISTER`/`OUT`/`BAD` tidak. Key cache Redis mencakup scope (`barangScopeKey`) supaya hasil role A tidak tersaji ke role B. Endpoint `barang-group` memfilter barang + `_count` dengan scope yang sama.
+
+```bash
+docker exec backend-api-1 npx prisma migrate deploy   # terapkan migration RBAC
+docker exec -i backend-api-1 npx prisma db seed       # idempotent, aman dijalankan ulang
+```
 
 ---
 
