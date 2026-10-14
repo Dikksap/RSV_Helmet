@@ -671,6 +671,12 @@ export default function DaftarPermintaan() {
   };
 
   const hapus = async (record: PermintaanBarangRecord) => {
+    if (record.approval === "DISETUJUI") {
+      window.alert(
+        `Permintaan ${record.noPermintaan} sudah disetujui dan tidak dapat dihapus.`,
+      );
+      return;
+    }
     if (
       !window.confirm(
         `Hapus permintaan ${record.noPermintaan}?\n\nData yang sudah dihapus tidak dapat dikembalikan.`,
