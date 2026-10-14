@@ -17,7 +17,7 @@ COPY prisma/ ./prisma/
 COPY prisma.config.ts ./
 
 RUN rm -rf dist generated \
-	&& DATABASE_URL=mysql://root:rootpassword@db:3306/express_api npx prisma generate \
+	&& DATABASE_URL=mysql://root:rootpassword@db:3306/express_api npx prisma generate --generator client \
 	&& npm run build
 
 # ---- Stage 2: runtime (hanya prod deps + hasil compile) ----
