@@ -19,6 +19,7 @@ import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
 import LandingPage from "./pages/public/LandingPage.tsx";
 import LiveView from "./pages/public/LiveView.tsx";
 import PermintaanBarang from "./pages/public/PermintaanBarang.tsx";
+import PratinjauPermintaan from "./pages/public/PratinjauPermintaan.tsx";
 import PengaturanBarangProduksi from "./pages/admin/PengaturanBarangProduksi.tsx";
 import PlanProduction from "./pages/admin/PlanProduction.tsx";
 import RealisasiProduksi from "./pages/admin/RealisasiProduksi.tsx";
@@ -46,6 +47,7 @@ const routes = (
       <Route path="/cetak-label" element={<RequireRole roles={["admin", "user"]}><CetakLabel /></RequireRole>} />
       <Route path="/live-view" element={<RequireRole roles={["admin"]}><LiveView /></RequireRole>} />
       <Route path="/permintaan-barang" element={<PermintaanBarang />} />
+      <Route path="/permintaan-barang/pratinjau" element={<PratinjauPermintaan />} />
       <Route path="/print_manager" element={<PrintManager />} />
       <Route path="/scan-qr" element={<RequireRole roles={["admin", "user"]}><ScanQr /></RequireRole>} />
       <Route path="/login" element={<Login />} />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBuilding,
@@ -18,11 +19,6 @@ import { Section } from "../../components/PermintaanBarang/Section";
 import { BarisBarangCard } from "../../components/PermintaanBarang/BarisBarangCard";
 import { BARIS_KOSONG, type Baris, type Notice } from "../../components/PermintaanBarang/types";
 
-const BULAN_ID = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-];
-
 const todayISO = () => {
   const d = new Date();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -30,28 +26,11 @@ const todayISO = () => {
   return `${d.getFullYear()}-${mm}-${dd}`;
 };
 
-const formatTanggalID = (iso: string): string => {
-  if (!iso) return "-";
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  return `${d} ${BULAN_ID[m - 1]} ${y}`;
-};
-
-/* ---------- Style layar ---------- */
-const SCREEN_STYLE = `
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-  input[type="date"] { color-scheme: light; }
-  /* Pratinjau A4 diperkecil otomatis di layar kecil (tidak berpengaruh saat cetak) */
-  @media screen and (max-width: 940px) { .paper-zoom { zoom: .72; } }
-  @media screen and (max-width: 760px) { .paper-zoom { zoom: .55; } }
-  @media screen and (max-width: 600px) { .paper-zoom { zoom: .42; } }
-  @media screen and (max-width: 460px) { .paper-zoom { zoom: .34; } }
-`;
-
 function PermintaanBarang() {
-  const [noPermintaan, setNoPermintaan] = useState("");
+  const navigate = useNavigate();
+
   const [saving, setSaving] = useState(false);
-  const [tanggal, setTanggal] = useState(todayISO);
+  const [tanggal, setTanggal] = useState(todayISO());
   const [departemen, setDepartemen] = useState("");
   const [namaPeminta, setNamaPeminta] = useState("");
   const [kebutuhanUntuk, setKebutuhanUntuk] = useState("Produksi");
@@ -191,7 +170,6 @@ function PermintaanBarang() {
     if (!cekBaris()) return;
     setSaving(true);
     setNotice(null);
-    let nomor = "";
     try {
       const rec = await createPermintaan({
         tanggal,
@@ -209,22 +187,14 @@ function PermintaanBarang() {
           satuan: b.satuan.trim() || null,
         })),
       });
-      setNoPermintaan(rec.noPermintaan);
-      nomor = rec.noPermintaan;
-      notify("success", `Permintaan ${nomor} tersimpan. Membuat PDF...`);
       const blob = buildPermintaanPdf(rec);
-      const hasil = await sharePdfFile(blob, `${nomor}.pdf`, whatsappText(rec));
-      notify(
-        "success",
-        hasil === "shared"
-          ? `PDF ${nomor} siap dibagikan.`
-          : `PDF ${nomor} terunduh. Lanjutkan kirim lewat WhatsApp yang terbuka.`,
-      );
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        notify("success", nomor ? `Permintaan ${nomor} tersimpan. Berbagi dibatalkan.` : "Berbagi dibatalkan.");
-        return;
+      try {
+        await sharePdfFile(blob, `${rec.noPermintaan}.pdf`, whatsappText(rec));
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) throw error;
       }
+      navigate("/permintaan-barang/pratinjau", { state: { rec } });
+    } catch (error) {
       notify(
         "error",
         error instanceof Error ? error.message : "Gagal menyimpan permintaan.",
@@ -236,8 +206,6 @@ function PermintaanBarang() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] px-4 py-8 text-[#171717] sm:px-6">
-      <style>{SCREEN_STYLE}</style>
-
       <div className="mx-auto max-w-[1040px]">
         {/* ---------- Header ---------- */}
         <header className="mb-6 overflow-hidden rounded-lg bg-[#0B0B0B] text-white shadow-[0_1px_3px_rgba(0,0,0,0.25)]">
@@ -252,10 +220,10 @@ function PermintaanBarang() {
             </div>
             <div className="sm:text-right">
               <div className="text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-[#A3A3A3]">
-                No. Permintaan
+                Form Permintaan
               </div>
-              <div className="mt-1 inline-block rounded border border-white/20 bg-white/5 px-3 py-1.5 font-mono text-[0.95rem] font-bold tracking-wide text-white">
-                {noPermintaan || "PR- tertunda "}
+              <div className="mt-1 inline-block rounded border border-white/20 bg-white/5 px-3 py-1.5 text-[0.95rem] font-bold tracking-wide text-white">
+                Barang
               </div>
             </div>
           </div>
@@ -435,12 +403,12 @@ function PermintaanBarang() {
             {/* Status master item */}
             {masterState === "loading" && (
               <p role="status" className="animate-pulse text-[0.85rem] text-[#A3A3A3]">
-                Memuat master item dari database...
+                Memuat data barang...
               </p>
             )}
             {masterState === "error" && (
               <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-[#E30613]/30 bg-[#E30613]/5 px-4 py-3 text-[0.85rem] text-[#171717]">
-                <span>Gagal memuat master item — silakan tulis nama barang manual.</span>
+                <span>Gagal memuat data barang. Silakan tulis nama barang secara manual.</span>
                 <button
                   type="button"
                   onClick={muatMaster}
@@ -480,7 +448,7 @@ function PermintaanBarang() {
                 Jenis barang: <strong className="tabular-nums">{ringkasan.jenis}</strong>
               </span>
               <span className="text-[0.85rem]">
-                Total kuantitas valid: <strong className="tabular-nums">{ringkasan.qty.toLocaleString("id-ID")}</strong>
+                Total kuantitas: <strong className="tabular-nums">{ringkasan.qty.toLocaleString("id-ID")}</strong>
               </span>
             </div>
 
@@ -491,7 +459,7 @@ function PermintaanBarang() {
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#0B0B0B] px-5 py-3.5 text-[0.9rem] font-bold uppercase tracking-wider text-white transition hover:bg-[#E30613] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#E30613]/30"
             >
               <FontAwesomeIcon icon={faPlus} className="h-4 w-4" />
-              + Tambah Barang
+              Tambah Barang
             </button>
           </Section>
 
@@ -513,183 +481,26 @@ function PermintaanBarang() {
             </p>
           </Section>
 
-          <Section no="04" title="Pratinjau & Bagikan" subtitle="Preview & Share">
-
-            {/* Ringkasan singkat */}
-            <dl className="mb-5 grid grid-cols-2 gap-3 rounded-lg border border-[#E5E5E5] bg-[#F3F3F3] p-4 text-[0.82rem] sm:grid-cols-4">
-              {[
-                ["Departemen", departemen || "-"],
-                ["Peminta", namaPeminta || "-"],
-                ["Prioritas", prioritas],
-                ["Jumlah Item", `${baris.length} baris`],
-              ].map(([k, v]) => (
-                <div key={k} className="min-w-0">
-                  <dt className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#A3A3A3]">
-                    {k}
-                  </dt>
-                  <dd className="truncate font-bold text-[#0B0B0B]">{v}</dd>
-                </div>
-              ))}
-            </dl>
-
-            <div className="-mx-5 overflow-x-auto border-y border-[#E5E5E5] bg-[#F3F3F3] p-4 sm:-mx-6 sm:p-6">
-              <div
-                id="permintaan-paper"
-                className="paper-zoom mx-auto flex w-[210mm] flex-col bg-white px-[16mm] py-[14mm] font-[Arial,Helvetica,sans-serif] text-[9.5pt] leading-normal text-[#1f2937] shadow-[0_1px_3px_rgba(0,0,0,0.15)]"
-              >
-                <div className="mb-[4mm] flex items-end justify-between">
-                  <div>
-                    <div className="text-[26pt] font-black leading-none tracking-tight text-[#0B0B0B]">
-                      RSV
-                    </div>
-                    <div className="mt-[1mm] text-[9pt] font-bold uppercase tracking-[0.3em] text-[#0B0B0B]">
-                      Helmet Indonesia
-                    </div>
-                    <div className="mt-[1mm] text-[8pt] text-[#6b7280]">
-                      PT. RSV MANUFACTURE INDONESIA — Inventory &amp; Procurement System
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[11pt] font-bold uppercase tracking-wide text-[#0B0B0B]">
-                      Form Permintaan Barang
-                    </div>
-                    <div className="mt-[1mm] font-mono text-[10pt] font-bold text-[#E30613]">
-                      {noPermintaan || "PR-........"}
-                    </div>
-                  </div>
-                </div>
-                <div className="mb-[6mm] h-[2.5mm] w-full bg-[#E30613]" />
-
-                <div className="mb-[2mm] text-[9.5pt] font-bold uppercase tracking-[0.18em] text-[#0B0B0B]">
-                  Document Information
-                </div>
-                <div className="mb-[6mm] rounded border border-[#d7e0ee] bg-[#f8fafc] px-[4mm] py-[3mm]">
-                  <table className="w-full border-collapse">
-                    <tbody>
-                      <tr>
-                        <td className="w-[24%] py-[0.5mm] text-[#6b7280]">No. Permintaan</td>
-                        <td className="w-[26%] font-bold">{noPermintaan || "-"}</td>
-                        <td className="w-[24%] text-[#6b7280]">Tanggal Form</td>
-                        <td className="font-bold">{formatTanggalID(tanggal)}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-[0.5mm] text-[#6b7280]">Departemen</td>
-                        <td className="font-bold">{departemen || "-"}</td>
-                        <td className="text-[#6b7280]">Tgl. Dibutuhkan</td>
-                        <td className="font-bold">{formatTanggalID(tanggalDibutuhkan)}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-[0.5mm] text-[#6b7280]">Peminta</td>
-                        <td className="font-bold">{namaPeminta || "-"}</td>
-                        <td className="text-[#6b7280]">Prioritas</td>
-                        <td className="font-bold">{prioritas}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-[0.5mm] text-[#6b7280]">Kebutuhan Untuk</td>
-                        <td className="font-bold" colSpan={3}>
-                          {kebutuhanUntuk}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mb-[2mm] text-[9.5pt] font-bold uppercase tracking-[0.18em] text-[#0B0B0B]">
-                  Item Details
-                </div>
-                <table className="mb-[6mm] w-full border-collapse text-[9pt]">
-                  <thead>
-                    <tr className="bg-[#0B0B0B] text-white">
-                      <th className="w-[6%] border border-[#0B0B0B] border-b-[#E30613] px-[2.5mm] py-[2mm] text-center">
-                        No
-                      </th>
-                      <th className="border border-[#0B0B0B] border-b-[#E30613] px-[2.5mm] py-[2mm] text-left">
-                        Nama Barang / Bahan
-                      </th>
-                      <th className="border border-[#0B0B0B] border-b-[#E30613] px-[2.5mm] py-[2mm] text-left">
-                        Spesifikasi
-                      </th>
-                      <th className="w-[10%] border border-[#0B0B0B] border-b-[#E30613] px-[2.5mm] py-[2mm] text-center">
-                        Jml
-                      </th>
-                      <th className="w-[14%] border border-[#0B0B0B] border-b-[#E30613] px-[2.5mm] py-[2mm] text-center">
-                        Satuan
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {baris.map((b, i) => (
-                      <tr key={i} className={i % 2 === 1 ? "bg-[#f8fafc]" : "bg-white"}>
-                        <td className="border border-[#d7e0ee] px-[2.5mm] py-[2mm] text-center font-bold text-[#E30613]">
-                          {String(i + 1).padStart(2, "0")}
-                        </td>
-                        <td className="border border-[#d7e0ee] px-[2.5mm] py-[2mm]">
-                          {b.nama || "-"}
-                        </td>
-                        <td className="border border-[#d7e0ee] px-[2.5mm] py-[2mm]">
-                          {b.spesifikasi || "-"}
-                        </td>
-                        <td className="border border-[#d7e0ee] px-[2.5mm] py-[2mm] text-center">
-                          {b.jumlah || "-"}
-                        </td>
-                        <td className="border border-[#d7e0ee] px-[2.5mm] py-[2mm] text-center">
-                          {b.satuan || "-"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="mb-[2mm] text-[9.5pt] font-bold uppercase tracking-[0.18em] text-[#0B0B0B]">
-                  Request Reason
-                </div>
-                <div className="mb-[10mm] min-h-[14mm] whitespace-pre-line rounded border border-[#d7e0ee] px-[4mm] py-[3mm]">
-                  {alasan || "-"}
-                </div>
-
-                <div className="grid grid-cols-3 text-center text-[9pt]">
-                  {[
-                    { label: "Dibuat Oleh\n(PIC)", name: namaPeminta.toUpperCase() },
-                    { label: "Diperiksa Oleh\n(Kepala Produksi)", name: "" },
-                    { label: "Disetujui Oleh\n(Inventori Kontrol)", name: "" },
-                  ].map((s) => (
-                    <div key={s.label} className="sig-col px-[2mm]">
-                      <div className="mb-[16mm] whitespace-pre-line text-[#374151]">
-                        {s.label}
-                      </div>
-                      <div
-                        className={`border-t border-[#1f2937] pt-[1.5mm] ${
-                          s.name ? "font-bold" : ""
-                        }`}
-                      >
-                        {s.name || "(............................)"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex w-full items-center justify-center gap-2.5 rounded-lg bg-[#E30613] px-8 py-3.5 text-[0.95rem] font-bold uppercase tracking-wider text-white shadow-[0_1px_3px_rgba(227,6,19,0.4)] transition hover:bg-[#B80510] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
-              >
-                {saving ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    Menyimpan...
-                  </>
-                ) : (
-                  <>
-                    <FontAwesomeIcon icon={faWhatsapp} className="h-4 w-4" />
-                    Simpan &amp; Bagikan WhatsApp
-                  </>
-                )}
-              </button>
-            </div>
-          </Section>
+          <div className="mb-5">
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex w-full items-center justify-center gap-2.5 rounded-lg bg-[#E30613] px-8 py-3.5 text-[0.95rem] font-bold uppercase tracking-wider text-white shadow-[0_1px_3px_rgba(227,6,19,0.4)] transition hover:bg-[#B80510] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px] sm:float-right"
+            >
+              {saving ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faWhatsapp} className="h-4 w-4" />
+                  Simpan &amp; Bagikan WhatsApp
+                </>
+              )}
+            </button>
+            <div className="clear-both" />
+          </div>
         </form>
       </div>
     </div>

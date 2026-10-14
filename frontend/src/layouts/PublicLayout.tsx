@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import logoUrl from "../assets/logo.svg";
 
-const HIDE_TOPBAR = new Set(["/", "/live-view", "/login", "/permintaan-barang"]);
+const HIDE_TOPBAR = new Set(["/", "/live-view", "/login", "/permintaan-barang", "/permintaan-barang/pratinjau"]);
 
 function PublicLayout() {
   const { pathname } = useLocation();

@@ -165,7 +165,7 @@ export function ItemSearchSelect({
         autoComplete="off"
         value={display}
         readOnly={Boolean(selected)}
-        title={selected ? "Master terpilih — tekan ✕ untuk tulis bebas" : undefined}
+        title={selected ? "Hapus pilihan" : undefined}
         onChange={(event) => {
           // Lepaskan master ketika pengguna mulai mengetik lagi.
           if (selected) {
@@ -179,7 +179,7 @@ export function ItemSearchSelect({
           if (canSuggest) setOpen(true);
         }}
         onKeyDown={handleKeyDown}
-        placeholder="Ketik nama barang atau cari master (kode/nama)..."
+        placeholder="Ketik nama barang..."
         className={`${className} ${selected ? "bg-[#F3F3F3] font-semibold" : ""}`}
       />
 
@@ -187,7 +187,7 @@ export function ItemSearchSelect({
         <button
           type="button"
           onClick={clear}
-          aria-label={selected ? "Lepas master, tulis bebas" : "Hapus nama barang"}
+          aria-label={selected ? "Hapus pilihan" : "Hapus nama barang"}
           className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[#A3A3A3] hover:bg-[#E30613]/10 hover:text-[#E30613]"
         >
           ✕
@@ -234,7 +234,7 @@ export function ItemSearchSelect({
               role="presentation"
               className="px-3 py-2 text-[0.85rem] italic text-[#A3A3A3]"
             >
-              Tidak ada yang cocok — teks dipakai sebagai tulis bebas.
+              Tidak ada hasil yang cocok.
             </li>
           )}
         </ul>

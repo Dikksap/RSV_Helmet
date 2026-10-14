@@ -44,11 +44,7 @@ export function BarisBarangCard({
             <span className="truncate rounded bg-[#0B0B0B] px-2 py-0.5 font-mono text-[0.75rem] font-bold text-white">
               {b.kode}
             </span>
-          ) : (
-            <span className="rounded bg-[#F3F3F3] px-2 py-0.5 text-[0.75rem] font-semibold text-[#A3A3A3]">
-              Tulis bebas
-            </span>
-          )}
+          ) : null}
         </div>
         <button
           type="button"
@@ -73,16 +69,16 @@ export function BarisBarangCard({
           nama={b.nama}
           onPick={onPick}
           onNama={onNama}
-          ariaLabel={`Nama barang atau cari master (kode atau nama) baris ${i + 1}`}
+          ariaLabel={`Nama barang baris ${i + 1}`}
           listId={`b-barang-${i}`}
           inputId={`b-barang-${i}`}
           className={inputCls}
         />
-        <p className="mt-1 text-[0.75rem] text-[#A3A3A3]">
-          {b.itemId
-            ? `Master ${b.kode} · satuan & divisi mengikuti master.`
-            : "Ketik untuk cari master, atau tulis bebas."}
-        </p>
+        {b.itemId && (
+          <p className="mt-1 text-[0.75rem] text-[#A3A3A3]">
+            Satuan mengikuti data barang.
+          </p>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -143,7 +139,7 @@ export function BarisBarangCard({
               readOnly={Boolean(b.itemId)}
               onChange={(e) => onField("satuan", e.target.value)}
               placeholder="Pcs"
-              title={b.itemId ? "Satuan mengikuti master item" : undefined}
+              title={b.itemId ? "Satuan mengikuti data barang" : undefined}
               className={`${inputCls} disabled:bg-[#F3F3F3]`}
             />
             <span

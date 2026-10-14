@@ -19,3 +19,14 @@ export const BARIS_KOSONG: Baris = {
 };
 
 export type Notice = { tone: "error" | "success"; text: string };
+
+export type PermintaanDraft = {
+  tanggal: string;
+  tanggalDibutuhkan: string;
+  departemen: string;
+  namaPeminta: string;
+  kebutuhanUntuk: string;
+  prioritas: string;
+  alasan: string;
+  baris: Baris[];
+};
