@@ -32,10 +32,12 @@ import KelolaKaryawan from "./pages/admin/KelolaKaryawan.tsx";
 import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
 import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
 import KelolaItem from "./pages/admin/KelolaItem.tsx";
+import StokItem from "./pages/admin/StokItem.tsx";
 import StokOpname from "./pages/admin/StokOpname.tsx";
 import KelolaGudang from "./pages/admin/KelolaGudang.tsx";
 import RiwayatMutasi from "./pages/admin/RiwayatMutasi.tsx";
 import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
+import HomepageGudang from "./pages/gudang/HomepageGudang.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
 import RequireRole from "./components/RequireRole.tsx";
@@ -71,6 +73,7 @@ const routes = (
       <Route path="/admin/batch" element={<KelolaBatch />} />
       <Route path="/admin/permintaan-barang" element={<DaftarPermintaan />} />
       <Route path="/admin/item" element={<KelolaItem />} />
+      <Route path="/admin/item/stok/:id" element={<StokItem />} />
       <Route path="/admin/stok-opname" element={<StokOpname />} />
       <Route path="/admin/gudang" element={<KelolaGudang />} />
       <Route path="/admin/mutasi-gudang" element={<RiwayatMutasi />} />
@@ -90,12 +93,13 @@ const routes = (
         </LiveSocketProvider>
       }
     >
-      <Route path="/gudang" element={<Navigate to="/gudang/barang" replace />} />
-      <Route path="/gudang/home" element={<Navigate to="/gudang/barang" replace />} />
+      <Route path="/gudang" element={<Navigate to="/gudang/home" replace />} />
+      <Route path="/gudang/home" element={<HomepageGudang />} />
       <Route path="/gudang/barang" element={<DaftarBarang />} />
       <Route path="/gudang/stok-produksi" element={<StokProduksi />} />
       <Route path="/gudang/mutasi" element={<RiwayatMutasi />} />
       <Route path="/gudang/item" element={<KelolaItem />} />
+      <Route path="/gudang/item/stok/:id" element={<StokItem />} />
       <Route path="/gudang/stok-opname" element={<StokOpname />} />
       <Route path="/gudang/permintaan-barang" element={<DaftarPermintaan />} />
     </Route>

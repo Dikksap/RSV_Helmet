@@ -229,7 +229,7 @@ function ScanSheet({ onClose }: { onClose: () => void }) {
 function LandingPage() {
   const [role, setRole] = useState<string | undefined>(() => getUser()?.role);
   const admin = role === "admin";
-  const dashboardTo = role === "admin" ? "/admin/home" : role === "gudang" ? "/gudang/barang" : null;
+  const dashboardTo = role === "admin" ? "/admin/home" : role === "gudang" ? "/gudang/home" : null;
   const [scanOpen, setScanOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const user = role ? getUser() : null;

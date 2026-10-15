@@ -13,6 +13,7 @@ export interface Item {
   nama: string;
   divisiId: number | null;
   unit: string;
+  jenis: string | null;
   isActive: boolean;
   divisi?: ItemDivisi | null;
 }
@@ -21,6 +22,7 @@ export interface ItemListParams {
   q?: string;
   divisiId?: number;
   aktif?: boolean;
+  jenis?: string;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -50,17 +52,21 @@ export async function getItems(params: ItemListParams = {}): Promise<Item[]> {
   if (params.q?.trim()) query.set("q", params.q.trim());
   if (params.divisiId) query.set("divisiId", String(params.divisiId));
   if (params.aktif !== undefined) query.set("aktif", params.aktif ? "true" : "false");
+  if (params.jenis?.trim()) query.set("jenis", params.jenis.trim());
   const qs = query.toString();
   return request<Item[]>(`/items${qs ? `?${qs}` : ""}`);
 }
 
 export const getItem = (id: number) => request<Item>(`/items/${id}`);
 
-export const createItem = (body: { kode: string; nama: string; divisiId?: number | null; unit?: string; isActive?: boolean }) =>
+export const createItem = (body: { kode: string; nama: string; divisiId?: number | null; unit?: string; jenis?: string | null; isActive?: boolean }) =>
   request<Item>("/items", { method: "POST", body: JSON.stringify(body) });
 
-export const updateItem = (id: number, body: { kode?: string; nama?: string; divisiId?: number | null; unit?: string; isActive?: boolean }) =>
+export const updateItem = (id: number, body: { kode?: string; nama?: string; divisiId?: number | null; unit?: string; jenis?: string | null; isActive?: boolean }) =>
   request<Item>(`/items/${id}`, { method: "PUT", body: JSON.stringify(body) });
 
 export const deleteItem = (id: number) =>
   request<{ message: string }>(`/items/${id}`, { method: "DELETE" });
+
+export const bulkUpdateItems = (body: { ids: number[]; jenis?: string | null; divisiId?: number | null }) =>
+  request<{ requested: number; updated: number }>(`/items/bulk`, { method: "PUT", body: JSON.stringify(body) });

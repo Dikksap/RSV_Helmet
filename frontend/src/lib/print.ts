@@ -24,7 +24,6 @@ export interface SilentPrintResult {
 const PRINTER_STORAGE_KEY = "defaultPrinter";
 
 const MICRONS_PER_MM = 1000;
-const MICRONS_PER_INCH = 25400;
 
 export type LabelSize =
   | "33x15mm"
@@ -42,48 +41,6 @@ export interface CustomLabelMm {
   height: number;
 }
 
-export const labelSizeMicrons: Record<
-  LabelSize,
-  { width: number; height: number }
-> = {
-  "33x15mm": {
-    width: 33 * MICRONS_PER_MM,
-    height: 15 * MICRONS_PER_MM,
-  },
-  "50x50mm": {
-    width: 50 * MICRONS_PER_MM,
-    height: 50 * MICRONS_PER_MM,
-  },
-  "58x58mm": {
-    width: 58 * MICRONS_PER_MM,
-    height: 58 * MICRONS_PER_MM,
-  },
-  "100x75mm": {
-    width: 100 * MICRONS_PER_MM,
-    height: 75 * MICRONS_PER_MM,
-  },
-  "100x100mm": {
-    width: 100 * MICRONS_PER_MM,
-    height: 100 * MICRONS_PER_MM,
-  },
-  "100x140mm": {
-    width: 100 * MICRONS_PER_MM,
-    height: 140 * MICRONS_PER_MM,
-  },
-  "100x200mm": {
-    width: 100 * MICRONS_PER_MM,
-    height: 200 * MICRONS_PER_MM,
-  },
-  "4x6inch": {
-    width: 4 * MICRONS_PER_INCH,
-    height: 6 * MICRONS_PER_INCH,
-  },
-  custom: {
-    width: 80 * MICRONS_PER_MM,
-    height: 80 * MICRONS_PER_MM,
-  },
-};
-
 export const labelSizeMm: Record<LabelSize, { width: number; height: number }> =
   {
     "33x15mm": { width: 33, height: 15 },
@@ -97,17 +54,25 @@ export const labelSizeMm: Record<LabelSize, { width: number; height: number }> =
     custom: { width: 80, height: 80 },
   };
 
-export const labelSizeConfig: Record<LabelSize, { page: string }> = {
-  "33x15mm": { page: "33mm 15mm" },
-  "50x50mm": { page: "50mm 50mm" },
-  "100x75mm": { page: "100mm 75mm" },
-  "100x100mm": { page: "100mm 100mm" },
-  "100x140mm": { page: "100mm 140mm" },
-  "100x200mm": { page: "100mm 200mm" },
-  "58x58mm": { page: "58mm 58mm" },
-  "4x6inch": { page: "4in 6in" },
-  custom: { page: "80mm 80mm" },
-};
+// Satu-satunya sumber ukuran. Turunan dihitung, bukan ditulis ulang,
+// supaya tambah/ubah ukuran tidak bisa drift antar tabel.
+function mapSizes<T>(fn: (mm: { width: number; height: number }) => T): Record<LabelSize, T> {
+  return Object.fromEntries(
+    (Object.keys(labelSizeMm) as LabelSize[]).map((k) => [k, fn(labelSizeMm[k])]),
+  ) as Record<LabelSize, T>;
+}
+
+export const labelSizeMicrons: Record<
+  LabelSize,
+  { width: number; height: number }
+> = mapSizes((m) => ({
+  width: Math.round(m.width * MICRONS_PER_MM),
+  height: Math.round(m.height * MICRONS_PER_MM),
+}));
+
+export const labelSizeConfig: Record<LabelSize, { page: string }> = mapSizes((m) => ({
+  page: `${m.width}mm ${m.height}mm`,
+}));
 
 export function sanitizeCustomMm(custom?: CustomLabelMm): CustomLabelMm {
   const width = Number(custom?.width);
@@ -171,14 +136,14 @@ export interface HangtagPrintRequest {
   hangtagHtmls: string[];
   size: LabelSize;
   customMm?: CustomLabelMm;
-  printerName?: string;
+  // undefined = pakai printer tersimpan; null/"" = printer default OS.
+  printerName?: string | null;
   copies?: number;
 }
 
 export function buildHangtagPrintHtml(request: HangtagPrintRequest): string {
   const microns = resolveLabelMicrons(request.size, request.customMm);
   const page = resolveLabelPage(request.size, request.customMm);
-  const [width] = page.split(" ");
   const widthMm = microns.width / MICRONS_PER_MM;
   const heightMm = microns.height / MICRONS_PER_MM;
   const scale = Math.min(widthMm / 100, heightMm / 75);
@@ -192,7 +157,7 @@ export function buildHangtagPrintHtml(request: HangtagPrintRequest): string {
     `@page { size: ${page}; page-orientation: portrait; margin: 0; }`,
     "* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }",
     "html, body { margin: 0; padding: 0; width: 100%; background: #ffffff; }",
-    `.print-sheet { width: ${width}; height: ${heightMm}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; break-after: page; page-break-after: always; }`,
+    `.print-sheet { width: ${widthMm}mm; height: ${heightMm}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; break-after: page; page-break-after: always; }`,
     ".print-sheet:last-child { break-after: auto; page-break-after: auto; }",
     hangtagCss,
     "</style></head>",
@@ -210,7 +175,8 @@ export async function printHangtagSilently(
   const html = buildHangtagPrintHtml(request);
 
   const savedPrinter = loadDefaultPrinter();
-  const printerName = request.printerName ?? savedPrinter;
+  // null/"" eksplisit = default OS, jangan jatuh ke nama tersimpan yang basi.
+  const printerName = request.printerName === undefined ? savedPrinter : request.printerName;
 
   return window.electron.printSilent({
     html,

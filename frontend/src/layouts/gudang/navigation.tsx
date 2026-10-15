@@ -1,8 +1,10 @@
-import { faArchive, faBoxesStacked, faClipboardCheck, faClipboardList, faTags } from "@fortawesome/free-solid-svg-icons";
+import { faArchive, faBoxesStacked, faClipboardCheck, faClipboardList, faHouse, faTags } from "@fortawesome/free-solid-svg-icons";
 
 import type { NavGroup, NavItem } from "../RoleLayout";
 
-export const GUDANG_MAIN: NavItem[] = [];
+export const GUDANG_MAIN: NavItem[] = [
+  { to: "/gudang/home", label: "Beranda", icon: faHouse, end: true },
+];
 
 export const GUDANG_BARANG: NavGroup = {
   label: "Barang",

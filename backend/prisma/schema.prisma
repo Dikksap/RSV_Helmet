@@ -143,9 +143,6 @@ model Divisi {
   items    Item[]
 }
 
-// =============================================
-// Master Item (pilihan permintaan barang, bukan unit fisik helm)
-// =============================================
 
 model Item {
   id        Int      @id @default(autoincrement())
@@ -153,6 +150,7 @@ model Item {
   nama      String
   divisiId  Int?
   unit      String   @default("pcs")
+  jenis     String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -125,7 +125,7 @@ export function redirectToLogin(): void {
 
 export function homeForRole(role: string | undefined): string {
   if (role === "admin") return "/admin/home";
-  if (role === "gudang") return "/gudang/barang";
+  if (role === "gudang") return "/gudang/home";
   if (role === "user") return "/scan-qr";
   return "/";
 }

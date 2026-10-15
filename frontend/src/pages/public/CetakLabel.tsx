@@ -189,9 +189,13 @@ function CetakLabel() {
     fetchPrinters()
       .then((list) => {
         setPrinters(list);
-        setSelectedPrinter((cur) =>
-          cur && list.some((p) => p.name === cur) ? cur : (list.find((p) => p.isDefault)?.name ?? ""),
-        );
+        setSelectedPrinter((cur) => {
+          // Printer tersimpan bisa sudah tidak ada — samakan storage dengan UI
+          // supaya silent print tidak jatuh ke nama basi.
+          const next = cur && list.some((p) => p.name === cur) ? cur : (list.find((p) => p.isDefault)?.name ?? "");
+          if (next !== cur) saveDefaultPrinter(next);
+          return next;
+        });
       })
       .catch(() => setPrinters([]));
   }, [electron]);
@@ -285,7 +289,7 @@ function CetakLabel() {
           hangtagHtmls: chunk,
           size: printSize,
           customMm,
-          printerName: selectedPrinter || undefined,
+          printerName: selectedPrinter || null,
           copies: 1,
         });
         if (result.status === "error") {
@@ -359,7 +363,9 @@ function CetakLabel() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || e.ctrlKey || e.metaKey || e.altKey) return;
+      // Ctrl/Cmd+Enter: Enter polos terlalu mudah kepencet dan langsung
+      // menulis kode ke DB via generateBarang.
+      if (e.key !== "Enter" || (!e.ctrlKey && !e.metaKey) || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "A", "SUMMARY"].includes(t.tagName) || t.isContentEditable)) return;
       e.preventDefault();
@@ -688,7 +694,7 @@ function CetakLabel() {
                 type="button"
                 onClick={() => void handleGenerate()}
                 disabled={!canPrint}
-                title="Tekan Enter untuk cetak"
+                title="Tekan Ctrl+Enter untuk cetak"
                 className={`flex h-14 w-full items-center justify-center gap-2.5 rounded-xl bg-[#1E3A5F] px-6 text-base font-bold text-white shadow-sm transition hover:bg-[#162C48] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none ${FOCUS}`}
               >
                 {busy || isInfoLoading ? (
@@ -710,7 +716,7 @@ function CetakLabel() {
                 </button>
               </div>
               <p className="hidden items-center justify-center gap-1.5 text-xs text-[#64748B] xl:flex">
-                <kbd className="rounded border border-[#E5E9F0] bg-slate-50 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>
+                <kbd className="rounded border border-[#E5E9F0] bg-slate-50 px-1.5 py-0.5 font-mono text-[10px]">Ctrl+Enter</kbd>
                 untuk cetak cepat
               </p>
             </section>

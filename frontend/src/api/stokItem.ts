@@ -42,8 +42,53 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-export const getStokItem = (id: number, page = 1, limit = 20) =>
-  request<StokItemResponse>(`/items/${id}/stok?page=${page}&limit=${limit}`);
+export interface StokRiwayatFilter {
+  dari?: string;
+  sampai?: string;
+}
+
+export const getStokItem = (id: number, page = 1, limit = 20, filter: StokRiwayatFilter = {}) => {
+  const query = new URLSearchParams({
+    page: String(Math.max(1, page)),
+    limit: String(Math.min(100, Math.max(1, limit))),
+  });
+  if (filter.dari) query.set("dari", filter.dari);
+  if (filter.sampai) query.set("sampai", filter.sampai);
+  return request<StokItemResponse>(`/items/${id}/stok?${query}`);
+};
+
+export async function listSemuaRiwayatStokItem(id: number, filter: StokRiwayatFilter = {}): Promise<StokMutasiRecord[]> {
+  const pertama = await getStokItem(id, 1, 100, filter);
+  const semua: StokMutasiRecord[] = [...pertama.riwayat.data];
+  for (let page = 2; page <= pertama.riwayat.meta.totalPages; page += 1) {
+    const res = await getStokItem(id, page, 100, filter);
+    semua.push(...res.riwayat.data);
+  }
+  return semua;
+}
+
+export interface RingkasanStokItem {
+  masuk: number;
+  keluar: number;
+  net: number;
+}
+
+export async function getRingkasanBulkStok(ids: number[], filter: StokRiwayatFilter = {}): Promise<Record<number, RingkasanStokItem>> {
+  const uniq = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  const hasil: Record<number, RingkasanStokItem> = {};
+  for (let i = 0; i < uniq.length; i += 200) {
+    const res = await request<{ ringkasan: Record<number, RingkasanStokItem> }>("/items/stok-ringkasan", {
+      method: "POST",
+      body: JSON.stringify({
+        ids: uniq.slice(i, i + 200),
+        ...(filter.dari ? { dari: filter.dari } : {}),
+        ...(filter.sampai ? { sampai: filter.sampai } : {}),
+      }),
+    });
+    Object.assign(hasil, res.ringkasan);
+  }
+  return hasil;
+}
 
 export const getSaldoBulk = (ids: number[]) =>
   request<{ saldo: Record<number, number> }>("/items/stok-saldo", {
@@ -51,8 +96,14 @@ export const getSaldoBulk = (ids: number[]) =>
     body: JSON.stringify({ ids }),
   });
 
-export const tambahStokItem = (id: number, body: { jumlah: number; keterangan?: string }) =>
+export const tambahStokItem = (id: number, body: { jumlah: number; keterangan?: string; tanggal?: string }) =>
   request<{ mutasi: StokMutasiRecord; saldo: number }>(`/items/${id}/stok`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const catatKeluarItem = (id: number, body: { jumlah: number; keterangan?: string; tanggal?: string }) =>
+  request<{ mutasi: StokMutasiRecord; saldo: number }>(`/items/${id}/stok/keluar`, {
     method: "POST",
     body: JSON.stringify(body),
   });

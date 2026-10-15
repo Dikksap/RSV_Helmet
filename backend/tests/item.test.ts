@@ -8,6 +8,10 @@ vi.mock("../src/model/item/item.js", () => ({
   createItem: vi.fn(),
   updateItem: vi.fn(),
   deleteItem: vi.fn(),
+  bulkUpdateItems: vi.fn(),
+  DivisiTidakDikenalError: class DivisiTidakDikenalError extends Error {
+    readonly code = "DIVISI_TIDAK_DIKENAL";
+  },
 }));
 
 let currentAccess = { role: "user", permissions: ["BARANG_LIHAT", "KELOLA_ITEM"], statusView: null };
@@ -36,6 +40,7 @@ import {
   createItem,
   updateItem,
   deleteItem,
+  bulkUpdateItems,
 } from "../src/model/item/item.js";
 
 const mocked = {
@@ -44,6 +49,7 @@ const mocked = {
   createItem: vi.mocked(createItem),
   updateItem: vi.mocked(updateItem),
   deleteItem: vi.mocked(deleteItem),
+  bulkUpdateItems: vi.mocked(bulkUpdateItems),
 };
 
 const app = express();
@@ -51,7 +57,7 @@ app.use(express.json());
 app.use("/api/items", itemRouter);
 
 const sample = {
-  id: 1, kode: "BRG-001", nama: "Baut M8", divisiId: 2, unit: "pcs", isActive: true,
+  id: 1, kode: "BRG-001", nama: "Baut M8", divisiId: 2, unit: "pcs", jenis: "RAW MATERIAL", isActive: true,
   divisi: { id: 2, nama: "Perakitan" },
 };
 
@@ -66,7 +72,16 @@ describe("GET /api/items", () => {
     const res = await request(app).get("/api/items?q=baut&divisiId=2&aktif=true");
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(mocked.listItems).toHaveBeenCalledWith({ q: "baut", divisiId: 2, aktif: true });
+    expect(mocked.listItems).toHaveBeenCalledWith({ q: "baut", divisiId: 2, aktif: true, jenis: undefined });
+  });
+
+  it("200 teruskan filter jenis", async () => {
+    mocked.listItems.mockResolvedValue([sample as any]);
+    const res = await request(app).get("/api/items?jenis=RAW%20MATERIAL");
+    expect(res.status).toBe(200);
+    expect(mocked.listItems).toHaveBeenCalledWith(
+      expect.objectContaining({ jenis: "RAW MATERIAL" }),
+    );
   });
 
   it("400 divisiId bukan angka", async () => {
@@ -124,6 +139,23 @@ describe("POST /api/items", () => {
     );
   });
 
+  it("201 create dengan jenis bebas", async () => {
+    mocked.createItem.mockResolvedValue(sample as any);
+    const res = await request(app).post("/api/items").send({ kode: "BRG-001", nama: "Baut M8", jenis: "HABIS PAKAI" });
+    expect(res.status).toBe(201);
+    expect(mocked.createItem).toHaveBeenCalledWith(
+      expect.objectContaining({ jenis: "HABIS PAKAI" }),
+    );
+  });
+
+  it("400 jenis kosong / terlalu panjang", async () => {
+    const res1 = await request(app).post("/api/items").send({ kode: "BRG-1", nama: "X", jenis: "  " });
+    const res2 = await request(app).post("/api/items").send({ kode: "BRG-1", nama: "X", jenis: "a".repeat(51) });
+    expect(res1.status).toBe(400);
+    expect(res2.status).toBe(400);
+    expect(mocked.createItem).not.toHaveBeenCalled();
+  });
+
   it("409 kode duplikat", async () => {
     mocked.createItem.mockRejectedValue({ code: "P2002" });
     const res = await request(app).post("/api/items").send({ kode: "BRG-001", nama: "X" });
@@ -151,6 +183,19 @@ describe("PUT /api/items/:id", () => {
     expect(mocked.updateItem).toHaveBeenCalledWith(1, { divisiId: null, isActive: false });
   });
 
+  it("200 update jenis + null mengosongkan jenis", async () => {
+    mocked.updateItem.mockResolvedValue({ ...sample, jenis: null } as any);
+    const res = await request(app).put("/api/items/1").send({ jenis: null });
+    expect(res.status).toBe(200);
+    expect(mocked.updateItem).toHaveBeenCalledWith(1, { jenis: null });
+  });
+
+  it("400 jenis invalid saat update", async () => {
+    const res = await request(app).put("/api/items/1").send({ jenis: "  " });
+    expect(res.status).toBe(400);
+    expect(mocked.updateItem).not.toHaveBeenCalled();
+  });
+
   it("404 tidak ditemukan", async () => {
     mocked.updateItem.mockRejectedValue({ code: "P2025" });
     const res = await request(app).put("/api/items/99").send({ nama: "X" });
@@ -163,9 +208,11 @@ describe("guard KELOLA_ITEM", () => {
     __setItemTestAccess(["BARANG_LIHAT"]);
     expect((await request(app).post("/api/items").send({ kode: "BRG-1", nama: "X" })).status).toBe(403);
     expect((await request(app).put("/api/items/1").send({ nama: "X" })).status).toBe(403);
+    expect((await request(app).put("/api/items/bulk").send({ ids: [1], jenis: "SM" })).status).toBe(403);
     expect((await request(app).delete("/api/items/1")).status).toBe(403);
     expect(mocked.createItem).not.toHaveBeenCalled();
     expect(mocked.updateItem).not.toHaveBeenCalled();
+    expect(mocked.bulkUpdateItems).not.toHaveBeenCalled();
     expect(mocked.deleteItem).not.toHaveBeenCalled();
   });
 
@@ -174,6 +221,63 @@ describe("guard KELOLA_ITEM", () => {
     mocked.createItem.mockResolvedValue(sample as any);
     const res = await request(app).post("/api/items").send({ kode: "BRG-001", nama: "Baut M8" });
     expect(res.status).toBe(201);
+  });
+});
+
+describe("PUT /api/items/bulk", () => {
+  it("200 set jenis massal + teruskan ids apa adanya", async () => {
+    mocked.bulkUpdateItems.mockResolvedValue(2);
+    const res = await request(app).put("/api/items/bulk").send({ ids: [1, 2, 2], jenis: "SM" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ requested: 2, updated: 2 });
+    expect(mocked.bulkUpdateItems).toHaveBeenCalledWith([1, 2, 2], { jenis: "SM" });
+  });
+
+  it("200 set divisi + kosongkan jenis sekaligus", async () => {
+    mocked.bulkUpdateItems.mockResolvedValue(1);
+    const res = await request(app).put("/api/items/bulk").send({ ids: [1], jenis: null, divisiId: 3 });
+    expect(res.status).toBe(200);
+    expect(mocked.bulkUpdateItems).toHaveBeenCalledWith([1], { jenis: null, divisiId: 3 });
+  });
+
+  it("200 lepas divisi massal (divisiId null)", async () => {
+    mocked.bulkUpdateItems.mockResolvedValue(1);
+    const res = await request(app).put("/api/items/bulk").send({ ids: [1], divisiId: null });
+    expect(res.status).toBe(200);
+    expect(mocked.bulkUpdateItems).toHaveBeenCalledWith([1], { divisiId: null });
+  });
+
+  it("400 divisi tidak dikenal", async () => {
+    mocked.bulkUpdateItems.mockRejectedValue({ code: "DIVISI_TIDAK_DIKENAL" });
+    const res = await request(app).put("/api/items/bulk").send({ ids: [1], divisiId: 99 });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Divisi tidak ditemukan");
+  });
+
+  it("400 tanpa field yang diubah", async () => {
+    const res = await request(app).put("/api/items/bulk").send({ ids: [1] });
+    expect(res.status).toBe(400);
+    expect(mocked.bulkUpdateItems).not.toHaveBeenCalled();
+  });
+
+  it("400 ids kosong / invalid / melebihi 500", async () => {
+    const r1 = await request(app).put("/api/items/bulk").send({ ids: [], jenis: "SM" });
+    const r2 = await request(app).put("/api/items/bulk").send({ ids: [1, "x"], jenis: "SM" });
+    const r3 = await request(app).put("/api/items/bulk").send({ ids: Array.from({ length: 501 }, (_, i) => i + 1), jenis: "SM" });
+    expect(r1.status).toBe(400);
+    expect(r2.status).toBe(400);
+    expect(r3.status).toBe(400);
+    expect(mocked.bulkUpdateItems).not.toHaveBeenCalled();
+  });
+
+  it("400 jenis / divisiId invalid", async () => {
+    const r1 = await request(app).put("/api/items/bulk").send({ ids: [1], jenis: "  " });
+    const r2 = await request(app).put("/api/items/bulk").send({ ids: [1], jenis: "a".repeat(51) });
+    const r3 = await request(app).put("/api/items/bulk").send({ ids: [1], divisiId: "x" });
+    expect(r1.status).toBe(400);
+    expect(r2.status).toBe(400);
+    expect(r3.status).toBe(400);
+    expect(mocked.bulkUpdateItems).not.toHaveBeenCalled();
   });
 });
 

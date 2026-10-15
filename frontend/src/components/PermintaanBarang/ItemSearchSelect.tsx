@@ -40,11 +40,13 @@ export function ItemSearchSelect({
           const kode = String(item.kode ?? "").toLowerCase();
           const namaItem = String(item.nama ?? "").toLowerCase();
           const unit = String(item.unit ?? "").toLowerCase();
+          const jenis = String(item.jenis ?? "").toLowerCase();
 
           return (
             kode.includes(normalizedQuery) ||
             namaItem.includes(normalizedQuery) ||
-            unit.includes(normalizedQuery)
+            unit.includes(normalizedQuery) ||
+            jenis.includes(normalizedQuery)
           );
         })
       : items
@@ -224,6 +226,11 @@ export function ItemSearchSelect({
                   <span className="text-[#A3A3A3]">
                     ({item.unit})
                   </span>
+                  {item.jenis && (
+                    <span className="ml-1 rounded bg-[#F3F3F3] px-1.5 py-0.5 text-[0.75rem] font-medium text-[#6B7280]">
+                      {item.jenis}
+                    </span>
+                  )}
                 </button>
               </li>
             );

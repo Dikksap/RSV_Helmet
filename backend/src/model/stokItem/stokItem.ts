@@ -9,6 +9,7 @@ export type StokMutasiInput = {
   sumberOpnameBarisId?: number | null;
   keterangan?: string | null;
   userId?: number | null;
+  tanggal?: Date;
 };
 
 export class StokKurangError extends Error {
@@ -53,6 +54,44 @@ export async function getSaldoBulk(itemIds: number[]): Promise<Record<number, nu
   return out;
 }
 
+// Ringkasan banyak item sekaligus untuk kolom Masuk/Keluar/Net periode di Kelola Item.
+export interface RingkasanStokItem {
+  masuk: number;
+  keluar: number;
+  net: number;
+}
+
+export async function getRingkasanBulk(
+  itemIds: number[],
+  rentang: { dari?: Date; sampai?: Date } = {},
+): Promise<Record<number, RingkasanStokItem>> {
+  const uniq = [...new Set(itemIds.filter((n) => Number.isInteger(n) && n > 0))];
+  if (uniq.length === 0) return {};
+  const where: { itemId: { in: number[] }; tanggal?: { gte?: Date; lt?: Date } } = { itemId: { in: uniq } };
+  if (rentang.dari || rentang.sampai) {
+    where.tanggal = {};
+    if (rentang.dari) where.tanggal.gte = awalHari(rentang.dari);
+    if (rentang.sampai) where.tanggal.lt = awalHari(tambahHari(rentang.sampai, 1));
+  }
+  const rows = await prisma.stokItemMutasi.groupBy({
+    by: ["itemId", "tipe"],
+    where,
+    _sum: { jumlah: true },
+  });
+  const out: Record<number, RingkasanStokItem> = Object.fromEntries(
+    uniq.map((id) => [id, { masuk: 0, keluar: 0, net: 0 }]),
+  );
+  for (const r of rows) {
+    const jumlah = r._sum.jumlah ?? 0;
+    if (r.tipe === "MASUK") out[r.itemId].masuk += jumlah;
+    else out[r.itemId].keluar += jumlah;
+  }
+  for (const id of uniq) {
+    out[id].net = out[id].masuk - out[id].keluar;
+  }
+  return out;
+}
+
 export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasiInput) {
   return tx.stokItemMutasi.create({
     data: {
@@ -63,15 +102,39 @@ export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasi
       sumberOpnameBarisId: input.sumberOpnameBarisId ?? null,
       keterangan: input.keterangan ?? null,
       userId: input.userId ?? null,
+      ...(input.tanggal ? { tanggal: input.tanggal } : {}),
     },
   });
 }
 
-export async function listMutasiItem(itemId: number, page: number, limit: number) {
+function awalHari(tanggal: Date): Date {
+  const d = new Date(tanggal);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function tambahHari(tanggal: Date, jumlah: number): Date {
+  const d = new Date(tanggal);
+  d.setDate(d.getDate() + jumlah);
+  return d;
+}
+
+export async function listMutasiItem(
+  itemId: number,
+  page: number,
+  limit: number,
+  rentang: { dari?: Date; sampai?: Date } = {},
+) {
+  const where: { itemId: number; tanggal?: { gte?: Date; lt?: Date } } = { itemId };
+  if (rentang.dari || rentang.sampai) {
+    where.tanggal = {};
+    if (rentang.dari) where.tanggal.gte = awalHari(rentang.dari);
+    if (rentang.sampai) where.tanggal.lt = awalHari(tambahHari(rentang.sampai, 1));
+  }
   const [total, data] = await Promise.all([
-    prisma.stokItemMutasi.count({ where: { itemId } }),
+    prisma.stokItemMutasi.count({ where }),
     prisma.stokItemMutasi.findMany({
-      where: { itemId },
+      where,
       orderBy: [{ tanggal: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
       take: limit,

@@ -15,6 +15,7 @@ type ParsedRow = {
   nama: string;
   divisi: string;
   unit: string;
+  jenis: string;
   aktif: string;
   divisiId?: number | null;
   isActive: boolean;
@@ -27,6 +28,7 @@ function normalizeHeader(h: string): string {
   if (["nama", "name"].includes(k)) return "nama";
   if (["divisi", "divisi_id", "divisiid", "id_divisi", "nama_divisi"].includes(k)) return "divisi";
   if (["unit", "satuan"].includes(k)) return "unit";
+  if (["jenis", "type", "tipe"].includes(k)) return "jenis";
   if (["aktif", "is_active", "isactive", "status", "active"].includes(k)) return "aktif";
   return k;
 }
@@ -94,10 +96,10 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
   const handleClose = () => { if (!importing) { reset(); onClose(); } };
 
   const downloadTemplate = () => {
-    const header = "kode,nama,divisi,unit,aktif";
+    const header = "kode,nama,divisi,unit,jenis,aktif";
     const example = [
-      `BRG-001,Baut M8,${divisiOptions[0]?.nama ?? "Perakitan"},pcs,aktif`,
-      `BRG-002,Kain Oxford,,roll,aktif`,
+      `BRG-001,Baut M8,${divisiOptions[0]?.nama ?? "Perakitan"},pcs,RAW MATERIAL,aktif`,
+      `BRG-002,Kain Oxford,,roll,HABIS PAKAI,aktif`,
     ];
     const csv = [header, ...example].join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
@@ -113,6 +115,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
     const inm = norm.indexOf("nama");
     const id = norm.indexOf("divisi");
     const iu = norm.indexOf("unit");
+    const ij = norm.indexOf("jenis");
     const ia = norm.indexOf("aktif");
     if (ik === -1 || inm === -1) {
       throw new Error(`Header wajib: kode, nama. Header ditemukan: ${headers.join(", ")}`);
@@ -122,6 +125,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
       const nama = (r[inm] ?? "").trim();
       const divisi = id === -1 ? "" : (r[id] ?? "").trim();
       const unit = iu === -1 ? "" : (r[iu] ?? "").trim();
+      const jenis = ij === -1 ? "" : (r[ij] ?? "").trim();
       const aktifRaw = ia === -1 ? "" : (r[ia] ?? "").trim();
       const errors: string[] = [];
       let divisiId: number | null | undefined;
@@ -129,6 +133,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
       if (!kode) errors.push("kode wajib");
       else if (kode.length > 30) errors.push("kode maksimal 30 karakter");
       if (!nama) errors.push("nama wajib");
+      if (jenis.length > 50) errors.push("jenis maksimal 50 karakter");
       if (divisi) {
         const found = divisiMap.get(divisi.toLowerCase());
         if (found === undefined) errors.push(`divisi "${divisi}" tidak cocok (pakai ID atau nama persis)`);
@@ -140,7 +145,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
         if ("error" in p) errors.push(p.error);
         else aktif = p.value;
       }
-      return { idx: i + 1, kode, nama, divisi, unit: unit || "pcs", aktif: aktifRaw || "aktif", divisiId, isActive: aktif, errors };
+      return { idx: i + 1, kode, nama, divisi, unit: unit || "pcs", jenis, aktif: aktifRaw || "aktif", divisiId, isActive: aktif, errors };
     });
   };
 
@@ -204,6 +209,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
           nama: r.nama,
           divisiId: r.divisiId ?? null,
           unit: r.unit,
+          jenis: r.jenis || null,
           isActive: r.isActive,
         });
         ok++;
@@ -252,8 +258,8 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-[#F5F7FA] p-3 text-xs leading-relaxed text-[#6B7280]">
-              <p className="font-bold text-[#1F2937]">Header: <code className="font-mono text-[#00A8E8]">kode,nama,divisi,unit,aktif</code></p>
-              <p>Wajib cuma <strong>kode</strong> &amp; <strong>nama</strong>. Divisi pakai ID angka atau nama persis (kosong = tanpa divisi). Unit default <code className="font-mono">pcs</code>. Aktif default <code className="font-mono">aktif</code> (terima aktif/nonaktif).</p>
+              <p className="font-bold text-[#1F2937]">Header: <code className="font-mono text-[#00A8E8]">kode,nama,divisi,unit,jenis,aktif</code></p>
+              <p>Wajib cuma <strong>kode</strong> &amp; <strong>nama</strong>. Divisi pakai ID angka atau nama persis (kosong = tanpa divisi). Unit default <code className="font-mono">pcs</code>. Jenis opsional, teks bebas (cth: RAW MATERIAL, SM, HABIS PAKAI). Aktif default <code className="font-mono">aktif</code> (terima aktif/nonaktif).</p>
             </div>
 
             {parsed.length > 0 && (
@@ -267,7 +273,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
             {parsed.length > 0 && (
               <div className="overflow-hidden rounded-xl border border-slate-200">
                 <div className="max-h-64 overflow-auto">
-                  <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+                  <table className="w-full min-w-[720px] border-collapse text-left text-xs">
                     <thead className="sticky top-0 bg-[#F5F7FA] text-[#6B7280]">
                       <tr>
                         <th className="px-3 py-2">#</th>
@@ -275,6 +281,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
                         <th className="px-3 py-2">Nama</th>
                         <th className="px-3 py-2">Divisi</th>
                         <th className="px-3 py-2">Unit</th>
+                        <th className="px-3 py-2">Jenis</th>
                         <th className="px-3 py-2">Status</th>
                       </tr>
                     </thead>
@@ -286,6 +293,7 @@ export function ItemImportModal({ open, onClose, divisiOptions, onImported }: Pr
                           <td className="max-w-[220px] truncate px-3 py-1.5 font-medium text-[#1F2937]" title={r.nama}>{r.nama}</td>
                           <td className="px-3 py-1.5 text-[#1F2937]">{r.divisi || <span className="text-[#6B7280]">—</span>}</td>
                           <td className="px-3 py-1.5 text-[#1F2937]">{r.unit}</td>
+                          <td className="px-3 py-1.5 text-[#1F2937]">{r.jenis || <span className="text-[#6B7280]">—</span>}</td>
                           <td className="px-3 py-1.5">
                             {r.errors.length === 0 ? <span className="font-bold text-emerald-600">OK</span> : <span className="text-[#EF4444]">{r.errors.join("; ")}</span>}
                           </td>
