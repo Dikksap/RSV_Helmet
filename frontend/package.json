@@ -13,6 +13,7 @@
     "build": "tsc -b && vite build",
     "build:electron": "tsc -b && vite build --mode electron",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev:host\" \"wait-on http://rsv-server.local:5173 && npm run electron\"",
@@ -111,6 +112,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.2",
+    "vitest": "^5.0.5",
     "wait-on": "^9.1.0"
   }
 }

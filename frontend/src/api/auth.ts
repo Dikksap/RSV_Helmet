@@ -44,6 +44,35 @@ export async function logout(token: string): Promise<void> {
 
 const PERM_KEY = "rsv_auth_permissions";
 
+export interface ProfileUpdate {
+  name?: string;
+  email?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
+/** Ubah profil sendiri. User hasil server disimpan ke localStorage agar header ikut berubah. */
+export async function updateProfile(body: ProfileUpdate): Promise<User> {
+  const token = getToken();
+  const response = await fetch(`${apiUrl}/auth/me`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message ?? "Gagal memperbarui profil");
+  }
+
+  const { user } = (await response.json()) as { message: string; user: User };
+  if (token) setAuth(token, user);
+  return user;
+}
+
 export async function checkSession(): Promise<string | null> {
   const token = getToken();
   if (!token) return null;

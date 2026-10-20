@@ -24,6 +24,9 @@ import itemRouter from "./routes/item.js";
 import stokOpnameRouter from "./routes/stokOpname.js";
 import gudangRouter from "./routes/gudang.js";
 import mutasiGudangRouter from "./routes/mutasiGudang.js";
+import subassemblyRouter from "./routes/subassembly.js";
+import pemakaianMaterialRouter from "./routes/pemakaian-material.js";
+import bomRouter from "./routes/bom.js";
 import notificationsRouter from "./routes/notifications.js";
 
 dotenv.config();
@@ -61,6 +64,10 @@ app.use("/api/items", itemRouter);
 app.use("/api/stok-opname", stokOpnameRouter);
 app.use("/api/gudang", gudangRouter);
 app.use("/api/mutasi-gudang", mutasiGudangRouter);
+app.use("/api/subassemblies", subassemblyRouter);
+app.use("/api/pemakaian-material", pemakaianMaterialRouter);
+app.use("/api/pemakaian-materials", pemakaianMaterialRouter);
+app.use("/api/bom", bomRouter);
 app.use("/api/notifications", notificationsRouter);
 
 

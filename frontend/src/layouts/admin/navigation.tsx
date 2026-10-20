@@ -3,6 +3,7 @@ import {
   faArchive,
   faBook,
   faBoxesStacked,
+  faChartColumn,
   faClipboardCheck,
   faClipboardList,
   faDatabase,
@@ -32,14 +33,20 @@ export const BARANG_PRODUKSI = {
   children: [
     {
       to: "/admin/barang",
-      label: "Daftar Barang",
+      label: "Daftar Produksi Helm",
       icon: faBoxesStacked,
       end: true,
     },
     {
       to: "/admin/stok-produksi",
-      label: "Stok Produksi",
+      label: "Stok Produksi Koli",
       icon: faArchive,
+      end: true,
+    },
+    {
+      to: "/admin/hasil-produksi-divisi",
+      label: "Hasil Produksi per Divisi",
+      icon: faChartColumn,
       end: true,
     },
     {
@@ -57,7 +64,7 @@ export const MANAJEMEN = {
   children: [
     {
       to: "/admin/plan-production",
-      label: "Plan Production",
+      label: "Jadwal Produksi",
       icon: faClipboardList,
       end: false,
     },
@@ -74,6 +81,11 @@ export const MANAJEMEN = {
       end: true,
     },
     {
+      to: "/admin/bom",
+      label: "BOM & Subassembly",
+      icon: faLayerGroup,
+      end: true,
+    },    {
       to: "/admin/realisasi-produksi",
       label: "Realisasi Produksi",
       icon: faClipboardCheck,
@@ -93,8 +105,14 @@ export const WAREHOUSE: typeof MANAJEMEN = {
       end: true,
     },
     {
+      to: "/admin/pemakaian-material",
+      label: "Pemakaian Material",
+      icon: faBoxesStacked,
+      end: true,
+    },
+    {
       to: "/admin/item",
-      label: "Kelola Item",
+      label: "Stock Material & item",
       icon: faTags,
       end: true,
     },
@@ -106,13 +124,13 @@ export const WAREHOUSE: typeof MANAJEMEN = {
     },
     {
       to: "/admin/gudang",
-      label: "Kelola Gudang",
+      label: "Gudang Hasil Produksi",
       icon: faArchive,
       end: true,
     },
     {
       to: "/admin/mutasi-gudang",
-      label: "Riwayat Mutasi",
+      label: "Riwayat Mutasi Helm",
       icon: faFileLines,
       end: true,
     },

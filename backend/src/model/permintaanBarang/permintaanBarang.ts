@@ -220,8 +220,11 @@ export async function setApproval(
           where: { permintaanId: id },
           data: { statusKeputusan: "MENUNGGU", jumlahDisetujui: null },
         });
+        await tx.pemakaianMaterial.deleteMany({
+          where: { permintaanId: id },
+        });
       }
-      return tx.permintaanBarang.update({
+    return tx.permintaanBarang.update({
         where: { id },
         data: { approval },
         include: { items: { include: { item: true } } },
@@ -245,6 +248,7 @@ export async function setApproval(
     }
 
     let adaDisetujui = false;
+    const autoPemakaianItems: { itemId: number; permintaanBarangItemId: number; jumlahDisetujui: number; satuan: string | null }[] = [];
     for (const it of existing.items) {
       const itemId = it.itemId!;
       await lockItem(tx, itemId);
@@ -273,6 +277,70 @@ export async function setApproval(
           keterangan: `Approval ${existing.noPermintaan}`,
           userId,
         });
+        if (it.itemId) {
+          autoPemakaianItems.push({
+            itemId: it.itemId,
+            permintaanBarangItemId: it.id,
+            jumlahDisetujui: diminta,
+            satuan: it.satuan ?? null,
+          });
+        }
+      }
+    }
+
+    if (adaDisetujui && autoPemakaianItems.length > 0) {
+      const divisiList = await tx.divisi.findMany();
+      const divisi = divisiList.find(
+        (d) => d.nama.trim().toLowerCase() === existing.departemen.trim().toLowerCase(),
+      );
+      if (divisi) {
+        const existingPemakaian = await tx.pemakaianMaterial.findFirst({
+          where: { permintaanId: id },
+          select: { id: true },
+        });
+        if (!existingPemakaian) {
+          const now = new Date();
+          const yyyy = now.getFullYear();
+          const mm = String(now.getMonth() + 1).padStart(2, "0");
+          const dd = String(now.getDate()).padStart(2, "0");
+          const prefix = `PM-${yyyy}${mm}${dd}-`;
+          const terakhir = await tx.pemakaianMaterial.findFirst({
+            where: { nomor: { startsWith: prefix } },
+            orderBy: { nomor: "desc" },
+            select: { nomor: true },
+          });
+          const urut = terakhir ? Number(terakhir.nomor.slice(prefix.length)) + 1 : 1;
+
+          const createPemakaian = async (nomor: string) => {
+            await tx.pemakaianMaterial.create({
+              data: {
+                nomor,
+                permintaanId: id,
+                divisiId: divisi.id,
+                tanggal: now,
+                userId,
+                keterangan: "Dibuat otomatis dari approval permintaan barang",
+                items: {
+                  create: autoPemakaianItems.map((item) => ({
+                    permintaanBarangItemId: item.permintaanBarangItemId,
+                    itemId: item.itemId,
+                    jumlahDiterima: item.jumlahDisetujui,
+                    jumlahDipakai: 0,
+                    jumlahSisa: item.jumlahDisetujui,
+                    satuan: item.satuan,
+                  })),
+                },
+              },
+            });
+          };
+
+          try {
+            await createPemakaian(`${prefix}${String(urut).padStart(4, "0")}`);
+          } catch (error) {
+            if ((error as { code?: string } | null)?.code !== "P2002") throw error;
+            await createPemakaian(`${prefix}${String(urut + 1).padStart(4, "0")}`);
+          }
+        }
       }
     }
 

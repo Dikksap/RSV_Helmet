@@ -28,16 +28,19 @@ import IntegrasiJurnal from "./pages/admin/IntegrasiJurnal.tsx";
 import PrintManager from "./pages/public/PrintManager.tsx";
 import ScanQr from "./pages/public/ScanQr.tsx";
 import StokProduksi from "./pages/admin/StokProduksi.tsx";
+import HasilProduksiDivisi from "./pages/admin/HasilProduksiDivisi.tsx";
 import KelolaKaryawan from "./pages/admin/KelolaKaryawan.tsx";
 import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
 import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
 import KelolaItem from "./pages/admin/KelolaItem.tsx";
-import StokItem from "./pages/admin/StokItem.tsx";
+import BOM from "./pages/admin/BOM.tsx";import StokItem from "./pages/admin/StokItem.tsx";
 import StokOpname from "./pages/admin/StokOpname.tsx";
 import KelolaGudang from "./pages/admin/KelolaGudang.tsx";
 import RiwayatMutasi from "./pages/admin/RiwayatMutasi.tsx";
 import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
+import PemakaianMaterial from "./pages/admin/PemakaianMaterial.tsx";
 import HomepageGudang from "./pages/gudang/HomepageGudang.tsx";
+import Profil from "./pages/Profil.tsx";
 import Login from "./pages/public/Login.tsx";
 import DevWatermark from "./components/DevWatermark.tsx";
 import RequireRole from "./components/RequireRole.tsx";
@@ -52,6 +55,7 @@ const routes = (
       <Route path="/permintaan-barang/pratinjau" element={<PratinjauPermintaan />} />
       <Route path="/print_manager" element={<PrintManager />} />
       <Route path="/scan-qr" element={<RequireRole roles={["admin", "user"]}><ScanQr /></RequireRole>} />
+      <Route path="/profil" element={<RequireRole roles={["admin", "gudang", "user", "produksi", "qc"]}><Profil /></RequireRole>} />
       <Route path="/login" element={<Login />} />
     </Route>
 
@@ -66,15 +70,17 @@ const routes = (
       <Route path="/admin/home" element={<Homepage />} />
       <Route path="/admin/barang" element={<DaftarBarang />} />
       <Route path="/admin/stok-produksi" element={<StokProduksi />} />
+      <Route path="/admin/hasil-produksi-divisi" element={<HasilProduksiDivisi />} />
       <Route path="/admin/karyawan" element={<KelolaKaryawan />} />
       <Route path="/admin/user" element={<KelolaUser />} />
       <Route path="/admin/role" element={<KelolaPermission />} />
       <Route path="/admin/divisi" element={<KelolaDivisi />} />
       <Route path="/admin/batch" element={<KelolaBatch />} />
       <Route path="/admin/permintaan-barang" element={<DaftarPermintaan />} />
+<Route path="/admin/pemakaian-material" element={<PemakaianMaterial />} />
       <Route path="/admin/item" element={<KelolaItem />} />
       <Route path="/admin/item/stok/:id" element={<StokItem />} />
-      <Route path="/admin/stok-opname" element={<StokOpname />} />
+<Route path="/admin/bom" element={<BOM />} />      <Route path="/admin/stok-opname" element={<StokOpname />} />
       <Route path="/admin/gudang" element={<KelolaGudang />} />
       <Route path="/admin/mutasi-gudang" element={<RiwayatMutasi />} />
       <Route path="/admin/variant-produk" element={<Navigate to="/admin/pengaturan/variant-produk" replace />} />
@@ -84,6 +90,7 @@ const routes = (
       <Route path="/admin/spk" element={<SpkProduksi />} />
       <Route path="/admin/integrasi-jurnal" element={<IntegrasiJurnal />} />
       <Route path="/admin/realisasi-produksi" element={<RealisasiProduksi />} />
+      <Route path="/admin/profil" element={<Profil />} />
     </Route>
 
     <Route
@@ -102,6 +109,8 @@ const routes = (
       <Route path="/gudang/item/stok/:id" element={<StokItem />} />
       <Route path="/gudang/stok-opname" element={<StokOpname />} />
       <Route path="/gudang/permintaan-barang" element={<DaftarPermintaan />} />
+<Route path="/gudang/pemakaian-material" element={<PemakaianMaterial />} />
+      <Route path="/gudang/profil" element={<Profil />} />
     </Route>
   </Routes>
 );

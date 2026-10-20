@@ -302,7 +302,7 @@ export default function KelolaItem() {
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div className="max-w-2xl">
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Master</p>
-          <h1 className="text-[26px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Kelola Item</h1>
+          <h1 className="text-[26px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Stock Material</h1>
           <p className="mt-2 text-base text-[#6B7280]">Master item untuk pilihan permintaan barang.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">

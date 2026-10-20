@@ -27,6 +27,11 @@ export async function getUserById(id: number) {
   return prisma.user.findUnique({ where: { id }, select: publicFields });
 }
 
+/** Sertakan hash password; hanya untuk verifikasi password lama saat ganti password sendiri. */
+export async function findUserByIdWithPassword(id: number) {
+  return prisma.user.findUnique({ where: { id } });
+}
+
 export async function createUser(data: { name: string; email: string; password: string; role: string }) {
   const password = await bcrypt.hash(data.password, 10);
   return prisma.user.create({ data: { ...data, password }, select: publicFields });

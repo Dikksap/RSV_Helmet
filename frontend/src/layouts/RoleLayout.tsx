@@ -9,6 +9,7 @@ import {
   faArrowRightFromBracket,
   faBars,
   faChevronDown,
+  faUserPen,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -344,6 +345,14 @@ function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: Role
                         <p className="truncate text-sm font-semibold text-[#0F1C2E]">{userName}</p>
                         <p className="text-xs text-slate-500">{userRoleLabel}</p>
                       </div>
+                      <Link
+                        to={`/${role}/profil`}
+                        role="menuitem"
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#0F1C2E] no-underline hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                      >
+                        <FontAwesomeIcon icon={faUserPen} className="h-4 w-4" />
+                        Profil
+                      </Link>
                       <button
                         type="button"
                         role="menuitem"

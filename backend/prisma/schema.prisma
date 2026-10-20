@@ -1,9 +1,9 @@
 generator client {
-  provider               = "prisma-client"
-  output                 = "../generated/prisma"
-  runtime                = "nodejs"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 generator erd {
@@ -23,10 +23,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  roleRef Role @relation("UserRole", fields: [role], references: [kode], onDelete: Restrict)
+  roleRef             Role                  @relation("UserRole", fields: [role], references: [kode], onDelete: Restrict)
   riwayatMutasiGudang RiwayatMutasiGudang[]
   stokItemMutasi      StokItemMutasi[]
   stokOpnameSesi      StokOpnameSesi[]
+  pemakaianMaterials   PemakaianMaterial[]
 
   @@index([role], map: "User_role_fkey")
 }
@@ -83,7 +84,7 @@ model RoleBarangStatusPermission {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  role   Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role   Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
   status StatusBarang @relation(fields: [statusKode], references: [kode], onDelete: Cascade)
 
   @@id([roleId, statusKode])
@@ -141,8 +142,8 @@ model Divisi {
 
   karyawan Karyawan[]
   items    Item[]
+  pemakaianMaterials PemakaianMaterial[]
 }
-
 
 model Item {
   id        Int      @id @default(autoincrement())
@@ -155,13 +156,16 @@ model Item {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  divisi Divisi? @relation(fields: [divisiId], references: [id], onDelete: SetNull)
+  divisi          Divisi?                @relation(fields: [divisiId], references: [id], onDelete: SetNull)
   permintaanItems PermintaanBarangItem[]
+  pemakaianMaterialItems PemakaianMaterialItem[]
   stokMutasi      StokItemMutasi[]
   opnameBaris     StokOpnameBaris[]
-
+  bomItems     BomItem[]
+  subassembly  Subassembly?
   @@index([divisiId], map: "Item_divisiId_fkey")
 }
+
 
 // =============================================
 // Master Gudang (lokasi penyimpanan)
@@ -216,15 +220,15 @@ model Size {
 }
 
 model ProductVariant {
-  id          Int      @id @default(autoincrement())
-  kodeVariant String   @unique
+  id          Int    @id @default(autoincrement())
+  kodeVariant String @unique
 
   productId Int
   styleId   Int
   colorId   Int
   sizeId    Int
 
-    tanggal    DateTime? @default(now())
+  tanggal DateTime? @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -234,11 +238,13 @@ model ProductVariant {
   color   Color   @relation(fields: [colorId], references: [id], onDelete: Restrict)
   size    Size    @relation(fields: [sizeId], references: [id], onDelete: Restrict)
 
-  barang         Barang[]
-  barangCounters BarangCounter[]
-  orderItems     ProductionOrderItem[]
-  realizations   ProductionRealization[]
+  barang             Barang[]
+  barangCounters     BarangCounter[]
+  orderItems         ProductionOrderItem[]
+  realizations       ProductionRealization[]
   scheduleAllocEdits ProductionScheduleAllocEdit[]
+  boms               Bom[]
+  subassemblies      Subassembly[]
 
   @@unique([productId, styleId, colorId, sizeId])
   @@index([productId])
@@ -286,10 +292,10 @@ model StatusBarang {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  barang  Barang[]        @relation("BarangStatus")
-  riwayat RiwayatBarang[] @relation("RiwayatStatus")
-  transisiDari StatusTransition[] @relation("TransitionFrom")
-  transisiKe   StatusTransition[] @relation("TransitionTo")
+  barang          Barang[]                     @relation("BarangStatus")
+  riwayat         RiwayatBarang[]              @relation("RiwayatStatus")
+  transisiDari    StatusTransition[]           @relation("TransitionFrom")
+  transisiKe      StatusTransition[]           @relation("TransitionTo")
   rolePermissions RoleBarangStatusPermission[]
 }
 
@@ -323,24 +329,24 @@ model BarangGroup {
 }
 
 model Barang {
-  id         Int      @id @default(autoincrement())
-  kodeBarang String   @unique
+  id         Int       @id @default(autoincrement())
+  kodeBarang String    @unique
   variantId  Int
   batchId    Int?
   groupId    Int?
   gudangId   Int?
   tanggal    DateTime?
-  status     String   @default("REGISTER")
+  status     String    @default("REGISTER")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  variant   ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  batch     ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  group     BarangGroup?     @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  gudang    Gudang?          @relation(fields: [gudangId], references: [id], onDelete: SetNull)
-  statusRef StatusBarang     @relation("BarangStatus", fields: [status], references: [kode])
-  riwayat   RiwayatBarang[]
+  variant             ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  batch               ProductionBatch?      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  group               BarangGroup?          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  gudang              Gudang?               @relation(fields: [gudangId], references: [id], onDelete: SetNull)
+  statusRef           StatusBarang          @relation("BarangStatus", fields: [status], references: [kode])
+  riwayat             RiwayatBarang[]
   riwayatMutasiGudang RiwayatMutasiGudang[]
 
   @@index([variantId])
@@ -400,22 +406,22 @@ enum StatusProductionOrder {
 }
 
 model ProductionOrder {
-  id        Int                   @id @default(autoincrement())
-  nomor     String                @unique
-  periode   String
-  label     String?
-  totalQty  Int                   @default(0)
-  status    StatusProductionOrder @default(AKTIF)
+  id            Int                   @id @default(autoincrement())
+  nomor         String                @unique
+  periode       String
+  label         String?
+  totalQty      Int                   @default(0)
+  status        StatusProductionOrder @default(AKTIF)
   mulaiProduksi DateTime?
-  createdAt DateTime              @default(now())
-  updatedAt DateTime              @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 
-  items      ProductionOrderItem[]
-  capacities ProductionCapacity[]
-  realizations ProductionRealization[]
-  realizationStages ProductionRealizationStage[]
+  items               ProductionOrderItem[]
+  capacities          ProductionCapacity[]
+  realizations        ProductionRealization[]
+  realizationStages   ProductionRealizationStage[]
   scheduleTargetEdits ProductionScheduleTargetEdit[]
-  scheduleAllocEdits ProductionScheduleAllocEdit[]
+  scheduleAllocEdits  ProductionScheduleAllocEdit[]
 
   @@index([periode])
   @@index([status])
@@ -489,19 +495,19 @@ model ProductionRealizationStage {
 // =============================================
 
 model ProductionCapacity {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   orderId          Int
   stage            String
-  kapasitasWeekday Int      @default(0)
-  kapasitasSabtu   Int      @default(0)
+  kapasitasWeekday Int       @default(0)
+  kapasitasSabtu   Int       @default(0)
   mulai            DateTime?
   selesai          DateTime?
-  hariKerja        Int      @default(0)
-  totalKapasitas   Int      @default(0)
+  hariKerja        Int       @default(0)
+  totalKapasitas   Int       @default(0)
   catatan          String?
-  urutan           Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  urutan           Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   order ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -566,21 +572,21 @@ enum TipeStokItem {
 // Ledger stok item master (append-only). Saldo = SUM(MASUK) - SUM(KELUAR).
 // Koreksi dilakukan dengan baris pembalik, tidak pernah ubah/hapus.
 model StokItemMutasi {
-  id                      Int      @id @default(autoincrement())
-  itemId                  Int
-  tipe                    TipeStokItem
-  jumlah                  Int
-  sumberPermintaanItemId  Int?
+  id                     Int          @id @default(autoincrement())
+  itemId                 Int
+  tipe                   TipeStokItem
+  jumlah                 Int
+  sumberPermintaanItemId Int?
   sumberOpnameBarisId    Int?
-  keterangan              String?
-  userId                  Int?
-  tanggal                 DateTime @default(now())
-  createdAt               DateTime @default(now())
+  keterangan             String?
+  userId                 Int?
+  tanggal                DateTime     @default(now())
+  createdAt              DateTime     @default(now())
 
-  item           Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  item             Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
   sumberPermintaan PermintaanBarangItem? @relation(fields: [sumberPermintaanItemId], references: [id], onDelete: SetNull)
-  sumberOpname   StokOpnameBaris?      @relation(fields: [sumberOpnameBarisId], references: [id], onDelete: SetNull)
-  user           User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sumberOpname     StokOpnameBaris?      @relation(fields: [sumberOpnameBarisId], references: [id], onDelete: SetNull)
+  user             User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([itemId, tanggal])
   @@index([sumberPermintaanItemId], map: "StokItemMutasi_sumberPermintaanItemId_fkey")
@@ -598,7 +604,7 @@ model StokOpnameSesi {
   userId     Int?
   createdAt  DateTime @default(now())
 
-  user  User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user  User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   baris StokOpnameBaris[]
 
   @@index([tanggal])
@@ -613,8 +619,8 @@ model StokOpnameBaris {
   stokFisik  Int
   selisih    Int
 
-  sesi   StokOpnameSesi @relation(fields: [sesiId], references: [id], onDelete: Cascade)
-  item   Item           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  sesi   StokOpnameSesi   @relation(fields: [sesiId], references: [id], onDelete: Cascade)
+  item   Item             @relation(fields: [itemId], references: [id], onDelete: Restrict)
   ledger StokItemMutasi[]
 
   @@unique([sesiId, itemId])
@@ -640,13 +646,15 @@ model PermintaanBarang {
 
   items PermintaanBarangItem[]
 
+  pemakaianMaterials PemakaianMaterial[]
+
   @@index([tanggal])
   @@index([approval])
 }
 
 model PermintaanBarangItem {
-  id           Int      @id @default(autoincrement())
-  permintaanId Int
+  id              Int                 @id @default(autoincrement())
+  permintaanId    Int
   itemId          Int?
   nama            String
   spesifikasi     String?
@@ -660,7 +668,122 @@ model PermintaanBarangItem {
   permintaan PermintaanBarang @relation(fields: [permintaanId], references: [id], onDelete: Cascade)
   item       Item?            @relation(fields: [itemId], references: [id], onDelete: SetNull)
   stokMutasi StokItemMutasi[]
+  pemakaianMaterialItems PemakaianMaterialItem[]
 
   @@index([permintaanId], map: "PermintaanBarangItem_permintaanId_fkey")
   @@index([itemId], map: "PermintaanBarangItem_itemId_fkey")
+}
+
+// =============================================
+// Bill of Materials (BOM) bertingkat
+// Output: ProductVariant (produk jadi) atau Subassembly (semi-finished)
+// Komponen: Item (material/komponen) atau Subassembly lain.
+// =============================================
+
+model Subassembly {
+  id               Int      @id @default(autoincrement())
+  kode             String   @unique
+  nama             String
+  itemId           Int?     @unique
+  productVariantId Int?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  item           Item?           @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  bomAsOutput    Bom[]           @relation("BomOutput")
+  usedInBomItems BomItem[]       @relation("BomItemComponent")
+
+  @@index([itemId])
+  @@index([productVariantId])
+}
+
+
+model Bom {
+  id               Int       @id @default(autoincrement())
+  kode             String?   @unique
+  nama             String
+  version          String
+  isActive         Boolean   @default(true)
+  berlakuMulai     DateTime?
+  berlakuSelesai   DateTime?
+  productVariantId Int?
+  subassemblyId    Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  subassembly    Subassembly?    @relation("BomOutput", fields: [subassemblyId], references: [id], onDelete: Restrict)
+  items          BomItem[]
+
+  @@unique([productVariantId, version])
+  @@unique([subassemblyId, version])
+  @@index([productVariantId])
+  @@index([subassemblyId])
+  @@index([isActive])
+}
+
+model BomItem {
+  id            Int      @id @default(autoincrement())
+  bomId         Int
+  urutan        Int?
+  itemId        Int?
+  subassemblyId Int?
+  quantity      Decimal  @db.Decimal(18, 6)
+  unit          String?
+  scrapPercent  Decimal? @db.Decimal(5, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bom         Bom          @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  item        Item?        @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  subassembly Subassembly? @relation("BomItemComponent", fields: [subassemblyId], references: [id], onDelete: Restrict)
+  @@index([bomId])
+  @@index([itemId])
+  @@index([subassemblyId])
+}
+
+model PemakaianMaterial {
+  id           Int                     @id @default(autoincrement())
+  nomor        String                  @unique
+  permintaanId Int
+  divisiId     Int
+  tanggal      DateTime                @default(now())
+  userId       Int?
+  keterangan   String?                  @db.Text
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  permintaan PermintaanBarang        @relation(fields: [permintaanId], references: [id], onDelete: Restrict)
+  divisi     Divisi                 @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  user       User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items      PemakaianMaterialItem[]
+
+  @@index([permintaanId])
+  @@index([divisiId, tanggal])
+  @@index([userId])
+}
+
+model PemakaianMaterialItem {
+  id                    Int      @id @default(autoincrement())
+  pemakaianId           Int
+  permintaanBarangItemId Int
+  itemId                Int?
+  jumlahDiterima        Decimal  @default(0) @db.Decimal(18, 6)
+  jumlahDipakai         Decimal  @default(0) @db.Decimal(18, 6)
+  jumlahSisa            Decimal  @default(0) @db.Decimal(18, 6)
+  satuan                String?
+  keteranganSisa        String?  @db.Text
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  pemakaian      PemakaianMaterial    @relation(fields: [pemakaianId], references: [id], onDelete: Cascade)
+  permintaanItem PermintaanBarangItem @relation(fields: [permintaanBarangItemId], references: [id], onDelete: Restrict)
+  item           Item?                @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([pemakaianId])
+  @@index([permintaanBarangItemId])
+  @@index([itemId])
 }

@@ -68,6 +68,7 @@ async function main() {
       "BARANG_KELOLA",
       "MUTASI_GUDANG",
       "KELOLA_ITEM",
+      "BOM_KELOLA",
     ],
     produksi: [
       "BARANG_LIHAT",
@@ -75,9 +76,10 @@ async function main() {
       "BARANG_SCAN",
       "BARANG_UBAH_STATUS",
       "BARANG_GENERATE",
+      "BOM_KELOLA",
     ],
     qc: ["BARANG_LIHAT", "BARANG_STATISTIK_LIHAT", "BARANG_SCAN", "BARANG_UBAH_STATUS"],
-    gudang: ["BARANG_LIHAT", "MUTASI_GUDANG", "KELOLA_ITEM"],
+    gudang: ["BARANG_LIHAT", "MUTASI_GUDANG", "KELOLA_ITEM", "BOM_KELOLA"],
   };
 
   const allStatus = statusSeed.map((s) => s.kode);
@@ -94,6 +96,11 @@ async function main() {
     where: { kode: "KELOLA_ITEM" },
     update: { nama: "Kelola (tambah/ubah/hapus) item", kelompok: "ITEM" },
     create: { kode: "KELOLA_ITEM", nama: "Kelola (tambah/ubah/hapus) item", kelompok: "ITEM" },
+  });
+  await prisma.permission.upsert({
+    where: { kode: "BOM_KELOLA" },
+    update: { nama: "Kelola Bill of Materials dan subassembly", kelompok: "BOM" },
+    create: { kode: "BOM_KELOLA", nama: "Kelola Bill of Materials dan subassembly", kelompok: "BOM" },
   });
 
   const permissionId = new Map(

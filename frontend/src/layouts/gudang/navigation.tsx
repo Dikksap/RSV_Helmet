@@ -19,14 +19,17 @@ export const GUDANG_BARANG: NavGroup = {
 export const GUDANG_PERMINTAAN: NavGroup = {
   label: "Permintaan",
   icon: faClipboardList,
-  children: [{ to: "/gudang/permintaan-barang", label: "Permintaan Barang", icon: faClipboardList, end: true }],
+  children: [
+    { to: "/gudang/permintaan-barang", label: "Permintaan Barang", icon: faClipboardList, end: true },
+    { to: "/gudang/pemakaian-material", label: "Pemakaian Material", icon: faBoxesStacked, end: true },
+  ],
 };
 
 export const GUDANG_WAREHOUSE: NavGroup = {
   label: "Warehouse",
   icon: faArchive,
   children: [
-    { to: "/gudang/item", label: "Kelola Item", icon: faTags, end: true },
+    { to: "/gudang/item", label: "Stock Material", icon: faTags, end: true },
     { to: "/gudang/stok-opname", label: "Opname Stok", icon: faClipboardCheck, end: true },
   ],
 };

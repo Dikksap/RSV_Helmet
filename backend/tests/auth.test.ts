@@ -6,6 +6,9 @@ import bcrypt from "bcryptjs";
 vi.mock("../src/model/user/user.js", () => ({
   findUserByEmail: vi.fn(),
   getUserRole: vi.fn(),
+  getUserById: vi.fn(),
+  findUserByIdWithPassword: vi.fn(),
+  updateUser: vi.fn(),
 }));
 
 vi.mock("../src/model/role/role.js", () => ({
@@ -23,13 +26,16 @@ vi.mock("../src/lib/redis.js", () => ({
 
 import authRouter from "../src/routes/auth.js";
 import { authenticate, adminOnly, requireRole } from "../src/middleware/auth.js";
-import { findUserByEmail, getUserRole } from "../src/model/user/user.js";
+import { findUserByEmail, findUserByIdWithPassword, getUserById, getUserRole, updateUser } from "../src/model/user/user.js";
 import { getRoleAccess } from "../src/model/role/role.js";
 import { signToken, verifyToken, type TokenPayload } from "../src/lib/jwt.js";
 import redis from "../src/lib/redis.js";
 
 const mockedFindUserByEmail = vi.mocked(findUserByEmail);
 const mockedGetUserRole = vi.mocked(getUserRole);
+const mockedGetUserById = vi.mocked(getUserById);
+const mockedFindUserByIdWithPassword = vi.mocked(findUserByIdWithPassword);
+const mockedUpdateUser = vi.mocked(updateUser);
 const mockedGetRoleAccess = vi.mocked(getRoleAccess);
 const mockedRedis = {
   setex: vi.mocked(redis.setex),
@@ -74,6 +80,14 @@ beforeEach(() => {
   mockedRedis.setex.mockResolvedValue("OK");
   mockedRedis.exists.mockResolvedValue(0);
   mockedGetUserRole.mockResolvedValue("admin");
+  mockedGetUserById.mockResolvedValue({
+    id: 1,
+    name: "Admin",
+    email: "admin@example.com",
+    role: "admin",
+    createdAt: seedUser.createdAt,
+    updatedAt: seedUser.updatedAt,
+  });
   mockedGetRoleAccess.mockResolvedValue({
     role: "admin",
     permissions: ["BARANG_LIHAT", "ROLE_KELOLA"],
@@ -354,6 +368,104 @@ describe("POST /api/auth/logout", () => {
     expect(res.body.user.email).toBe("admin@example.com");
   });
 });
+// =============================================
+// PUT /api/auth/me
+// =============================================
+
+describe("PUT /api/auth/me", () => {
+  const token = () => signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
+  const put = (body: unknown, withToken = true) => {
+    const req = request(app).put("/api/auth/me").send(body as object);
+    return withToken ? req.set("Authorization", `Bearer ${token()}`) : req;
+  };
+  const updated = (data: { name?: string; email?: string }) => ({
+    id: 1,
+    name: data.name ?? "Admin",
+    email: data.email ?? "admin@example.com",
+    role: "admin",
+    createdAt: seedUser.createdAt,
+    updatedAt: seedUser.updatedAt,
+  });
+
+  it("401 jika tanpa token", async () => {
+    const res = await put({ name: "Baru" }, false);
+    expect(res.status).toBe(401);
+    expect(mockedUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("400 jika tidak ada field yang diubah", async () => {
+    const res = await put({});
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("Minimal satu field");
+  });
+
+  it("200 ganti nama tanpa menyentuh password", async () => {
+    mockedUpdateUser.mockResolvedValue(updated({ name: "Admin Baru" }));
+
+    const res = await put({ name: "  Admin Baru  " });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe("Profil diperbarui");
+    expect(res.body.user.name).toBe("Admin Baru");
+    expect(res.body.user.password).toBeUndefined();
+    expect(mockedUpdateUser).toHaveBeenCalledWith(1, { name: "Admin Baru" });
+  });
+
+  it("409 jika email sudah dipakai user lain", async () => {
+    mockedUpdateUser.mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }));
+
+    const res = await put({ email: "dipakai@example.com" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Email sudah terdaftar");
+  });
+
+  it("400 jika newPassword tanpa currentPassword", async () => {
+    const res = await put({ newPassword: "baru123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("currentPassword");
+    expect(mockedUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("400 jika newPassword kurang dari 6 karakter", async () => {
+    const res = await put({ currentPassword: "admin123", newPassword: "123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("minimal 6 karakter");
+  });
+
+  it("400 jika password lama salah", async () => {
+    mockedFindUserByIdWithPassword.mockResolvedValue(seedUser);
+
+    const res = await put({ currentPassword: "salah123", newPassword: "baru123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Password lama salah");
+    expect(mockedUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("200 ganti password jika password lama benar", async () => {
+    mockedFindUserByIdWithPassword.mockResolvedValue(seedUser);
+    mockedUpdateUser.mockResolvedValue(updated({}));
+
+    const res = await put({ currentPassword: "admin123", newPassword: "baru123" });
+
+    expect(res.status).toBe(200);
+    // hash dilakukan model, controller meneruskan password apa adanya
+    expect(mockedUpdateUser).toHaveBeenCalledWith(1, { password: "baru123" });
+  });
+
+  it("500 jika update gagal karena error lain", async () => {
+    mockedUpdateUser.mockRejectedValue(new Error("DB down"));
+
+    const res = await put({ name: "Admin Baru" });
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe("Gagal memperbarui profil");
+  });
+});
+
 describe("GET /api/auth/me", () => {
   it("401 jika tanpa token", async () => {
     const res = await request(app).get("/api/auth/me");
@@ -378,8 +490,34 @@ describe("GET /api/auth/me", () => {
     expect(res.body.message).toContain("Akun tidak ditemukan");
   });
 
+  it("nama/email diambil dari database, bukan dari token basi", async () => {
+    mockedGetUserById.mockResolvedValue({
+      id: 1,
+      name: "Nama Baru",
+      email: "baru@example.com",
+      role: "admin",
+      createdAt: seedUser.createdAt,
+      updatedAt: seedUser.updatedAt,
+    });
+    const token = signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
+
+    const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.name).toBe("Nama Baru");
+    expect(res.body.user.email).toBe("baru@example.com");
+  });
+
   it("statusView ikut dikembalikan untuk role terbatas", async () => {
     mockedGetRoleAccess.mockResolvedValue({ role: "gudang", permissions: ["BARANG_LIHAT"], statusView: ["FINISHGOOD", "RETUR"] });
+    mockedGetUserById.mockResolvedValue({
+      id: 3,
+      name: "Gudang",
+      email: "gudang@example.com",
+      role: "gudang",
+      createdAt: seedUser.createdAt,
+      updatedAt: seedUser.updatedAt,
+    });
     const token = signToken({ id: 3, email: "gudang@example.com", name: "Gudang", role: "gudang" });
     const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
