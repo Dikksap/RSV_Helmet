@@ -17,6 +17,7 @@ vi.mock("../src/model/pemakaianMaterial/pemakaianMaterial.js", () => {
     DIVISI_TIDAK_DITEMUKAN: "DIVISI_TIDAK_DITEMUKAN",
     ITEM_PERMINTAAN_TIDAK_VALID: "ITEM_PERMINTAAN_TIDAK_VALID",
     PEMAKAIAN_DUPLIKAT_ITEM: "PEMAKAIAN_DUPLIKAT_ITEM",
+    PEMAKAIAN_DIPAKAI_PRODUKSI: "PEMAKAIAN_DIPAKAI_PRODUKSI",
     JUMLAH_PEMAKAIAN_INVALID: "JUMLAH_PEMAKAIAN_INVALID",
     createPemakaian: vi.fn(),
     listPemakaian: vi.fn(),
@@ -40,11 +41,17 @@ import pemakaianMaterialRouter from "../src/routes/pemakaian-material.js";
 import {
   createPemakaian,
   getStokPerDivisi,
+  updatePemakaian,
+  deletePemakaian,
+  PemakaianError,
+  PEMAKAIAN_DIPAKAI_PRODUKSI,
 } from "../src/model/pemakaianMaterial/pemakaianMaterial.js";
 
 const mocked = {
   createPemakaian: vi.mocked(createPemakaian),
   getStokPerDivisi: vi.mocked(getStokPerDivisi),
+  updatePemakaian: vi.mocked(updatePemakaian),
+  deletePemakaian: vi.mocked(deletePemakaian),
 };
 
 const app = express();
@@ -121,7 +128,7 @@ describe("GET /api/pemakaian-material/stok-divisi", () => {
         divisiId: 1,
         divisiNama: "Produksi",
         materials: [
-          { itemId: 5, key: "item:5", nama: "Kertas A4", satuan: "rim", diterima: 100, dipakai: 30, sisa: 70 },
+          { itemId: 5, key: "item:5", nama: "Kertas A4", satuan: "rim", diterima: 100, masuk: 0, dipakai: 30, sisa: 70 },
         ],
       },
     ]);
@@ -155,5 +162,35 @@ describe("GET /api/pemakaian-material/stok-divisi", () => {
     );
     expect(terbalik.status).toBe(400);
     expect(mocked.getStokPerDivisi).not.toHaveBeenCalled();
+  });
+});
+
+describe("guard pemakaian yang sudah dipakai produksi", () => {
+  const payload = {
+    permintaanId: 1,
+    divisiId: 1,
+    items: [{ permintaanBarangItemId: 17, jumlahSisa: 0 }],
+  };
+
+  it("409 saat update", async () => {
+    mocked.updatePemakaian.mockRejectedValue(
+      new PemakaianError(PEMAKAIAN_DIPAKAI_PRODUKSI, "Pemakaian material sudah dipakai produksi"),
+    );
+
+    const res = await request(app).put("/api/pemakaian-material/1").send(payload);
+
+    expect(res.status).toBe(409);
+    expect(res.body.kode).toBe(PEMAKAIAN_DIPAKAI_PRODUKSI);
+  });
+
+  it("409 saat delete", async () => {
+    mocked.deletePemakaian.mockRejectedValue(
+      new PemakaianError(PEMAKAIAN_DIPAKAI_PRODUKSI, "Pemakaian material sudah dipakai produksi"),
+    );
+
+    const res = await request(app).delete("/api/pemakaian-material/1");
+
+    expect(res.status).toBe(409);
+    expect(res.body.kode).toBe(PEMAKAIAN_DIPAKAI_PRODUKSI);
   });
 });

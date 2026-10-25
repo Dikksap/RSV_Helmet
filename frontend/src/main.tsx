@@ -13,6 +13,12 @@ import KelolaUser from "./pages/admin/KelolaUser.tsx";
 import KelolaPermission from "./pages/admin/KelolaPermission.tsx";
 import AdminLayout from "./layouts/AdminLayout.tsx";
 import GudangLayout from "./layouts/GudangLayout.tsx";
+import DivisiLayout from "./layouts/DivisiLayout.tsx";
+import DivisiHome from "./pages/divisi/DivisiHome.tsx";
+import DivisiProduksi from "./pages/divisi/DivisiProduksi.tsx";
+import DivisiPermintaan from "./pages/divisi/DivisiPermintaan.tsx";
+import DivisiTransferWip from "./pages/divisi/DivisiTransferWip.tsx";
+import AnggotaDivisi from "./pages/divisi/AnggotaDivisi.tsx";
 import CetakLabel from "./pages/public/CetakLabel.tsx";
 import DaftarBarang from "./pages/admin/DaftarBarang.tsx";
 import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
@@ -39,6 +45,10 @@ import KelolaGudang from "./pages/admin/KelolaGudang.tsx";
 import RiwayatMutasi from "./pages/admin/RiwayatMutasi.tsx";
 import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
 import PemakaianMaterial from "./pages/admin/PemakaianMaterial.tsx";
+import InventoryLedger from "./pages/admin/InventoryLedger.tsx";
+import QualityControl from "./pages/admin/QualityControl.tsx";
+import Shipments from "./pages/admin/Shipments.tsx";
+import WipFlowReport from "./pages/admin/WipFlowReport.tsx";
 import HomepageGudang from "./pages/gudang/HomepageGudang.tsx";
 import Profil from "./pages/Profil.tsx";
 import Login from "./pages/public/Login.tsx";
@@ -78,6 +88,10 @@ const routes = (
       <Route path="/admin/batch" element={<KelolaBatch />} />
       <Route path="/admin/permintaan-barang" element={<DaftarPermintaan />} />
 <Route path="/admin/pemakaian-material" element={<PemakaianMaterial />} />
+<Route path="/admin/inventory" element={<InventoryLedger />} />
+<Route path="/admin/quality" element={<QualityControl />} />
+<Route path="/admin/shipments" element={<Shipments />} />
+<Route path="/admin/wip-flow" element={<WipFlowReport />} />
       <Route path="/admin/item" element={<KelolaItem />} />
       <Route path="/admin/item/stok/:id" element={<StokItem />} />
 <Route path="/admin/bom" element={<BOM />} />      <Route path="/admin/stok-opname" element={<StokOpname />} />
@@ -91,6 +105,22 @@ const routes = (
       <Route path="/admin/integrasi-jurnal" element={<IntegrasiJurnal />} />
       <Route path="/admin/realisasi-produksi" element={<RealisasiProduksi />} />
       <Route path="/admin/profil" element={<Profil />} />
+    </Route>
+
+    <Route
+      element={
+        <LiveSocketProvider>
+          <DivisiLayout />
+        </LiveSocketProvider>
+      }
+    >
+      <Route path="/divisi" element={<Navigate to="/divisi/home" replace />} />
+      <Route path="/divisi/home" element={<DivisiHome />} />
+      <Route path="/divisi/produksi" element={<DivisiProduksi />} />
+      <Route path="/divisi/transfer-wip" element={<DivisiTransferWip />} />
+      <Route path="/divisi/permintaan" element={<DivisiPermintaan />} />
+      <Route path="/divisi/anggota" element={<AnggotaDivisi />} />
+      <Route path="/divisi/quality" element={<RequireRole roles={["admin", "qc", "produksi"]}><QualityControl /></RequireRole>} />
     </Route>
 
     <Route
@@ -111,6 +141,9 @@ const routes = (
       <Route path="/gudang/permintaan-barang" element={<DaftarPermintaan />} />
 <Route path="/gudang/pemakaian-material" element={<PemakaianMaterial />} />
       <Route path="/gudang/profil" element={<Profil />} />
+      <Route path="/gudang/inventory" element={<InventoryLedger />} />
+      <Route path="/gudang/wip-flow" element={<WipFlowReport />} />
+      <Route path="/gudang/shipments" element={<Shipments />} />
     </Route>
   </Routes>
 );

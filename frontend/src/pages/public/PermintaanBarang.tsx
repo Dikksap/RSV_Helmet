@@ -9,6 +9,11 @@ import {
   faExclamationTriangle,
   faPlus,
   faUser,
+  faBoxOpen,
+  faLayerGroup,
+  faTimes,
+  faArrowLeft,
+  faFilePen,
 } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import { createPermintaan } from "../../api/permintaanBarang";
@@ -45,11 +50,13 @@ function PermintaanBarang() {
   const [triedSubmit, setTriedSubmit] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
+  const noticeRef = useRef<HTMLDivElement>(null);
+
   const muatMaster = () => {
     setMasterState("loading");
     getItems({ aktif: true })
       .then((rows) => {
-        setMasterItem(rows);
+        setMasterItem(rows.filter((item) => item.jenis !== "SM"));
         setMasterState("ready");
       })
       .catch(() => {
@@ -59,10 +66,9 @@ function PermintaanBarang() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat master sekali saat mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat master saat mount
     muatMaster();
-    // Fetch polos (tanpa redirect login ala api client) karena halaman publik.
-    fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8000/api"}/divisi`)
+    fetch(`${import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api"}/divisi`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: unknown) => {
         if (Array.isArray(rows)) {
@@ -87,14 +93,10 @@ function PermintaanBarang() {
         if (!id) return { ...b, itemId: "", kode: "", divisi: "" };
         const m = masterItem.find((x) => String(x.id) === id);
         if (!m) return { ...b, itemId: "", kode: "", divisi: "" };
-        // Detail ikut master database: kode, nama, satuan, divisi dikunci.
         return { ...b, itemId: id, kode: m.kode, nama: m.nama, satuan: m.unit, divisi: m.divisi?.nama ?? "" };
       }),
     );
 
-  const noticeRef = useRef<HTMLDivElement>(null);
-
-  /* ---------- Notifikasi inline (pengganti window.alert) ---------- */
   function notify(tone: Notice["tone"], text: string) {
     setNotice({ tone, text });
     requestAnimationFrame(() =>
@@ -205,67 +207,86 @@ function PermintaanBarang() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5] px-4 py-8 text-[#171717] sm:px-6">
-      <div className="mx-auto max-w-[1040px]">
-        {/* ---------- Header ---------- */}
-        <header className="mb-6 overflow-hidden rounded-lg bg-[#0B0B0B] text-white shadow-[0_1px_3px_rgba(0,0,0,0.25)]">
-          <div className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-            <div>
-              <div className="text-[2rem] font-black leading-none tracking-tight">
-                RSV HELMET
+    <div className="min-h-screen bg-slate-50 pb-20 pt-6 text-slate-800 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl px-4 sm:px-0">
+        
+        {/* Header RSV Helmet */}
+        <header className="mb-8 overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-lg shadow-slate-200">
+          <div className="flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center sm:p-8">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black tracking-tight sm:text-3xl">
+                  RSV<span className="text-[#E30613]">HELMET</span>
+                </span>
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-slate-300">
+                  Internal System
+                </span>
               </div>
-              <div className="mt-2 text-[0.78rem] font-medium text-[#A3A3A3]">
+              <p className="text-xs font-medium tracking-wide text-slate-400 sm:text-sm">
                 PT. RMI (RSV MANUFACTURE INDONESIA)
-              </div>
+              </p>
             </div>
             <div className="sm:text-right">
-              <div className="text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-[#A3A3A3]">
-                Form Permintaan
-              </div>
-              <div className="mt-1 inline-block rounded border border-white/20 bg-white/5 px-3 py-1.5 text-[0.95rem] font-bold tracking-wide text-white">
-                Barang
+              <span className="block text-[0.68rem] font-bold uppercase tracking-widest text-slate-400">
+                Formulir Digital
+              </span>
+              <div className="mt-1 inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3.5 py-1.5 backdrop-blur-md">
+                <FontAwesomeIcon icon={faFilePen} className="h-3.5 w-3.5 text-[#E30613]" />
+                <span className="text-sm font-bold tracking-wide text-white">
+                  Permintaan Barang
+                </span>
               </div>
             </div>
           </div>
-          <div className="h-1 w-full bg-[#E30613]" />
+          <div className="h-1.5 w-full bg-gradient-to-r from-[#E30613] via-red-500 to-[#E30613]" />
         </header>
 
-        {/* ---------- Notifikasi ---------- */}
+        {/* Banner Notifikasi */}
         {notice && (
           <div
             ref={noticeRef}
             role={notice.tone === "error" ? "alert" : "status"}
-            className={`mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 text-[0.88rem] font-medium ${
+            className={`mb-6 flex items-start gap-3.5 rounded-xl border p-4 shadow-sm transition-all duration-200 ${
               notice.tone === "error"
-                ? "border-[#E30613]/40 bg-[#FEF2F2] text-[#991B1B]"
-                : "border-[#16A34A]/25 bg-[#F0FDF4] text-[#166534]"
+                ? "border-red-200 bg-red-50/90 text-red-900"
+                : "border-emerald-200 bg-emerald-50/90 text-emerald-900"
             }`}
           >
-            <FontAwesomeIcon
-              icon={notice.tone === "error" ? faExclamationTriangle : faCheck}
-              className={`mt-1 h-4 w-4 shrink-0 ${
-                notice.tone === "error" ? "text-[#E30613]" : "text-[#16A34A]"
+            <div
+              className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                notice.tone === "error" ? "bg-red-100 text-[#E30613]" : "bg-emerald-100 text-emerald-600"
               }`}
-            />
-            <span className="flex-1 leading-relaxed">{notice.text}</span>
+            >
+              <FontAwesomeIcon
+                icon={notice.tone === "error" ? faExclamationTriangle : faCheck}
+                className="h-4 w-4"
+              />
+            </div>
+            <div className="flex-1 text-sm font-medium leading-relaxed">
+              {notice.text}
+            </div>
             <button
               type="button"
               onClick={() => setNotice(null)}
               aria-label="Tutup notifikasi"
-              className="-mr-1 -mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md transition hover:bg-black/5"
+              className="rounded-lg p-1 text-slate-400 transition hover:bg-black/5 hover:text-slate-700"
             >
-              ✕
+              <FontAwesomeIcon icon={faTimes} className="h-4 w-4" />
             </button>
           </div>
         )}
 
-        {/* ---------- Form ---------- */}
-        <form onSubmit={onSubmit}>
-          <Section no="01" title="Informasi Permintaan" subtitle="Request Information">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Main Form */}
+        <form onSubmit={onSubmit} className="space-y-6">
+          
+          {/* Section 01: Informasi Permintaan */}
+          <Section no="01" title="Informasi Permintaan" subtitle="Request Details">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              
+              {/* Tanggal Permintaan */}
               <div>
                 <label htmlFor="f-tanggal" className={labelCls}>
-                  <FontAwesomeIcon icon={faCalendarDays} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
+                  <FontAwesomeIcon icon={faCalendarDays} className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
                   Tanggal Permintaan {req}
                 </label>
                 <input
@@ -274,12 +295,14 @@ function PermintaanBarang() {
                   required
                   value={tanggal}
                   onChange={(e) => setTanggal(e.target.value)}
-                  className={inputCls}
+                  className={`${inputCls} transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
                 />
               </div>
+
+              {/* Tanggal Dibutuhkan */}
               <div>
                 <label htmlFor="f-dibutuhkan" className={labelCls}>
-                  <FontAwesomeIcon icon={faCalendarDays} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
+                  <FontAwesomeIcon icon={faCalendarDays} className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
                   Tanggal Dibutuhkan
                 </label>
                 <input
@@ -287,27 +310,31 @@ function PermintaanBarang() {
                   type="date"
                   value={tanggalDibutuhkan}
                   onChange={(e) => setTanggalDibutuhkan(e.target.value)}
-                  className={inputCls}
+                  className={`${inputCls} transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
                 />
               </div>
-               <div>
+
+              {/* Nama Peminta */}
+              <div>
                 <label htmlFor="f-peminta" className={labelCls}>
-                  <FontAwesomeIcon icon={faUser} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
-                  Nama {req}
+                  <FontAwesomeIcon icon={faUser} className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
+                  Nama Peminta {req}
                 </label>
                 <input
                   id="f-peminta"
                   required
                   value={namaPeminta}
                   onChange={(e) => setNamaPeminta(e.target.value)}
-                  placeholder="Nama lengkap"
-                  className={inputCls}
+                  placeholder="Nama lengkap peminta"
+                  className={`${inputCls} transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
                 />
               </div>
+
+              {/* Divisi */}
               <div>
                 <label htmlFor="f-departemen" className={labelCls}>
-                  <FontAwesomeIcon icon={faBuilding} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
-                  DIVISI {req}
+                  <FontAwesomeIcon icon={faBuilding} className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
+                  Divisi {req}
                 </label>
                 {divisiList.length > 0 && !divisiManual ? (
                   <select
@@ -322,23 +349,25 @@ function PermintaanBarang() {
                         setDepartemen(e.target.value);
                       }
                     }}
-                    className={inputCls}
+                    className={`${inputCls} transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
                   >
-                    <option value="">— Pilih divisi —</option>
+                    <option value="">— Pilih Divisi —</option>
                     {divisiList.map((d) => (
-                      <option key={d.id} value={d.nama}>{d.nama}</option>
+                      <option key={d.id} value={d.nama}>
+                        {d.nama}
+                      </option>
                     ))}
-                    <option value="__manual__">Lainnya — tulis manual</option>
+                    <option value="__manual__">Lainnya (Tulis Manual)</option>
                   </select>
                 ) : (
-                  <>
+                  <div className="space-y-1.5">
                     <input
                       id="f-departemen"
                       required
                       value={departemen}
                       onChange={(e) => setDepartemen(e.target.value)}
-                      placeholder="Contoh: Produksi"
-                      className={inputCls}
+                      placeholder="Contoh: Produksi, QA, Maintenance"
+                      className={`${inputCls} transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
                     />
                     {divisiList.length > 0 && (
                       <button
@@ -347,80 +376,88 @@ function PermintaanBarang() {
                           setDivisiManual(false);
                           setDepartemen("");
                         }}
-                        className="mt-1 text-[0.78rem] font-semibold text-[#E30613] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E30613]/40"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-[#E30613] hover:underline"
                       >
-                        ← Kembali pilih dari daftar
+                        <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" />
+                        Pilih dari daftar divisi
                       </button>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
-             
+
+              {/* Kebutuhan Untuk */}
               <div>
                 <label htmlFor="f-kebutuhan" className={labelCls}>
-                  <FontAwesomeIcon icon={faClipboardList} className="mr-1.5 h-3.5 w-3.5 text-[#A3A3A3]" />
+                  <FontAwesomeIcon icon={faClipboardList} className="mr-1.5 h-3.5 w-3.5 text-slate-400" />
                   Kebutuhan Untuk
                 </label>
                 <select
                   id="f-kebutuhan"
                   value={kebutuhanUntuk}
                   onChange={(e) => setKebutuhanUntuk(e.target.value)}
-                  className={inputCls}
+                  className={`${inputCls} transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
                 >
                   <option>Produksi</option>
                   <option>Maintenance</option>
                   <option>Proyek</option>
                 </select>
               </div>
+
+              {/* Prioritas */}
               <div>
                 <label htmlFor="f-prioritas" className={labelCls}>
-                  Prioritas
+                  Tingkat Prioritas
                 </label>
                 <div className="relative">
                   <span
                     aria-hidden
-                    className={`pointer-events-none absolute left-3.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full ${
-                      prioritas === "Urgent" ? "bg-[#E30613]" : "bg-[#A3A3A3]"
+                    className={`pointer-events-none absolute left-3.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full transition-colors ${
+                      prioritas === "Urgent" ? "bg-[#E30613] animate-pulse" : "bg-slate-400"
                     }`}
                   />
                   <select
                     id="f-prioritas"
                     value={prioritas}
                     onChange={(e) => setPrioritas(e.target.value)}
-                    className={`${inputCls} pl-9 font-bold uppercase tracking-wide ${
-                      prioritas === "Urgent" ? "text-[#E30613]" : "text-[#171717]"
+                    className={`${inputCls} pl-9 font-bold tracking-wide transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20 ${
+                      prioritas === "Urgent" ? "text-[#E30613]" : "text-slate-800"
                     }`}
                   >
-                    <option>Normal</option>
-                    <option>Urgent</option>
+                    <option value="Normal">NORMAL</option>
+                    <option value="Urgent">URGENT</option>
                   </select>
                 </div>
               </div>
+
             </div>
           </Section>
 
-          <Section no="02" title="Detail Barang" subtitle="Item Details">
-            {/* Status master item */}
+          {/* Section 02: Detail Barang */}
+          <Section no="02" title="Detail Barang" subtitle="Items Request List">
+            
+            {/* Status Loading / Error Master Data */}
             {masterState === "loading" && (
-              <p role="status" className="animate-pulse text-[0.85rem] text-[#A3A3A3]">
-                Memuat data barang...
-              </p>
+              <div role="status" className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3.5 text-xs font-medium text-slate-500">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                <span>Memuat katalog master barang...</span>
+              </div>
             )}
             {masterState === "error" && (
-              <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-[#E30613]/30 bg-[#E30613]/5 px-4 py-3 text-[0.85rem] text-[#171717]">
-                <span>Gagal memuat data barang. Silakan tulis nama barang secara manual.</span>
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50/70 p-4 text-xs font-medium text-red-900">
+                <span>Gagal memuat katalog barang. Anda tetap dapat memasukkan nama barang secara manual.</span>
                 <button
                   type="button"
                   onClick={muatMaster}
-                  className="rounded-lg border border-[#E30613]/40 px-3 py-1.5 font-semibold text-[#E30613] transition hover:bg-[#E30613]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E30613]/40"
+                  className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold text-[#E30613] shadow-sm hover:bg-red-50"
                 >
-                  Coba lagi
+                  Coba Lagi
                 </button>
               </div>
             )}
 
-            {/* Kartu barang responsif: satu render untuk desktop & HP */}
-            <div className="flex flex-col gap-4">
+            {/* List Kartu Barang */}
+            <div className="space-y-4">
               {baris.map((b, i) => (
                 <BarisBarangCard
                   key={i}
@@ -437,70 +474,87 @@ function PermintaanBarang() {
                 />
               ))}
             </div>
-
-            {/* Ringkasan otomatis */}
-            <div
-              role="status"
-              aria-live="polite"
-              className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg bg-[#0B0B0B] px-5 py-3 text-white"
-            >
-              <span className="text-[0.85rem]">
-                Jenis barang: <strong className="tabular-nums">{ringkasan.jenis}</strong>
-              </span>
-              <span className="text-[0.85rem]">
-                Total kuantitas: <strong className="tabular-nums">{ringkasan.qty.toLocaleString("id-ID")}</strong>
-              </span>
-            </div>
-
+  {/* Tombol Tambah Barang */}
             <button
               type="button"
               onClick={tambahBarang}
               aria-label={`Tambah barang (saat ini ${baris.length} baris)`}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#0B0B0B] px-5 py-3.5 text-[0.9rem] font-bold uppercase tracking-wider text-white transition hover:bg-[#E30613] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#E30613]/30"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white py-3.5 text-xs font-bold uppercase tracking-wider text-slate-700 transition hover:border-[#E30613] hover:bg-red-50/30 hover:text-[#E30613] focus:outline-none focus:ring-2 focus:ring-[#E30613]/20"
             >
-              <FontAwesomeIcon icon={faPlus} className="h-4 w-4" />
+              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
               Tambah Barang
             </button>
+            {/* Ringkasan Metric Card */}
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-5 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-900 p-4 text-white shadow-sm sm:grid-cols-2"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-slate-300">
+                  <FontAwesomeIcon icon={faLayerGroup} className="h-5 w-5 text-[#E30613]" />
+                </div>
+                <div>
+                  <p className="text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">Total Jenis Barang</p>
+                  <p className="text-xl font-extrabold tabular-nums text-white">{ringkasan.jenis} <span className="text-xs font-normal text-slate-400">item</span></p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-slate-300">
+                  <FontAwesomeIcon icon={faBoxOpen} className="h-5 w-5 text-[#E30613]" />
+                </div>
+                <div>
+                  <p className="text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">Total Kuantitas</p>
+                  <p className="text-xl font-extrabold tabular-nums text-white">{ringkasan.qty.toLocaleString("id-ID")}</p>
+                </div>
+              </div>
+            </div>
+
+          
           </Section>
 
-          <Section no="03" title="Alasan Permintaan" subtitle="Request Reason">
-            <label htmlFor="f-alasan" className={labelCls}>
-              Jelaskan Alasan {req}
-            </label>
-            <textarea
-              id="f-alasan"
-              rows={4}
-              required
-              value={alasan}
-              onChange={(e) => setAlasan(e.target.value)}
-              placeholder="Contoh: Stok bahan baku untuk produksi bulan ini sudah habis."
-              className={`${inputCls} resize-y`}
-            />
-            <p className="mt-2 text-[0.78rem] text-[#A3A3A3]">
-              Tuliskan alasan sejelas mungkin agar permintaan mudah disetujui.
-            </p>
+          {/* Section 03: Alasan Permintaan */}
+          <Section no="03" title="Alasan Permintaan" subtitle="Justification">
+            <div>
+              <label htmlFor="f-alasan" className={labelCls}>
+                 Alasan Permintaan {req}
+              </label>
+              <textarea
+                id="f-alasan"
+                rows={4}
+                required
+                value={alasan}
+                onChange={(e) => setAlasan(e.target.value)}
+                placeholder="Jelaskan tujuan"
+                className={`${inputCls} resize-y transition focus:border-[#E30613] focus:ring-2 focus:ring-[#E30613]/20`}
+              />
+            
+            </div>
           </Section>
 
-          <div className="mb-5">
+          {/* Action Bar */}
+          <div className="pt-4">
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex w-full items-center justify-center gap-2.5 rounded-lg bg-[#E30613] px-8 py-3.5 text-[0.95rem] font-bold uppercase tracking-wider text-white shadow-[0_1px_3px_rgba(227,6,19,0.4)] transition hover:bg-[#B80510] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px] sm:float-right"
+              className="inline-flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#E30613] px-8 py-4 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-red-600/25 transition hover:bg-[#c00510] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:float-right"
             >
               {saving ? (
                 <>
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  Menyimpan...
+                  <span>Proses Menyimpan...</span>
                 </>
               ) : (
                 <>
-                  <FontAwesomeIcon icon={faWhatsapp} className="h-4 w-4" />
-                  Simpan &amp; Bagikan WhatsApp
+                  <FontAwesomeIcon icon={faWhatsapp} className="h-4 w-4 text-white" />
+                  <span>Simpan </span>
                 </>
               )}
             </button>
             <div className="clear-both" />
           </div>
+
         </form>
       </div>
     </div>

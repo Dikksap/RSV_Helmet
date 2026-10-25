@@ -5,11 +5,13 @@ import {
   deleteBarang,
   exportBarang,
   getBarangPage,
+  getBarangSummary,
   searchBarang,
   updateBarang,
   type Barang,
   type CreateBarangPayload,
   type StatusBarang,
+  type StatusSummary,
   type UpdateBarangPayload,
 } from "../../api/barang";
 import { getProducts, type Product } from "../../api/products";
@@ -189,6 +191,18 @@ function BarangForm({
 
 const EMPTY_FORM: FormState = { variantId: "", batchId: "", batchDetach: false, kodeBarang: "", tanggal: "", status: "REGISTER", keterangan: "" };
 
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{label}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</p>
+      <div className="mt-2 h-1.5 w-full rounded-full bg-slate-100">
+        <div className={`h-full rounded-full bg-[#00A8E8] opacity-40`} style={{ width: "60%" }} />
+      </div>
+    </div>
+  );
+}
+
 function DaftarBarang() {
   const { options: statusOptions } = useStatusOptions();
   const { subscribe } = useLiveSocketContext();
@@ -220,6 +234,7 @@ function DaftarBarang() {
 
   const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
+  const [summary, setSummary] = useState<StatusSummary | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
   const [riwayatBarang, setRiwayatBarang] = useState<Barang | null>(null);
@@ -261,6 +276,17 @@ function DaftarBarang() {
     getColors().then((r) => setColorOptions(toOptions(r))).catch(() => setColorOptions([]));
     getSizes().then((r) => setSizeOptions(toOptions(r))).catch(() => setSizeOptions([]));
     getGudangList().then(setGudangOptions).catch(() => setGudangOptions([]));
+
+    getBarangSummary()
+      .then((raw) => setSummary({
+        REGISTER: raw.perStatus.REGISTER ?? 0,
+        FINISHGOOD: raw.perStatus.FINISHGOOD ?? 0,
+        RETUR: raw.perStatus.RETUR ?? 0,
+        OUT: raw.perStatus.OUT ?? 0,
+        BAD: raw.perStatus.BAD ?? 0,
+        total: raw.total,
+      }))
+      .catch(() => setSummary(null));
   }, []);
 
   const matchesAttr = useCallback(
@@ -734,6 +760,15 @@ function DaftarBarang() {
         onTanggalAkhirChange={resetPage(setTanggalAkhir)}
         onResetFilters={handleResetFilters}
       />
+
+      {summary && (
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="Total" value={summary.total.toLocaleString("id-ID")} />
+          <StatCard label="REGISTER" value={summary.REGISTER.toLocaleString("id-ID")} />
+          <StatCard label="FINISHGOOD" value={summary.FINISHGOOD.toLocaleString("id-ID")} />
+          <StatCard label="RETUR / OUT / BAD" value={(summary.RETUR + summary.OUT + summary.BAD).toLocaleString("id-ID")} />
+        </section>
+      )}
 
       {selectedCount > 0 && (
         <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-[#00A8E8]/30 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur sm:top-16">

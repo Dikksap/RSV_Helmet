@@ -6,8 +6,106 @@ generator client {
   importFileExtension = "js"
 }
 
+enum WipRejectStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_QC
+  COMPLETED
+}
+
 generator erd {
   provider = "prisma-erd-generator"
+}
+
+model QualityRejectReason {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(191)
+  isActive    Boolean  @default(true)
+  createdById Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User       @relation("QualityRejectReasonCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  rejects   WipReject[]
+}
+
+model WipReject {
+  id               Int            @id @default(autoincrement())
+  number           String         @unique
+  itemId           Int
+  quantity         Decimal        @db.Decimal(18, 6)
+  reasonId         Int
+  repairDivisionId Int
+  recordedById     Int
+  claimedById      Int?
+  status           WipRejectStatus @default(OPEN)
+  createdAt        DateTime       @default(now())
+  claimedAt        DateTime?
+  completedAt      DateTime?
+
+  item           Item        @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  reason         QualityRejectReason @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  repairDivision Divisi      @relation(fields: [repairDivisionId], references: [id], onDelete: Restrict)
+  recordedBy     User        @relation("WipRejectRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  claimedBy      User?       @relation("WipRejectClaimedBy", fields: [claimedById], references: [id], onDelete: Restrict)
+  lots           WipRejectLot[]
+  attempts       WipRejectRepairAttempt[]
+
+  @@index([repairDivisionId, status, createdAt])
+  @@index([itemId, createdAt])
+  @@index([reasonId])
+  @@index([recordedById])
+  @@index([claimedById])
+}
+
+model WipRejectLot {
+  id                      Int     @id @default(autoincrement())
+  rejectId                Int
+  pemakaianMaterialItemId Int
+  quantity                Decimal @db.Decimal(18, 6)
+
+  reject                WipReject             @relation(fields: [rejectId], references: [id], onDelete: Restrict)
+  pemakaianMaterialItem PemakaianMaterialItem @relation(fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
+  repairAllocations     WipRejectRepairLot[]
+
+  @@unique([rejectId, pemakaianMaterialItemId])
+  @@index([pemakaianMaterialItemId])
+}
+
+model WipRejectRepairAttempt {
+  id                Int      @id @default(autoincrement())
+  rejectId          Int
+  performedById     Int
+  quantityAttempted Decimal  @db.Decimal(18, 6)
+  quantityRepaired  Decimal  @db.Decimal(18, 6)
+  notes             String?  @db.Text
+  performedAt       DateTime @default(now())
+  reviewedById      Int?
+  reviewedAt        DateTime?
+  reviewApproved    Boolean?
+  reviewNotes       String?  @db.Text
+
+  reject       WipReject         @relation(fields: [rejectId], references: [id], onDelete: Restrict)
+  performedBy User              @relation("WipRejectRepairPerformedBy", fields: [performedById], references: [id], onDelete: Restrict)
+  reviewedBy  User?             @relation("WipRejectRepairReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  lots        WipRejectRepairLot[]
+
+  @@index([rejectId, performedAt])
+  @@index([performedById])
+  @@index([reviewedById])
+}
+
+model WipRejectRepairLot {
+  id          Int     @id @default(autoincrement())
+  attemptId   Int
+  rejectLotId Int
+  quantity    Decimal @db.Decimal(18, 6)
+
+  attempt   WipRejectRepairAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+  rejectLot WipRejectLot           @relation(fields: [rejectLotId], references: [id], onDelete: Restrict)
+
+  @@unique([attemptId, rejectLotId])
+  @@index([rejectLotId])
 }
 
 datasource db {
@@ -20,16 +118,37 @@ model User {
   email     String   @unique
   password  String
   role      String   @default("user")
+  divisiId  Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  roleRef             Role                  @relation("UserRole", fields: [role], references: [kode], onDelete: Restrict)
-  riwayatMutasiGudang RiwayatMutasiGudang[]
-  stokItemMutasi      StokItemMutasi[]
-  stokOpnameSesi      StokOpnameSesi[]
+  roleRef              Role                  @relation("UserRole", fields: [role], references: [kode], onDelete: Restrict)
+  divisi               Divisi?               @relation(fields: [divisiId], references: [id], onDelete: SetNull)
+  riwayatMutasiGudang  RiwayatMutasiGudang[]
+  stokItemMutasi       StokItemMutasi[]
+  stokOpnameSesi       StokOpnameSesi[]
   pemakaianMaterials   PemakaianMaterial[]
+  wipTransferDibuat    WipTransfer[]         @relation("WipTransferDibuat")
+  wipTransferDisetujui WipTransfer[]         @relation("WipTransferDisetujui")
+  inventoryMovements  InventoryMovement[]  @relation("InventoryMovementCreatedBy")
+  qualityInspections  QualityInspection[]  @relation("QualityInspectionInspector")
+  repairAssignments   RepairAssignment[]   @relation("RepairAssignmentAssignedBy")
+  repairReviews       RepairAssignment[]   @relation("RepairAssignmentReviewedBy")
+  repairAttempts      RepairAttempt[]      @relation("RepairAttemptPerformedBy")
+  repairAttemptReviews RepairAttempt[]     @relation("RepairAttemptReviewedBy")
+  shipments           CustomerShipment[]   @relation("CustomerShipmentCreatedBy")
+  shipmentPosts       CustomerShipment[]   @relation("CustomerShipmentPostedBy")
+  shipmentReturns     ShipmentReturn[]     @relation("ShipmentReturnReceivedBy")
+  finishedGoodsReceipts FinishedGoodsReceipt[] @relation("FinishedGoodsReceiptReceivedBy")
+  wipStocktakes         WipStocktakeSession[] @relation("WipStocktakeCountedBy")
+  qualityRejectReasons  QualityRejectReason[] @relation("QualityRejectReasonCreatedBy")
+  wipRejectsRecorded    WipReject[]           @relation("WipRejectRecordedBy")
+  wipRejectsClaimed     WipReject[]           @relation("WipRejectClaimedBy")
+  wipRejectAttempts     WipRejectRepairAttempt[] @relation("WipRejectRepairPerformedBy")
+  wipRejectReviews      WipRejectRepairAttempt[] @relation("WipRejectRepairReviewedBy")
 
   @@index([role], map: "User_role_fkey")
+  @@index([divisiId], map: "User_divisiId_fkey")
 }
 
 // =============================================
@@ -140,9 +259,22 @@ model Divisi {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  karyawan Karyawan[]
-  items    Item[]
-  pemakaianMaterials PemakaianMaterial[]
+  karyawan            Karyawan[]
+  items               Item[]
+  users               User[]
+  pemakaianMaterials  PemakaianMaterial[]
+  hasilProduksiHarian HasilProduksiHarian[]
+  permintaanPeminta   PermintaanBarang[]    @relation("PermintaanPeminta")
+  permintaanApprover  PermintaanBarang[]    @relation("PermintaanApprover")
+  wipTransferAsal     WipTransfer[]         @relation("WipTransferAsal")
+  wipTransferTujuan   WipTransfer[]         @relation("WipTransferTujuan")
+  inventoryLocations  InventoryLocation[]
+  qcDefectsFound      QualityDefect[]       @relation("QualityDefectFoundAt")
+  qcDefectsOrigin     QualityDefect[]       @relation("QualityDefectOriginDivision")
+  qcDefectsRepair     QualityDefect[]       @relation("QualityDefectRepairDivision")
+  repairAssignments   RepairAssignment[]
+  productionRoutingStages ProductionRoutingStage[]
+  wipRejectsForRepair     WipReject[]
 }
 
 model Item {
@@ -156,16 +288,23 @@ model Item {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  divisi          Divisi?                @relation(fields: [divisiId], references: [id], onDelete: SetNull)
-  permintaanItems PermintaanBarangItem[]
-  pemakaianMaterialItems PemakaianMaterialItem[]
-  stokMutasi      StokItemMutasi[]
-  opnameBaris     StokOpnameBaris[]
-  bomItems     BomItem[]
-  subassembly  Subassembly?
+  divisi                   Divisi?                   @relation(fields: [divisiId], references: [id], onDelete: SetNull)
+  permintaanItems          PermintaanBarangItem[]
+  pemakaianMaterialItems   PemakaianMaterialItem[]
+  stokMutasi               StokItemMutasi[]
+  opnameBaris              StokOpnameBaris[]
+  bomItems                 BomItem[]
+  subassembly              Subassembly?
+  hasilProduksiHarianItems HasilProduksiHarianItem[]
+  wipTransferItems         WipTransferItem[]
+  inventoryMovements       InventoryMovement[]
+  productionRoutingInputs  ProductionRoutingStage[] @relation("ProductionRoutingStageInput")
+  productionRoutingOutputs ProductionRoutingStage[] @relation("ProductionRoutingStageOutput")
+  wipStocktakeLines        WipStocktakeLine[]
+  wipRejects               WipReject[]
+
   @@index([divisiId], map: "Item_divisiId_fkey")
 }
-
 
 // =============================================
 // Master Gudang (lokasi penyimpanan)
@@ -183,6 +322,7 @@ model Gudang {
   barang       Barang[]
   mutasiKeluar RiwayatMutasiGudang[] @relation("MutasiGudangAsal")
   mutasiMasuk  RiwayatMutasiGudang[] @relation("MutasiGudangTujuan")
+  inventoryLocations InventoryLocation[]
 }
 
 // Riwayat perpindahan lokasi barang. Append-only: tidak ada
@@ -242,9 +382,11 @@ model ProductVariant {
   barangCounters     BarangCounter[]
   orderItems         ProductionOrderItem[]
   realizations       ProductionRealization[]
+  qualityInspectionLines QualityInspectionLine[]
   scheduleAllocEdits ProductionScheduleAllocEdit[]
   boms               Bom[]
   subassemblies      Subassembly[]
+  productionRoutings ProductionRouting[]
 
   @@unique([productId, styleId, colorId, sizeId])
   @@index([productId])
@@ -335,6 +477,7 @@ model Barang {
   batchId    Int?
   groupId    Int?
   gudangId   Int?
+  qualityInspectionLineId Int?
   tanggal    DateTime?
   status     String    @default("REGISTER")
 
@@ -345,14 +488,20 @@ model Barang {
   batch               ProductionBatch?      @relation(fields: [batchId], references: [id], onDelete: Restrict)
   group               BarangGroup?          @relation(fields: [groupId], references: [id], onDelete: Restrict)
   gudang              Gudang?               @relation(fields: [gudangId], references: [id], onDelete: SetNull)
+  qualityInspectionLine   QualityInspectionLine?  @relation("QualityLineProduced", fields: [qualityInspectionLineId], references: [id], onDelete: Restrict)
+  qualityLinesAsTarget    QualityInspectionLine[] @relation("QualityLineTarget")
+  inventoryMovements      InventoryMovement[]
+  finishedGoodsReceiptLines FinishedGoodsReceiptLine[]
   statusRef           StatusBarang          @relation("BarangStatus", fields: [status], references: [kode])
   riwayat             RiwayatBarang[]
   riwayatMutasiGudang RiwayatMutasiGudang[]
+  shipmentLines       CustomerShipmentLine[]
 
   @@index([variantId])
   @@index([batchId])
   @@index([groupId])
   @@index([gudangId], map: "Barang_gudangId_fkey")
+  @@index([qualityInspectionLineId])
   @@index([status])
 }
 
@@ -422,6 +571,7 @@ model ProductionOrder {
   realizationStages   ProductionRealizationStage[]
   scheduleTargetEdits ProductionScheduleTargetEdit[]
   scheduleAllocEdits  ProductionScheduleAllocEdit[]
+  hasilProduksiHarian HasilProduksiHarian[]
 
   @@index([periode])
   @@index([status])
@@ -558,6 +708,30 @@ enum StatusApprovalPermintaan {
   DISETUJUI
 }
 
+enum SumberPermintaanBarang {
+  MANUAL
+  HASIL_PRODUKSI
+}
+
+enum SumberPemakaianMaterial {
+  PERMINTAAN_BARANG
+  HASIL_PRODUKSI
+  TRANSFER_WIP
+  REPAIR
+  OPNAME
+}
+
+enum StatusWipTransfer {
+  MENUNGGU
+  DISETUJUI
+  DITOLAK
+}
+
+enum ArahWipTransfer {
+  KIRIM
+  MINTA
+}
+
 enum StatusKeputusanItem {
   MENUNGGU
   DISETUJUI
@@ -572,21 +746,23 @@ enum TipeStokItem {
 // Ledger stok item master (append-only). Saldo = SUM(MASUK) - SUM(KELUAR).
 // Koreksi dilakukan dengan baris pembalik, tidak pernah ubah/hapus.
 model StokItemMutasi {
-  id                     Int          @id @default(autoincrement())
-  itemId                 Int
-  tipe                   TipeStokItem
-  jumlah                 Int
-  sumberPermintaanItemId Int?
-  sumberOpnameBarisId    Int?
-  keterangan             String?
-  userId                 Int?
-  tanggal                DateTime     @default(now())
-  createdAt              DateTime     @default(now())
+  id                        Int          @id @default(autoincrement())
+  itemId                    Int
+  tipe                      TipeStokItem
+  jumlah                    Int
+  sumberPermintaanItemId    Int?
+  sumberOpnameBarisId       Int?
+  sumberHasilProduksiItemId Int?         @unique
+  keterangan                String?
+  userId                    Int?
+  tanggal                   DateTime     @default(now())
+  createdAt                 DateTime     @default(now())
 
-  item             Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  sumberPermintaan PermintaanBarangItem? @relation(fields: [sumberPermintaanItemId], references: [id], onDelete: SetNull)
-  sumberOpname     StokOpnameBaris?      @relation(fields: [sumberOpnameBarisId], references: [id], onDelete: SetNull)
-  user             User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  item                Item                     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  sumberPermintaan    PermintaanBarangItem?    @relation(fields: [sumberPermintaanItemId], references: [id], onDelete: SetNull)
+  sumberOpname        StokOpnameBaris?         @relation(fields: [sumberOpnameBarisId], references: [id], onDelete: SetNull)
+  sumberHasilProduksi HasilProduksiHarianItem? @relation(fields: [sumberHasilProduksiItemId], references: [id], onDelete: SetNull)
+  user                User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([itemId, tanggal])
   @@index([sumberPermintaanItemId], map: "StokItemMutasi_sumberPermintaanItemId_fkey")
@@ -635,21 +811,30 @@ model PermintaanBarang {
   noPermintaan      String                   @unique
   tanggal           DateTime
   departemen        String
+  divisiPemintaId   Int?
+  divisiApproverId  Int?
   namaPeminta       String
   kebutuhanUntuk    String                   @default("Produksi")
   prioritas         String                   @default("Normal")
   tanggalDibutuhkan DateTime?
   alasan            String                   @db.Text
   approval          StatusApprovalPermintaan @default(BELUM_DISETUJUI)
+  sumber            SumberPermintaanBarang   @default(MANUAL)
+  autoKey           String?                  @unique
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
-  items PermintaanBarangItem[]
+  divisiPeminta  Divisi?                @relation("PermintaanPeminta", fields: [divisiPemintaId], references: [id], onDelete: SetNull)
+  divisiApprover Divisi?                @relation("PermintaanApprover", fields: [divisiApproverId], references: [id], onDelete: SetNull)
+  items          PermintaanBarangItem[]
 
   pemakaianMaterials PemakaianMaterial[]
 
   @@index([tanggal])
   @@index([approval])
+  @@index([divisiPemintaId], map: "PermintaanBarang_divisiPemintaId_fkey")
+  @@index([divisiApproverId], map: "PermintaanBarang_divisiApproverId_fkey")
+  @@index([sumber])
 }
 
 model PermintaanBarangItem {
@@ -665,9 +850,9 @@ model PermintaanBarangItem {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  permintaan PermintaanBarang @relation(fields: [permintaanId], references: [id], onDelete: Cascade)
-  item       Item?            @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  stokMutasi StokItemMutasi[]
+  permintaan             PermintaanBarang        @relation(fields: [permintaanId], references: [id], onDelete: Cascade)
+  item                   Item?                   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  stokMutasi             StokItemMutasi[]
   pemakaianMaterialItems PemakaianMaterialItem[]
 
   @@index([permintaanId], map: "PermintaanBarangItem_permintaanId_fkey")
@@ -699,7 +884,6 @@ model Subassembly {
   @@index([productVariantId])
 }
 
-
 model Bom {
   id               Int       @id @default(autoincrement())
   kode             String?   @unique
@@ -716,6 +900,7 @@ model Bom {
   productVariant ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
   subassembly    Subassembly?    @relation("BomOutput", fields: [subassemblyId], references: [id], onDelete: Restrict)
   items          BomItem[]
+  productionRoutings ProductionRouting[]
 
   @@unique([productVariantId, version])
   @@unique([subassemblyId, version])
@@ -736,30 +921,36 @@ model BomItem {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  bom         Bom          @relation(fields: [bomId], references: [id], onDelete: Cascade)
-  item        Item?        @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  bom  Bom   @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  item Item? @relation(fields: [itemId], references: [id], onDelete: Restrict)
 
   subassembly Subassembly? @relation("BomItemComponent", fields: [subassemblyId], references: [id], onDelete: Restrict)
+
   @@index([bomId])
   @@index([itemId])
   @@index([subassemblyId])
 }
 
 model PemakaianMaterial {
-  id           Int                     @id @default(autoincrement())
-  nomor        String                  @unique
-  permintaanId Int
-  divisiId     Int
-  tanggal      DateTime                @default(now())
-  userId       Int?
-  keterangan   String?                  @db.Text
-  createdAt    DateTime                 @default(now())
-  updatedAt    DateTime                 @updatedAt
+  id                    Int                     @id @default(autoincrement())
+  nomor                 String                  @unique
+  permintaanId          Int?
+  divisiId              Int
+  tanggal               DateTime                @default(now())
+  userId                Int?
+  sumber                SumberPemakaianMaterial @default(PERMINTAAN_BARANG)
+  hasilProduksiHarianId Int?                    @unique
+  wipTransferId         Int?                    @unique
+  keterangan            String?                 @db.Text
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
 
-  permintaan PermintaanBarang        @relation(fields: [permintaanId], references: [id], onDelete: Restrict)
-  divisi     Divisi                 @relation(fields: [divisiId], references: [id], onDelete: Restrict)
-  user       User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
-  items      PemakaianMaterialItem[]
+  permintaan          PermintaanBarang?       @relation(fields: [permintaanId], references: [id], onDelete: Restrict)
+  divisi              Divisi                  @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  user                User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  hasilProduksiHarian HasilProduksiHarian?    @relation(fields: [hasilProduksiHarianId], references: [id], onDelete: Restrict)
+  wipTransfer         WipTransfer?            @relation(fields: [wipTransferId], references: [id], onDelete: Restrict)
+  items               PemakaianMaterialItem[]
 
   @@index([permintaanId])
   @@index([divisiId, tanggal])
@@ -767,23 +958,607 @@ model PemakaianMaterial {
 }
 
 model PemakaianMaterialItem {
-  id                    Int      @id @default(autoincrement())
-  pemakaianId           Int
-  permintaanBarangItemId Int
-  itemId                Int?
-  jumlahDiterima        Decimal  @default(0) @db.Decimal(18, 6)
-  jumlahDipakai         Decimal  @default(0) @db.Decimal(18, 6)
-  jumlahSisa            Decimal  @default(0) @db.Decimal(18, 6)
-  satuan                String?
-  keteranganSisa        String?  @db.Text
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                        Int      @id @default(autoincrement())
+  pemakaianId               Int
+  permintaanBarangItemId    Int?
+  itemId                    Int?
+  hasilProduksiHarianItemId Int?     @unique
+  jumlahDiterima            Decimal  @default(0) @db.Decimal(18, 6)
+  jumlahDipakai             Decimal  @default(0) @db.Decimal(18, 6)
+  jumlahSisa                Decimal  @default(0) @db.Decimal(18, 6)
+  satuan                    String?
+  keteranganSisa            String?  @db.Text
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
-  pemakaian      PemakaianMaterial    @relation(fields: [pemakaianId], references: [id], onDelete: Cascade)
-  permintaanItem PermintaanBarangItem @relation(fields: [permintaanBarangItemId], references: [id], onDelete: Restrict)
-  item           Item?                @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  pemakaian               PemakaianMaterial        @relation(fields: [pemakaianId], references: [id], onDelete: Cascade)
+  permintaanItem          PermintaanBarangItem?    @relation(fields: [permintaanBarangItemId], references: [id], onDelete: Restrict)
+  item                    Item?                    @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  hasilProduksiHarianItem HasilProduksiHarianItem? @relation(fields: [hasilProduksiHarianItemId], references: [id], onDelete: Restrict)
+  wipTransferItem         WipTransferItem?         @relation("WipTransferItemTujuan")
+  hasilProduksiPemakaian  HasilProduksiPemakaian[]
+  wipTransferAlokasi      WipTransferAlokasi[]     @relation("WipTransferSumber")
+  inventoryMovements      InventoryMovement[]
+  qualityInspectionLines  QualityInspectionLine[]
+  wipRejectLots           WipRejectLot[]
 
   @@index([pemakaianId])
   @@index([permintaanBarangItemId])
   @@index([itemId])
+}
+
+model WipTransfer {
+  id             Int               @id @default(autoincrement())
+  nomor          String            @unique
+  tanggal        DateTime          @default(now())
+  divisiAsalId   Int
+  divisiTujuanId Int
+  arah           ArahWipTransfer  @default(KIRIM)
+  status         StatusWipTransfer @default(MENUNGGU)
+  userId         Int?
+  approvedById   Int?
+  approvedAt     DateTime?
+  keterangan     String?           @db.Text
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  divisiAsal        Divisi             @relation("WipTransferAsal", fields: [divisiAsalId], references: [id], onDelete: Restrict)
+  divisiTujuan      Divisi             @relation("WipTransferTujuan", fields: [divisiTujuanId], references: [id], onDelete: Restrict)
+  user              User?              @relation("WipTransferDibuat", fields: [userId], references: [id], onDelete: SetNull)
+  approvedBy        User?              @relation("WipTransferDisetujui", fields: [approvedById], references: [id], onDelete: SetNull)
+  items             WipTransferItem[]
+  pemakaianMaterial PemakaianMaterial?
+
+  @@index([tanggal])
+  @@index([divisiAsalId, tanggal])
+  @@index([divisiTujuanId, tanggal])
+  @@index([status])
+  @@index([userId], map: "WipTransfer_userId_fkey")
+  @@index([approvedById], map: "WipTransfer_approvedById_fkey")
+}
+
+model WipTransferItem {
+  id                      Int      @id @default(autoincrement())
+  transferId              Int
+  itemId                  Int
+  jumlah                  Int
+  satuan                  String?
+  jumlahDisetujui         Int?
+  pemakaianMaterialItemId Int?     @unique
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  transfer              WipTransfer            @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  item                  Item                   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  pemakaianMaterialItem PemakaianMaterialItem? @relation("WipTransferItemTujuan", fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
+  alokasi               WipTransferAlokasi[]
+
+  @@unique([transferId, itemId])
+  @@index([itemId], map: "WipTransferItem_itemId_fkey")
+}
+
+model WipTransferAlokasi {
+  id                      Int      @id @default(autoincrement())
+  transferItemId          Int
+  pemakaianMaterialItemId Int
+  jumlah                  Decimal  @db.Decimal(18, 6)
+  createdAt               DateTime @default(now())
+
+  transferItem          WipTransferItem       @relation(fields: [transferItemId], references: [id], onDelete: Cascade)
+  pemakaianMaterialItem PemakaianMaterialItem @relation("WipTransferSumber", fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
+
+  @@index([transferItemId], map: "WipTransferAlokasi_transferItemId_fkey")
+  @@index([pemakaianMaterialItemId], map: "WipTransferAlokasi_pemakaianMaterialItemId_fkey")
+}
+
+// =============================================
+// Hasil Produksi Harian
+// Header transaksi + detail aktivitas MASUK/KELUAR/HASIL.
+// Saldo stok tetap dihitung dari StokItemMutasi (append-only).
+// =============================================
+
+enum TipeHasilProduksiItem {
+  MASUK
+  KELUAR
+  HASIL
+}
+
+model HasilProduksiHarian {
+  id              Int      @id @default(autoincrement())
+  nomor           String   @unique
+  tanggalProduksi DateTime @default(now())
+  divisiId        Int
+  orderId         Int?
+  keterangan      String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  divisi            Divisi                    @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  order             ProductionOrder?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  items             HasilProduksiHarianItem[]
+  pemakaianMaterial PemakaianMaterial?
+  inventoryMovements InventoryMovement[]
+
+  @@index([tanggalProduksi])
+  @@index([divisiId, tanggalProduksi])
+  @@index([orderId, tanggalProduksi])
+  @@map("hasil_produksi_harian")
+}
+
+model HasilProduksiHarianItem {
+  id                    Int                   @id @default(autoincrement())
+  hasilProduksiHarianId Int
+  itemId                Int
+  tipe                  TipeHasilProduksiItem
+  jumlah                Decimal               @db.Decimal(18, 6)
+  keterangan            String?               @db.Text
+  createdAt             DateTime              @default(now())
+
+  hasilProduksiHarian   HasilProduksiHarian      @relation(fields: [hasilProduksiHarianId], references: [id], onDelete: Cascade)
+  item                  Item                     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  stokMutasi            StokItemMutasi?
+  pemakaian             HasilProduksiPemakaian[]
+  pemakaianMaterialItem PemakaianMaterialItem?
+
+  @@index([hasilProduksiHarianId])
+  @@index([itemId])
+  @@index([itemId, tipe])
+  @@map("hasil_produksi_harian_item")
+}
+
+// Relasi konsumsi WIP: baris MASUK produksi memakai saldo PemakaianMaterialItem.
+// Saldo WIP tetap di PemakaianMaterialItem.jumlahSisa; tabel ini hanya jejak konsumsi.
+model HasilProduksiPemakaian {
+  id                        Int      @id @default(autoincrement())
+  hasilProduksiHarianItemId Int
+  pemakaianMaterialItemId   Int
+  jumlah                    Decimal  @db.Decimal(18, 6)
+  createdAt                 DateTime @default(now())
+
+  hasilProduksiHarianItem HasilProduksiHarianItem @relation(fields: [hasilProduksiHarianItemId], references: [id], onDelete: Cascade)
+  pemakaianMaterialItem   PemakaianMaterialItem   @relation(fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
+
+  @@unique([hasilProduksiHarianItemId, pemakaianMaterialItemId])
+  @@index([pemakaianMaterialItemId], map: "HasilProduksiPemakaian_pemakaianMaterialItemId_fkey")
+}
+
+enum InventoryLocationType {
+  WAREHOUSE
+  DIVISION
+}
+
+enum InventoryMovementType {
+  OPENING
+  PRODUCTION
+  TRANSFER
+  QC
+  REPAIR
+  SHIPMENT
+  RETURN
+  ADJUSTMENT
+  REVERSAL
+}
+
+enum QualityInspectionStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum ProductionProcessStage {
+  BUFFING
+  BASE_COAT
+  DECAL_SOLID
+  DECAL_MOTIF
+  TOP_COAT
+}
+
+enum RepairAssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  COMPLETED
+  CANCELLED
+}
+
+model ProductionRouting {
+  id               Int      @id @default(autoincrement())
+  productVariantId Int
+  bomId            Int
+  version          Int      @default(1)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  productVariant ProductVariant         @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  bom            Bom                   @relation(fields: [bomId], references: [id], onDelete: Restrict)
+  stages         ProductionRoutingStage[]
+  qualityLines   QualityInspectionLine[]
+
+  @@unique([productVariantId, version])
+  @@index([bomId, isActive])
+}
+
+model ProductionRoutingStage {
+  id          Int                    @id @default(autoincrement())
+  routingId   Int
+  stage       ProductionProcessStage
+  sequence    Int
+  divisiId    Int
+  inputItemId Int
+  outputItemId Int
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  routing   ProductionRouting @relation(fields: [routingId], references: [id], onDelete: Cascade)
+  divisi    Divisi            @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  inputItem Item              @relation("ProductionRoutingStageInput", fields: [inputItemId], references: [id], onDelete: Restrict)
+  outputItem Item             @relation("ProductionRoutingStageOutput", fields: [outputItemId], references: [id], onDelete: Restrict)
+
+  @@unique([routingId, stage])
+  @@unique([routingId, sequence])
+  @@index([divisiId, inputItemId])
+  @@index([outputItemId])
+}
+
+enum RepairAttemptOutcome {
+  REPAIRED
+  PARTIAL
+  FAILED
+}
+
+enum CustomerShipmentStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum ShipmentReturnStatus {
+  RECEIVED
+  INSPECTED
+  REJECTED
+}
+
+model InventoryLocation {
+  id        Int                   @id @default(autoincrement())
+  code      String                @unique
+  name      String
+  type      InventoryLocationType
+  gudangId  Int?                  @unique
+  divisiId  Int?                  @unique
+  isActive  Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  gudang   Gudang? @relation(fields: [gudangId], references: [id], onDelete: Restrict)
+  divisi   Divisi? @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  incoming InventoryMovement[] @relation("InventoryMovementDestination")
+  outgoing InventoryMovement[] @relation("InventoryMovementSource")
+  finishedGoodsReceipts FinishedGoodsReceipt[]
+  customerShipments     CustomerShipment[]
+  shipmentReturns       ShipmentReturn[]
+  wipStocktakeSessions  WipStocktakeSession[]
+
+  @@index([type, isActive])
+}
+
+model InventoryMovement {
+  id                      BigInt                @id @default(autoincrement())
+  itemId                  Int?
+  barangId                Int?
+  fromLocationId          Int?
+  toLocationId            Int?
+  pemakaianMaterialItemId Int?
+  hasilProduksiHarianId   Int?
+  type                    InventoryMovementType
+  quantity                Decimal               @db.Decimal(18, 6)
+  idempotencyKey          String                @unique
+  sourceType              String
+  sourceId                String
+  reason                  String?               @db.Text
+  userId                  Int?
+  occurredAt              DateTime              @default(now())
+  reversalOfId            BigInt?               @unique
+  createdAt               DateTime              @default(now())
+
+  item                  Item?                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  barang                Barang?                @relation(fields: [barangId], references: [id], onDelete: Restrict)
+  fromLocation          InventoryLocation?     @relation("InventoryMovementSource", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation            InventoryLocation?     @relation("InventoryMovementDestination", fields: [toLocationId], references: [id], onDelete: Restrict)
+  pemakaianMaterialItem PemakaianMaterialItem? @relation(fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
+  hasilProduksiHarian   HasilProduksiHarian?   @relation(fields: [hasilProduksiHarianId], references: [id], onDelete: Restrict)
+  user                  User?                  @relation("InventoryMovementCreatedBy", fields: [userId], references: [id], onDelete: SetNull)
+  reversalOf            InventoryMovement?    @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy            InventoryMovement?    @relation("InventoryMovementReversal")
+
+  @@index([itemId, occurredAt])
+  @@index([barangId, occurredAt])
+  @@index([fromLocationId, itemId, occurredAt])
+  @@index([fromLocationId, barangId, occurredAt])
+  @@index([toLocationId, itemId, occurredAt])
+  @@index([toLocationId, barangId, occurredAt])
+  @@index([pemakaianMaterialItemId])
+  @@index([hasilProduksiHarianId])
+  @@index([sourceType, sourceId])
+}
+
+model WipStocktakeSession {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique
+  locationId  Int
+  countedById Int
+  notes       String?  @db.Text
+  countedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  location  InventoryLocation  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  countedBy User               @relation("WipStocktakeCountedBy", fields: [countedById], references: [id], onDelete: Restrict)
+  lines     WipStocktakeLine[]
+
+  @@index([locationId, countedAt])
+  @@index([countedById, countedAt])
+}
+
+model WipStocktakeLine {
+  id               Int      @id @default(autoincrement())
+  sessionId        Int
+  itemId           Int
+  systemQuantity   Decimal  @db.Decimal(18, 6)
+  physicalQuantity Decimal  @db.Decimal(18, 6)
+  difference       Decimal  @db.Decimal(18, 6)
+  reason           String   @db.Text
+  createdAt        DateTime @default(now())
+
+  session WipStocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  item    Item                @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, itemId])
+  @@index([itemId, createdAt])
+}
+
+model QualityInspection {
+  id             Int                    @id @default(autoincrement())
+  number         String                 @unique
+  status         QualityInspectionStatus @default(DRAFT)
+  inspectedAt    DateTime               @default(now())
+  inspectorId    Int
+  reopenedFromId Int?
+  reopenReason   String?                @db.Text
+  notes          String?                @db.Text
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  inspector    User                 @relation("QualityInspectionInspector", fields: [inspectorId], references: [id], onDelete: Restrict)
+  reopenedFrom QualityInspection?  @relation("QualityInspectionReopened", fields: [reopenedFromId], references: [id], onDelete: Restrict)
+  reopenedAs   QualityInspection[] @relation("QualityInspectionReopened")
+  lines        QualityInspectionLine[]
+
+  @@index([status, inspectedAt])
+  @@index([inspectorId])
+  @@index([reopenedFromId])
+}
+
+model QualityInspectionLine {
+  id                      Int      @id @default(autoincrement())
+  inspectionId            Int
+  pemakaianMaterialItemId  Int?
+  barangId                 Int?
+  reopenedFromLineId       Int?
+  repairAttemptId          Int?     @unique
+  productionRoutingId      Int?
+  productVariantId         Int?
+  inspectedQuantity        Decimal  @db.Decimal(18, 6)
+  passedQuantity           Decimal  @default(0) @db.Decimal(18, 6)
+  repairQuantity           Decimal  @default(0) @db.Decimal(18, 6)
+  rejectedQuantity         Decimal  @default(0) @db.Decimal(18, 6)
+  createdAt                DateTime @default(now())
+
+  inspection  QualityInspection     @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  lot         PemakaianMaterialItem? @relation(fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
+  barangTarget Barang?                @relation("QualityLineTarget", fields: [barangId], references: [id], onDelete: Restrict)
+  reopenedFrom QualityInspectionLine? @relation("QualityInspectionLineReopened", fields: [reopenedFromLineId], references: [id], onDelete: Restrict)
+  repairAttempt RepairAttempt?        @relation(fields: [repairAttemptId], references: [id], onDelete: Restrict)
+  productionRouting ProductionRouting? @relation(fields: [productionRoutingId], references: [id], onDelete: Restrict)
+  reopenedAs  QualityInspectionLine[] @relation("QualityInspectionLineReopened")
+  variant     ProductVariant?       @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  defects     QualityDefect[]
+  producedBarang Barang[]           @relation("QualityLineProduced")
+  assignments RepairAssignment[]
+  fgReceiptLines FinishedGoodsReceiptLine[]
+
+  @@index([inspectionId])
+  @@index([pemakaianMaterialItemId])
+  @@index([barangId])
+  @@index([reopenedFromLineId])
+  @@index([productionRoutingId])
+  @@index([productVariantId])
+}
+
+model QualityDefect {
+  id                Int      @id @default(autoincrement())
+  inspectionLineId  Int
+  description       String   @db.Text
+  quantity          Decimal  @db.Decimal(18, 6)
+  foundAtDivisionId Int?
+  originDivisionId  Int?
+  repairDivisionId  Int?
+  createdAt         DateTime @default(now())
+
+  inspectionLine QualityInspectionLine @relation(fields: [inspectionLineId], references: [id], onDelete: Restrict)
+  foundAt        Divisi?               @relation("QualityDefectFoundAt", fields: [foundAtDivisionId], references: [id], onDelete: SetNull)
+  originDivision Divisi?               @relation("QualityDefectOriginDivision", fields: [originDivisionId], references: [id], onDelete: SetNull)
+  repairDivision Divisi?               @relation("QualityDefectRepairDivision", fields: [repairDivisionId], references: [id], onDelete: SetNull)
+  assignments    RepairAssignment[]
+
+  @@index([inspectionLineId])
+  @@index([foundAtDivisionId])
+  @@index([originDivisionId])
+  @@index([repairDivisionId])
+}
+
+model RepairAssignment {
+  id               Int                    @id @default(autoincrement())
+  inspectionLineId Int
+  defectId         Int
+  repairDivisionId Int
+  quantity         Decimal                @db.Decimal(18, 6)
+  status           RepairAssignmentStatus @default(ASSIGNED)
+  assignedById     Int
+  assignedAt       DateTime               @default(now())
+  completedAt      DateTime?
+  reviewedById     Int?
+  reviewedAt       DateTime?
+  reviewNotes      String?                @db.Text
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  inspectionLine QualityInspectionLine @relation(fields: [inspectionLineId], references: [id], onDelete: Restrict)
+  defect         QualityDefect         @relation(fields: [defectId], references: [id], onDelete: Restrict)
+  repairDivision Divisi                @relation(fields: [repairDivisionId], references: [id], onDelete: Restrict)
+  assignedBy     User                  @relation("RepairAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  reviewedBy     User?                 @relation("RepairAssignmentReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  attempts       RepairAttempt[]
+
+  @@index([repairDivisionId, status])
+  @@index([inspectionLineId])
+  @@index([defectId])
+  @@index([assignedById])
+  @@index([reviewedById])
+}
+
+model RepairAttempt {
+  id                Int                 @id @default(autoincrement())
+  assignmentId      Int
+  performedById     Int
+  outcome           RepairAttemptOutcome
+  quantityAttempted Decimal             @db.Decimal(18, 6)
+  quantityRepaired  Decimal             @default(0) @db.Decimal(18, 6)
+  quantityRemaining Decimal             @default(0) @db.Decimal(18, 6)
+  notes             String?             @db.Text
+  performedAt       DateTime            @default(now())
+  reviewedById      Int?
+  reviewedAt        DateTime?
+  reviewApproved    Boolean?
+  reviewNotes       String?             @db.Text
+  createdAt         DateTime            @default(now())
+
+  assignment  RepairAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  performedBy User             @relation("RepairAttemptPerformedBy", fields: [performedById], references: [id], onDelete: Restrict)
+  reviewedBy  User?            @relation("RepairAttemptReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  inspectionLine QualityInspectionLine?
+
+  @@index([assignmentId, performedAt])
+  @@index([performedById])
+  @@index([reviewedById])
+}
+
+model FinishedGoodsReceipt {
+  id             Int      @id @default(autoincrement())
+  number         String   @unique
+  idempotencyKey String   @unique
+  locationId     Int
+  receivedById   Int
+  receivedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  location   InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  receivedBy User              @relation("FinishedGoodsReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  lines      FinishedGoodsReceiptLine[]
+
+  @@index([locationId, receivedAt])
+  @@index([receivedById])
+}
+
+model FinishedGoodsReceiptLine {
+  id                      Int      @id @default(autoincrement())
+  receiptId               Int
+  qualityInspectionLineId Int
+  barangId                Int
+  createdAt               DateTime @default(now())
+
+  receipt       FinishedGoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  qualityLine   QualityInspectionLine @relation(fields: [qualityInspectionLineId], references: [id], onDelete: Restrict)
+  barang        Barang                @relation(fields: [barangId], references: [id], onDelete: Restrict)
+
+  @@unique([receiptId, barangId])
+  @@index([qualityInspectionLineId])
+  @@index([barangId])
+}
+
+model CustomerShipment {
+  id                  Int                    @id @default(autoincrement())
+  number              String                 @unique
+  idempotencyKey      String                 @unique
+  fromLocationId      Int
+  recipientName       String
+  recipientAddress    String                 @db.Text
+  reference           String?
+  status              CustomerShipmentStatus @default(DRAFT)
+  createdById         Int
+  postedById          Int?
+  shippedAt           DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?                @db.Text
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  createdBy User                  @relation("CustomerShipmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  postedBy  User?                 @relation("CustomerShipmentPostedBy", fields: [postedById], references: [id], onDelete: Restrict)
+  fromLocation InventoryLocation @relation(fields: [fromLocationId], references: [id], onDelete: Restrict)
+  lines     CustomerShipmentLine[]
+  returns   ShipmentReturn[]
+
+  @@index([status, createdAt])
+  @@index([createdById])
+  @@index([postedById])
+  @@index([fromLocationId, status])
+}
+
+model CustomerShipmentLine {
+  id         Int      @id @default(autoincrement())
+  shipmentId Int
+  barangId   Int
+  createdAt  DateTime @default(now())
+
+  shipment CustomerShipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  barang   Barang           @relation(fields: [barangId], references: [id], onDelete: Restrict)
+  returns  ShipmentReturnLine[]
+
+  @@unique([shipmentId, barangId])
+  @@index([barangId])
+}
+
+model ShipmentReturn {
+  id           Int                 @id @default(autoincrement())
+  number       String              @unique
+  shipmentId   Int
+  toLocationId Int
+  idempotencyKey String @unique
+  receivedById Int
+  status       ShipmentReturnStatus @default(RECEIVED)
+  receivedAt   DateTime            @default(now())
+  reason       String              @db.Text
+  createdAt    DateTime            @default(now())
+
+  shipment   CustomerShipment    @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  toLocation InventoryLocation   @relation(fields: [toLocationId], references: [id], onDelete: Restrict)
+  receivedBy User                @relation("ShipmentReturnReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  lines      ShipmentReturnLine[]
+
+  @@index([shipmentId, receivedAt])
+  @@index([receivedById])
+  @@index([toLocationId, receivedAt])
+}
+
+model ShipmentReturnLine {
+  id             Int      @id @default(autoincrement())
+  returnId       Int
+  shipmentLineId Int
+  condition      String   @db.Text
+  createdAt      DateTime @default(now())
+
+  shipmentReturn ShipmentReturn       @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  shipmentLine   CustomerShipmentLine @relation(fields: [shipmentLineId], references: [id], onDelete: Restrict)
+
+  @@unique([shipmentLineId])
+  @@index([returnId])
 }

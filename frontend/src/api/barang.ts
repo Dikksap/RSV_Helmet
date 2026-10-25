@@ -1,6 +1,6 @@
 import { authHeaders } from "./auth";
 
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
 function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, { ...init, headers: { ...authHeaders(), ...init.headers } });
@@ -300,22 +300,27 @@ export interface StatusSummary {
   perBatch?: Array<{ batchId: number; nomorBatch: string | number; total: number }>;
 }
 
-export async function getStatusSummary(): Promise<StatusSummary> {
+export interface BarangStatusSummary {
+  total: number;
+  perStatus: Record<string, number>;
+}
+
+export async function getStatusSummary(): Promise<BarangStatusSummary> {
   const response = await apiFetch(`${apiUrl}/barang/status-summary`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message || `Gagal mengambil status summary: ${response.status}`);
   }
-  return response.json() as Promise<StatusSummary>;
+  return response.json() as Promise<BarangStatusSummary>;
 }
 
-export async function getBarangSummary(): Promise<StatusSummary> {
+export async function getBarangSummary(): Promise<BarangStatusSummary> {
   const response = await apiFetch(`${apiUrl}/barang/summary`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message || `Gagal mengambil summary: ${response.status}`);
   }
-  return response.json() as Promise<StatusSummary>;
+  return response.json() as Promise<BarangStatusSummary>;
 }
 
 export async function getBarang(): Promise<BarangResponse> {

@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -17,6 +18,7 @@ import {
   faMagnifyingGlass,
   faRotate,
   faSpinner,
+  faTable,
   faTrash,
   faTriangleExclamation,
   faUndo,
@@ -27,12 +29,22 @@ import {
   listPermintaan,
   setApprovalPermintaan,
   deletePermintaan,
+  pesanKesalahanPermintaan,
   type ApprovalPermintaan,
   type PermintaanBarangRecord,
+  type SumberPermintaan,
 } from "../../api/permintaanBarang";
 import { downloadCsv } from "../../lib/csv";
 import { getUser, hasPermission } from "../../api/auth";
 import KeputusanApprovalModal from "../../components/admin/DaftarPermintaan/KeputusanApprovalModal";
+import RingkasanItem from "../../components/admin/DaftarPermintaan/RingkasanItem";
+import { kelompokkanPerDivisi } from "../../components/admin/DaftarPermintaan/ringkasan";
+import DivisiPageHeader from "../../components/divisi/DivisiPageHeader";
+import {
+  bolehApprove,
+  masalahApprove,
+  type ApprovalActor,
+} from "../../components/admin/DaftarPermintaan/approval";
 
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/60";
@@ -55,6 +67,40 @@ const approvalBadge = (status: ApprovalPermintaan) => {
 const approvalLabel = (status: ApprovalPermintaan) => {
   return status === "DISETUJUI" ? "Disetujui" : "Belum disetujui";
 };
+
+function SumberBadge({ sumber }: { sumber: SumberPermintaan }) {
+  const otomatis = sumber === "HASIL_PRODUKSI";
+
+  return (
+    <span
+      title={otomatis ? "Dibuat otomatis dari hasil produksi" : "Dibuat manual"}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
+        otomatis
+          ? "bg-sky-50 text-sky-700 ring-sky-600/25"
+          : "bg-slate-100 text-slate-600 ring-slate-500/20"
+      }`}
+    >
+      {sumber}
+    </span>
+  );
+}
+
+function MenungguApprovalBadge({
+  record,
+}: {
+  record: PermintaanBarangRecord;
+}) {
+  if (record.approval === "DISETUJUI") return null;
+
+  const divisi = record.divisiApprover?.nama;
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/25">
+      <FontAwesomeIcon icon={faClock} aria-hidden="true" className="text-[9px]" />
+      {divisi ? `Menunggu approval divisi ${divisi}` : "Menunggu approval admin"}
+    </span>
+  );
+}
 
 const priorityBadge = (prioritas: string) => {
   if (prioritas === "Sangat Urgent") {
@@ -118,6 +164,9 @@ const ringkasIsi = (record: PermintaanBarangRecord) => {
     pcs,
   };
 };
+
+const totalPcs = (rows: PermintaanBarangRecord[]) =>
+  rows.reduce((total, record) => total + ringkasIsi(record).pcs, 0);
 
 /* Baris CSV sebagai tabel (unknown[][]) untuk lib/csv.ts:
    ringkas = 1 baris per permintaan, rincian = 1 baris per barang,
@@ -260,6 +309,7 @@ function DetailDrawer({
   record,
   busy,
   canApprove,
+  alasanApprove,
   isAdmin,
   onClose,
   onSetujui,
@@ -269,6 +319,7 @@ function DetailDrawer({
   record: PermintaanBarangRecord;
   busy: boolean;
   canApprove: boolean;
+  alasanApprove: string | null;
   isAdmin: boolean;
   onClose: () => void;
   onSetujui: (record: PermintaanBarangRecord) => void;
@@ -349,7 +400,13 @@ function DetailDrawer({
                 )}
                 {record.prioritas}
               </span>
+              <SumberBadge sumber={record.sumber} />
             </div>
+            {!approved && (
+              <div className="mt-2">
+                <MenungguApprovalBadge record={record} />
+              </div>
+            )}
           </div>
           <button
             ref={closeRef}
@@ -368,6 +425,8 @@ function DetailDrawer({
             {[
               ["Departemen", record.departemen],
               ["Nama peminta", record.namaPeminta],
+              ["Divisi peminta", record.divisiPeminta?.nama ?? "-"],
+              ["Divisi approver", record.divisiApprover?.nama ?? "Admin"],
               ["Tanggal permintaan", formatTanggalLengkap(record.tanggal)],
               ["Tanggal dibutuhkan", formatTanggalLengkap(record.tanggalDibutuhkan)],
               ["Kebutuhan untuk", record.kebutuhanUntuk || "-"],
@@ -424,6 +483,17 @@ function DetailDrawer({
             </ul>
           </div>
 
+          {!approved && canApprove && alasanApprove && (
+            <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
+              <FontAwesomeIcon
+                icon={faTriangleExclamation}
+                className="mt-0.5"
+                aria-hidden="true"
+              />
+              {alasanApprove}
+            </p>
+          )}
+
           {approved && (
             <p className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
               <FontAwesomeIcon icon={faLock} className="mt-0.5" aria-hidden="true" />
@@ -455,7 +525,8 @@ function DetailDrawer({
               {canApprove && (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || alasanApprove !== null}
+                  title={alasanApprove ?? "Setujui permintaan"}
                   onClick={() => onSetujui(record)}
                   className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
                 >
@@ -495,9 +566,18 @@ function DetailDrawer({
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function DaftarPermintaan() {
+interface DaftarPermintaanProps {
+  lockedDivisiId?: number | null;
+  lockedDivisiNama?: string | null;
+}
+
+export default function DaftarPermintaan({
+  lockedDivisiId = null,
+  lockedDivisiNama = null,
+}: DaftarPermintaanProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterStatus>("SEMUA");
+  const [tab, setTab] = useState<"daftar" | "ringkasan">("daftar");
   const [exportMode, setExportMode] = useState<"ringkas" | "rincian" | "vendor">("ringkas");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -511,8 +591,15 @@ export default function DaftarPermintaan() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [keputusanFor, setKeputusanFor] = useState<PermintaanBarangRecord | null>(null);
-  const isAdmin = getUser()?.role === "admin";
-  const canApprove = isAdmin || hasPermission("KELOLA_ITEM");
+  const user = getUser();
+  const isAdmin = user?.role === "admin";
+  const aktor: ApprovalActor = {
+    isAdmin,
+    punyaKelolaItem: hasPermission("KELOLA_ITEM"),
+    divisiId: user?.divisiId ?? null,
+  };
+  const divisiUser = aktor.divisiId;
+  const namaDivisiUser = user?.divisi?.nama ?? null;
 
   const [refreshing, setRefreshing] = useState(false);
   const noticeTimer = useRef<number | undefined>(undefined);
@@ -537,28 +624,37 @@ export default function DaftarPermintaan() {
         setLoading(true);
       }
 
+      const currentUser = getUser();
+      const adminSaatIni = currentUser?.role === "admin";
+      const approverId =
+        lockedDivisiId ?? (adminSaatIni ? undefined : (currentUser?.divisiId ?? null));
+      if (approverId === null) {
+        setRows([]);
+        setError(null);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
       try {
         const response = await listPermintaan({
           limit: 100,
           ...(status === "SEMUA" ? {} : { approval: status }),
           ...(dateFrom ? { dari: dateFrom } : {}),
           ...(dateTo ? { sampai: dateTo } : {}),
+          ...(approverId != null ? { divisiApproverId: approverId } : {}),
         });
 
         setRows(response.data);
         setError(null);
       } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Gagal memuat daftar permintaan.",
-        );
+        setError(pesanKesalahanPermintaan(e));
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [dateFrom, dateTo],
+    [dateFrom, dateTo, lockedDivisiId],
   );
 
   useEffect(() => {
@@ -597,10 +693,15 @@ export default function DaftarPermintaan() {
       return (
         record.noPermintaan.toLowerCase().includes(query) ||
         record.namaPeminta.toLowerCase().includes(query) ||
-        record.departemen.toLowerCase().includes(query)
+        record.departemen.toLowerCase().includes(query) ||
+        record.divisiPeminta?.nama.toLowerCase().includes(query) ||
+        record.divisiApprover?.nama.toLowerCase().includes(query) ||
+        record.sumber.toLowerCase().includes(query)
       );
     });
   }, [rows, search]);
+
+  const kelompok = useMemo(() => kelompokkanPerDivisi(filtered), [filtered]);
 
   const statistics = useMemo(() => {
     const belumDisetujui = rows.filter(
@@ -662,9 +763,7 @@ export default function DaftarPermintaan() {
 
       await load(filter);
     } catch (e) {
-      window.alert(
-        e instanceof Error ? e.message : "Gagal membatalkan persetujuan.",
-      );
+      window.alert(pesanKesalahanPermintaan(e));
     } finally {
       setBusyId(null);
     }
@@ -698,13 +797,16 @@ export default function DaftarPermintaan() {
 
       await load(filter);
     } catch (e) {
-      window.alert(
-        e instanceof Error ? e.message : "Gagal menghapus permintaan.",
-      );
+      window.alert(pesanKesalahanPermintaan(e));
     } finally {
       setBusyId(null);
     }
   };
+
+  const bisaApprove = (record: PermintaanBarangRecord) =>
+    bolehApprove(record, aktor);
+  const alasanApprove = (record: PermintaanBarangRecord) =>
+    isAdmin ? null : masalahApprove(record, record.items, false, false);
 
   const toggleExpanded = (id: number) => {
     setSelectedId((current) => (current === id ? null : id));
@@ -717,46 +819,83 @@ export default function DaftarPermintaan() {
     dateTo !== "";
   const closeDetail = useCallback(() => setSelectedId(null), []);
 
+  const refreshButton = (
+    <button
+      type="button"
+      disabled={loading || refreshing}
+      onClick={() => void load(filter, true)}
+      aria-label={refreshing ? "Memuat ulang data…" : "Muat ulang data"}
+      className={`inline-flex min-h-[40px] w-fit shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#00A8E8]/40 hover:text-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
+    >
+      <FontAwesomeIcon
+        icon={refreshing ? faSpinner : faRotate}
+        spin={refreshing}
+        aria-hidden="true"
+      />
+      {refreshing ? "Memuat…" : "Refresh"}
+    </button>
+  );
+
   return (
     <div className="min-h-full space-y-5 pb-8">
       {/* Header */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <nav aria-label="Breadcrumb">
-            <p className="text-xs font-medium text-slate-500">
-              Warehouse{" "}
-              <span aria-hidden="true" className="text-slate-300">
-                /
-              </span>{" "}
-              <span aria-current="page" className="text-slate-700">
-                Permintaan Barang
-              </span>
+      {lockedDivisiId != null ? (
+        <DivisiPageHeader
+          icon={faClipboardList}
+          title="Permintaan Material"
+          description={`Tinjau dan setujui permintaan material untuk divisi ${lockedDivisiNama ?? `#${lockedDivisiId}`}.`}
+          divisiNama={lockedDivisiNama ?? `Divisi #${lockedDivisiId}`}
+          actions={refreshButton}
+        />
+      ) : (
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <nav aria-label="Breadcrumb">
+              <p className="text-xs font-medium text-slate-500">
+                Warehouse{" "}
+                <span aria-hidden="true" className="text-slate-300">
+                  /
+                </span>{" "}
+                <span aria-current="page" className="text-slate-700">
+                  Permintaan Barang
+                </span>
+              </p>
+            </nav>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#1E3A5F]">
+              Daftar Permintaan
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              Kelola permintaan barang antar departemen: tinjau detail, setujui,
+              atau hapus permintaan yang belum diperlukan.
             </p>
-          </nav>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#1E3A5F]">
-            Daftar Permintaan
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-            Kelola permintaan barang antar departemen: tinjau detail, setujui,
-            atau hapus permintaan yang belum diperlukan.
-          </p>
-        </div>
+          </div>
 
-        <button
-          type="button"
-          disabled={loading || refreshing}
-          onClick={() => void load(filter, true)}
-          aria-label={refreshing ? "Memuat ulang data…" : "Muat ulang data"}
-          className={`inline-flex min-h-[40px] w-fit shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#00A8E8]/40 hover:text-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
+          {refreshButton}
+        </header>
+      )}
+
+      {!isAdmin && (
+        <div
+          role="status"
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            divisiUser === null
+              ? "border-amber-200 bg-amber-50 text-amber-700"
+              : "border-sky-200 bg-sky-50 text-sky-800"
+          }`}
         >
-          <FontAwesomeIcon
-            icon={refreshing ? faSpinner : faRotate}
-            spin={refreshing}
-            aria-hidden="true"
-          />
-          {refreshing ? "Memuat…" : "Refresh"}
-        </button>
-      </header>
+          {divisiUser === null ? (
+            "Akun Anda belum memiliki divisi approver. Hubungi admin agar permintaan divisi Anda dapat ditampilkan dan disetujui."
+          ) : (
+            <>
+              Menampilkan permintaan dengan divisi approver{" "}
+              <span className="font-bold">
+                {namaDivisiUser ?? `#${divisiUser}`}
+              </span>
+              .
+            </>
+          )}
+        </div>
+      )}
 
       {/* Notification */}
       <div aria-live="polite" className="space-y-3">
@@ -800,6 +939,51 @@ export default function DaftarPermintaan() {
             <p className="font-medium">{notice}</p>
           </div>
         )}
+      </div>
+
+      {/* Tab tampilan */}
+      <div
+        role="tablist"
+        aria-label="Tampilan permintaan"
+        className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1"
+      >
+        {(
+          [
+            { key: "daftar", label: "Daftar Permintaan", icon: faClipboardList },
+            { key: "ringkasan", label: "Ringkasan Item", icon: faTable },
+          ] as const
+        ).map((item) => {
+          const aktif = tab === item.key;
+
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={aktif}
+              onClick={() => setTab(item.key)}
+              className={`inline-flex min-h-[38px] flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${FOCUS} ${
+                aktif
+                  ? "bg-[#1E3A5F] text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <FontAwesomeIcon icon={item.icon} aria-hidden="true" />
+              {item.label}
+              {item.key === "daftar" && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] tabular-nums ${
+                    aktif
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {filtered.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Statistik ringkas */}
@@ -1018,8 +1202,9 @@ export default function DaftarPermintaan() {
             </p>
           </div>
 
-          {/* Desktop: tabel */}
-          {filtered.length === 0 ? (
+          {tab === "ringkasan" ? (
+            <RingkasanItem rows={filtered} />
+          ) : filtered.length === 0 ? (
             <EmptyState
               search={search}
               filter={filter}
@@ -1039,7 +1224,7 @@ export default function DaftarPermintaan() {
                         Tanggal
                       </th>
                       <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        Departemen / Peminta
+                        Peminta / Divisi
                       </th>
                       <th scope="col" className="px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         Isi
@@ -1055,11 +1240,27 @@ export default function DaftarPermintaan() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filtered.map((record) => {
+                  {kelompok.map((grup) => (
+                    <tbody key={grup.nama} className="divide-y divide-slate-100">
+                      <tr className="border-y border-slate-200 bg-slate-50/80">
+                        <td colSpan={7} className="px-5 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#1E3A5F]">
+                              {grup.nama}
+                            </span>
+                            <span className="text-[11px] tabular-nums text-slate-500">
+                              {grup.permintaan.length} permintaan ·{" "}
+                              {totalPcs(grup.permintaan).toLocaleString("id-ID")} pcs
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {grup.permintaan.map((record) => {
                       const busy = busyId === record.id;
                       const selected = selectedId === record.id;
                       const summary = ringkasIsi(record);
+                      const dapatApprove = bisaApprove(record);
+                      const alasan = alasanApprove(record);
 
                       return (
                         <tr
@@ -1085,6 +1286,9 @@ export default function DaftarPermintaan() {
                                 {record.kebutuhanUntuk}
                               </p>
                             )}
+                            <div className="mt-1.5">
+                              <SumberBadge sumber={record.sumber} />
+                            </div>
                           </td>
 
                           <td className="whitespace-nowrap px-3 py-3 text-slate-500">
@@ -1097,6 +1301,18 @@ export default function DaftarPermintaan() {
                             </p>
                             <p className="mt-0.5 text-xs text-slate-400">
                               {record.namaPeminta}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              <span className="font-semibold text-slate-400">
+                                Peminta:
+                              </span>{" "}
+                              {record.divisiPeminta?.nama ?? "-"}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              <span className="font-semibold text-slate-400">
+                                Approver:
+                              </span>{" "}
+                              {record.divisiApprover?.nama ?? "Admin"}
                             </p>
                           </td>
 
@@ -1130,13 +1346,17 @@ export default function DaftarPermintaan() {
                             >
                               {approvalLabel(record.approval)}
                             </span>
+                            <div className="mt-1.5">
+                              <MenungguApprovalBadge record={record} />
+                            </div>
                           </td>
 
                           <td className="px-5 py-3">
                             <RowActions
                               record={record}
                               busy={busy}
-                              canApprove={canApprove}
+                              canApprove={dapatApprove}
+                              alasanApprove={alasan}
                               isAdmin={isAdmin}
                               onSetujui={setujui}
                               onBatalkan={batalkan}
@@ -1145,17 +1365,31 @@ export default function DaftarPermintaan() {
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
+                      })}
+                    </tbody>
+                  ))}
                 </table>
               </div>
 
               {/* Mobile: daftar card ringkas */}
               <ul className="divide-y divide-slate-100 md:hidden">
-                {filtered.map((record) => {
+                {kelompok.map((grup) => (
+                  <Fragment key={grup.nama}>
+                    <li className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-4 py-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#1E3A5F]">
+                        {grup.nama}
+                      </span>
+                      <span className="text-[11px] tabular-nums text-slate-500">
+                        {grup.permintaan.length} permintaan ·{" "}
+                        {totalPcs(grup.permintaan).toLocaleString("id-ID")} pcs
+                      </span>
+                    </li>
+                    {grup.permintaan.map((record) => {
                   const busy = busyId === record.id;
                   const selected = selectedId === record.id;
                   const summary = ringkasIsi(record);
+                  const dapatApprove = bisaApprove(record);
+                  const alasan = alasanApprove(record);
 
                   return (
                     <li
@@ -1176,6 +1410,10 @@ export default function DaftarPermintaan() {
                           <span className="mt-0.5 block truncate text-xs text-slate-500">
                             {record.departemen} · {record.namaPeminta}
                           </span>
+                          <span className="mt-0.5 block truncate text-[11px] text-slate-400">
+                            Peminta: {record.divisiPeminta?.nama ?? "-"} ·
+                            Approver: {record.divisiApprover?.nama ?? "Admin"}
+                          </span>
                           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${priorityBadge(record.prioritas)}`}
@@ -1187,10 +1425,14 @@ export default function DaftarPermintaan() {
                             >
                               {approvalLabel(record.approval)}
                             </span>
+                            <SumberBadge sumber={record.sumber} />
                             <span className="text-[11px] tabular-nums text-slate-400">
                               {summary.items} jenis ·{" "}
                               {summary.pcs.toLocaleString("id-ID")} pcs
                             </span>
+                          </span>
+                          <span className="mt-1.5 block">
+                            <MenungguApprovalBadge record={record} />
                           </span>
                         </button>
                         <FontAwesomeIcon
@@ -1203,7 +1445,8 @@ export default function DaftarPermintaan() {
                         <RowActions
                           record={record}
                           busy={busy}
-                          canApprove={canApprove}
+                          canApprove={dapatApprove}
+                          alasanApprove={alasan}
                           isAdmin={isAdmin}
                           onSetujui={setujui}
                           onBatalkan={batalkan}
@@ -1211,8 +1454,10 @@ export default function DaftarPermintaan() {
                         />
                       </div>
                     </li>
-                  );
-                })}
+                    );
+                    })}
+                  </Fragment>
+                ))}
               </ul>
             </>
           )}
@@ -1242,7 +1487,8 @@ export default function DaftarPermintaan() {
         <DetailDrawer
           record={detail}
           busy={busyId === detail.id}
-          canApprove={canApprove}
+          canApprove={bisaApprove(detail)}
+          alasanApprove={alasanApprove(detail)}
           isAdmin={isAdmin}
           onClose={closeDetail}
           onSetujui={(record) => setujui(record)}
@@ -1270,6 +1516,7 @@ function RowActions({
   record,
   busy,
   canApprove,
+  alasanApprove,
   isAdmin,
   onSetujui,
   onBatalkan,
@@ -1278,6 +1525,7 @@ function RowActions({
   record: PermintaanBarangRecord;
   busy: boolean;
   canApprove: boolean;
+  alasanApprove: string | null;
   isAdmin: boolean;
   onSetujui: (record: PermintaanBarangRecord) => void;
   onBatalkan: (record: PermintaanBarangRecord) => void;
@@ -1314,9 +1562,13 @@ function RowActions({
       {canApprove && (
         <button
           type="button"
-          aria-label={`Setujui ${record.noPermintaan}`}
-          title="Setujui permintaan"
-          disabled={busy}
+          aria-label={
+            alasanApprove
+              ? `Tidak dapat menyetujui ${record.noPermintaan}: ${alasanApprove}`
+              : `Setujui ${record.noPermintaan}`
+          }
+          title={alasanApprove ?? "Setujui permintaan"}
+          disabled={busy || alasanApprove !== null}
           onClick={() => onSetujui(record)}
           className={`${btn} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`}
         >

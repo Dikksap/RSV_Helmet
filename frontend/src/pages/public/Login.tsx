@@ -1,10 +1,18 @@
+
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { checkSession, getUser, homeForRole, isAuthenticated, login, setAuth } from "../../api/auth";
+import {
+  checkSession,
+  getUser,
+  homeForRole,
+  isAuthenticated,
+  login,
+  setAuth,
+} from "../../api/auth";
 import logoUrl from "../../assets/logo.png";
 
 const inputClass =
-  "h-12 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[15px] font-medium text-[#1F2937] placeholder:text-[#6B7280] transition-colors duration-200 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/25 disabled:opacity-60";
+  "h-[50px] w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 text-sm text-slate-800 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-sky-500 focus:bg-white focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -12,6 +20,7 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sessionExpired = searchParams.get("session") === "expired";
@@ -22,14 +31,17 @@ function Login() {
     }
   }, [navigate]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
+
     try {
       const response = await login({ email, password });
+
       setAuth(response.token, response.user);
       await checkSession();
+
       navigate(homeForRole(response.user.role), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
@@ -39,165 +51,453 @@ function Login() {
   };
 
   return (
-    <div className="w-full bg-transparent">
-      <div className="grid w-full lg:min-h-svh lg:grid-cols-2">
-        {/* Left — brand panel (desktop) */}
-        <div className="relative hidden overflow-hidden bg-[#0F1C2E] lg:flex lg:flex-col lg:justify-between">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#1E3A5F] via-[#0F1C2E] to-[#0F1C2E]" aria-hidden="true" />
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_15%,rgba(0,168,232,0.20),transparent_50%)]" aria-hidden="true" />
+    <main className="min-h-svh bg-[#F4F7FB] p-0 sm:p-5 lg:p-8">
+      <div className="mx-auto grid min-h-svh w-full max-w-[1440px] overflow-hidden bg-white shadow-sm sm:min-h-[calc(100svh-40px)] sm:rounded-3xl sm:border sm:border-slate-200/80 lg:min-h-[calc(100svh-64px)] lg:grid-cols-[1.05fr_0.95fr]">
+        {/* Panel branding */}
+        <section className="relative hidden overflow-hidden bg-[#101E33] lg:flex lg:flex-col">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(0,168,232,0.24),transparent_45%),radial-gradient(ellipse_at_90%_90%,rgba(30,58,95,0.85),transparent_50%)]"
+          />
 
-          <div className="relative p-10">
-            <Link to="/" className="inline-flex items-center gap-3 rounded-lg text-white focus-visible:outline-2 focus-visible:outline-[#00A8E8]">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-sm">
-                <img src={logoUrl} alt="RSV Helmet" className="h-7 w-7 object-contain" />
+          <div
+            aria-hidden="true"
+            className="absolute -right-32 top-1/4 h-[430px] w-[430px] rounded-full border border-white/[0.07]"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute -right-20 top-[29%] h-[310px] w-[310px] rounded-full border border-white/[0.08]"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute -right-8 top-[35%] h-[180px] w-[180px] rounded-full border border-sky-400/10"
+          />
+
+          <div className="relative flex items-center justify-between px-10 py-9 xl:px-14">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            >
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-lg shadow-black/10">
+                <img
+                  src={logoUrl}
+                  alt="RSV Helmet"
+                  className="h-8 w-8 object-contain"
+                />
               </span>
-              <span className="text-sm font-bold tracking-tight">RSV HELMET</span>
+
+              <span>
+                <span className="block text-sm font-extrabold tracking-[0.15em] text-white">
+                  RSV HELMET
+                </span>
+                <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
+                  Manufacturing System
+                </span>
+              </span>
             </Link>
+
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
+              Internal System
+            </span>
           </div>
 
-          <div className="relative flex flex-1 flex-col justify-center px-10 py-10">
-            <div className="max-w-md">
-              <h1 className="text-4xl font-bold leading-[1.2] tracking-tight text-white">
-                Sistem Inventaris
+          <div className="relative flex flex-1 flex-col justify-center px-10 py-12 xl:px-14">
+            <div className="max-w-lg">
+              <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/[0.08] px-3.5 py-2">
+                <span className="h-2 w-2 rounded-full bg-sky-400" />
+                <span className="text-xs font-medium tracking-wide text-sky-200">
+                  Sistem Manajemen Produksi
+                </span>
+              </div>
+
+              <h1 className="text-4xl font-bold leading-[1.2] tracking-tight text-white xl:text-[48px]">
+                Kelola produksi.
                 <br />
-                RSV Helmet
+                <span className="text-sky-400">Lebih terintegrasi.</span>
               </h1>
-              <p className="mt-4 text-base leading-[1.6] text-slate-300">
-                Kelola data barang, pencetakan hangtag, dan pemantauan stok dalam satu tempat.
+
+              <p className="mt-6 max-w-md text-[15px] leading-7 text-slate-300">
+                Satu platform untuk membantu pengelolaan inventaris,
+                pencatatan barang, pencetakan hangtag, dan pemantauan stok
+                RSV Helmet.
               </p>
 
-              <ul className="mt-8 space-y-3 text-[15px] text-slate-200">
+              <div className="mt-10 grid max-w-md grid-cols-1 gap-3">
                 {[
-                  "Pencatatan barang via scan QR",
-                  "Cetak hangtag thermal presisi",
-                  "Statistik stok real-time",
-                ].map((t) => (
-                  <li key={t} className="flex items-center gap-3">
-                    <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#00A8E8]/20 text-xs font-bold text-white">✓</span>
-                    {t}
-                  </li>
+                  {
+                    number: "01",
+                    title: "Manajemen inventaris",
+                    description: "Kelola data barang dan persediaan.",
+                  },
+                  {
+                    number: "02",
+                    title: "Pencatatan lebih praktis",
+                    description: "Dukung proses pencatatan dan pemindaian.",
+                  },
+                  {
+                    number: "03",
+                    title: "Monitoring stok",
+                    description: "Pantau informasi stok dalam satu sistem.",
+                  },
+                ].map((feature) => (
+                  <div
+                    key={feature.number}
+                    className="group flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 transition-colors hover:border-sky-400/20 hover:bg-white/[0.06]"
+                  >
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-sky-400/15 bg-sky-400/[0.08] text-xs font-bold text-sky-300">
+                      {feature.number}
+                    </span>
+
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {feature.title}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-400">
+                        {feature.description}
+                      </p>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
 
-          <div className="relative border-t border-white/10 px-10 py-6">
-            <p className="text-[13px] text-slate-400">© {new Date().getFullYear()} RSV Helmet</p>
+          <div className="relative flex items-center justify-between border-t border-white/[0.08] px-10 py-6 xl:px-14">
+            <p className="text-xs text-slate-400">
+              © {new Date().getFullYear()} RSV Helmet
+            </p>
+            <p className="text-xs text-slate-500">
+              Sistem internal perusahaan
+            </p>
           </div>
-        </div>
+        </section>
 
-        {/* Right — form */}
-        <div className="flex flex-col">
-          <div className="flex flex-1 items-center justify-center px-6 py-8 sm:py-12">
-            <div className="w-full max-w-sm">
-              <div className="mb-6 flex flex-col items-center text-center lg:hidden">
-                <span className="grid h-12 w-12 place-items-center rounded-xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-                  <img src={logoUrl} alt="RSV Helmet" className="h-8 w-8 object-contain" />
-                </span>
-                <p className="mt-3 text-sm font-bold tracking-tight text-[#1E3A5F]">RSV HELMET</p>
-              </div>
-              <form
-                className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
-                onSubmit={handleSubmit}
-                noValidate
+        {/* Area login */}
+        <section className="flex min-h-svh flex-col bg-white sm:min-h-0">
+          <header className="flex items-center justify-between px-6 py-5 sm:px-10 sm:py-7 lg:justify-end lg:px-12">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sky-500 lg:hidden"
+            >
+              <span className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white">
+                <img
+                  src={logoUrl}
+                  alt="RSV Helmet"
+                  className="h-7 w-7 object-contain"
+                />
+              </span>
+              <span className="text-xs font-extrabold tracking-wider text-[#1E3A5F]">
+                RSV HELMET
+              </span>
+            </Link>
+
+            <Link
+              to="/"
+              className="hidden items-center gap-2 rounded-lg text-xs font-medium text-slate-500 transition-colors hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-sky-500 lg:inline-flex"
+            >
+              Kembali ke beranda
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="none"
+                className="h-4 w-4"
               >
-                <div className="mb-6">
-                  <h1 className="text-[28px] font-semibold leading-[1.3] tracking-tight text-[#1E3A5F]">
-                    Masuk
-                  </h1>
-                  <p className="mt-2 text-[15px] text-[#6B7280]">
-                    Silakan masuk untuk melanjutkan.
+                <path
+                  d="M4.5 10h11m-4.5-4.5 4.5 4.5-4.5 4.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Link>
+          </header>
+
+          <div className="flex flex-1 items-center justify-center px-6 pb-10 pt-5 sm:px-10 sm:pb-12 lg:px-12">
+            <div className="w-full max-w-[390px]">
+              <div className="mb-8">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-sky-600">
+                  Selamat datang kembali
+                </p>
+
+                <h2 className="text-3xl font-bold tracking-tight text-[#172B45] sm:text-[34px]">
+                  Masuk ke akun
+                </h2>
+
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  Masukkan kredensial Anda untuk melanjutkan ke sistem RSV
+                  Helmet.
+                </p>
+              </div>
+
+              {sessionExpired && !error && (
+                <div
+                  role="status"
+                  className="mb-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                  >
+                    <path
+                      d="M12 8v4m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.74 3h14.92a2 2 0 0 0 1.74-3l-7.46-13.1a2 2 0 0 0-3.48 0Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <p className="text-sm leading-5 text-amber-800">
+                    Sesi Anda telah berakhir. Silakan masuk kembali.
                   </p>
                 </div>
-                {sessionExpired && !error && (
-                  <div className="mb-5 rounded-lg border border-[#00A8E8]/30 bg-sky-50 px-4 py-3 text-sm font-medium text-[#1E3A5F]" role="status">
-                    Sesi Anda telah berakhir. Silakan login ulang.
-                  </div>
-                )}
-                {error && (
-                  <div className="mb-5 flex items-start gap-3 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/5 px-4 py-3 text-sm font-medium text-[#1F2937]" role="alert">
-                    <span aria-hidden="true" className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#EF4444] text-xs font-bold text-white">!</span>
-                    <span className="flex-1 leading-5">{error}</span>
-                    <button type="button" onClick={() => setError("")} aria-label="Tutup pesan error" className="rounded px-1 text-[#EF4444] transition-colors duration-200 hover:bg-[#EF4444]/10 focus-visible:outline-2 focus-visible:outline-[#EF4444]">
-                      ×
-                    </button>
-                  </div>
-                )}
+              )}
 
-                <div className="grid gap-5">
-                  <label className="grid gap-1.5">
-                    <span className="text-sm font-medium text-[#1F2937]">Email</span>
-                    <input
-                      className={inputClass}
-                      name="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="nama@perusahaan.com"
-                      autoComplete="email"
-                      required
-                      disabled={isLoading}
+              {error && (
+                <div
+                  role="alert"
+                  className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    className="mt-0.5 h-5 w-5 shrink-0 text-red-600"
+                  >
+                    <circle
+                      cx="10"
+                      cy="10"
+                      r="7.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
                     />
+                    <path
+                      d="M10 6.5v4m0 2.5h.01"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+
+                  <p className="flex-1 text-sm leading-5 text-red-700">
+                    {error}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setError("")}
+                    aria-label="Tutup pesan error"
+                    className="rounded-md px-1 text-lg leading-none text-red-500 hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-red-500"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} noValidate>
+                <div className="space-y-5">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">
+                      Email
+                    </span>
+
+                    <div className="relative">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400"
+                      >
+                        <rect
+                          x="3"
+                          y="5"
+                          width="18"
+                          height="14"
+                          rx="2.5"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                        />
+                        <path
+                          d="m4 7 8 6 8-6"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+
+                      <input
+                        className={`${inputClass} pl-11`}
+                        name="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="nama@perusahaan.com"
+                        autoComplete="email"
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
                   </label>
 
-                  <label className="grid gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-[#1F2937]">Kata Sandi</span>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">
+                      Kata sandi
+                    </span>
+
+                    <div className="relative">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400"
+                      >
+                        <rect
+                          x="4"
+                          y="10"
+                          width="16"
+                          height="11"
+                          rx="2.5"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                        />
+                        <path
+                          d="M8 10V7a4 4 0 1 1 8 0v3"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+
+                      <input
+                        className={`${inputClass} pl-11 pr-24`}
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Masukkan kata sandi"
+                        autoComplete="current-password"
+                        required
+                        disabled={isLoading}
+                      />
+
                       <button
                         type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="rounded text-[13px] font-medium text-[#0088C0] transition-colors duration-200 hover:text-[#00A8E8] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
-                        tabIndex={-1}
+                        onClick={() => setShowPassword((value) => !value)}
+                        aria-label={
+                          showPassword
+                            ? "Sembunyikan kata sandi"
+                            : "Tampilkan kata sandi"
+                        }
+                        aria-pressed={showPassword}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-sky-700 focus-visible:outline-2 focus-visible:outline-sky-500"
                       >
-                        {showPassword ? "Sembunyi" : "Tampilkan"}
+                        {showPassword ? "Sembunyikan" : "Tampilkan"}
                       </button>
                     </div>
-                    <input
-                      className={inputClass}
-                      name="password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Masukkan kata sandi"
-                      autoComplete="current-password"
-                      required
-                      disabled={isLoading}
-                    />
                   </label>
 
                   <button
-                    className="mt-1 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#00A8E8] px-6 text-[15px] font-medium text-white shadow-sm transition-colors duration-200 hover:bg-[#0088C0] disabled:cursor-wait disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
                     type="submit"
                     disabled={isLoading}
+                    className="mt-2 inline-flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl bg-[#079DD5] px-5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(7,157,213,0.20)] transition-all hover:bg-[#0789BA] hover:shadow-[0_7px_20px_rgba(7,157,213,0.25)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
                   >
                     {isLoading ? (
                       <>
-                        <svg aria-hidden="true" className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-                          <path d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeWidth="3" className="opacity-75" />
+                        <svg
+                          aria-hidden="true"
+                          className="h-4 w-4 animate-spin"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <circle
+                            cx="12"
+                            cy="12"
+                            r="9"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            className="opacity-25"
+                          />
+                          <path
+                            d="M21 12a9 9 0 0 0-9-9"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            className="opacity-90"
+                          />
                         </svg>
-                        Memproses...
+                        Memverifikasi akun...
                       </>
                     ) : (
-                      "Masuk"
+                      <>
+                        Masuk ke sistem
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          className="h-4 w-4"
+                        >
+                          <path
+                            d="M3.5 10h13m-5-5 5 5-5 5"
+                            stroke="currentColor"
+                            strokeWidth="1.7"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </>
                     )}
                   </button>
                 </div>
               </form>
 
-              <div className="mt-6 pb-2 text-center">
+              <div className="mt-7 flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-100" />
+                <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                  RSV Helmet
+                </span>
+                <div className="h-px flex-1 bg-slate-100" />
+              </div>
+
+              <p className="mt-5 text-center text-xs leading-5 text-slate-400">
+                Gunakan akun yang telah terdaftar untuk mengakses sistem
+                internal perusahaan.
+              </p>
+
+              <div className="mt-6 text-center lg:hidden">
                 <Link
                   to="/"
-                  className="inline-block rounded-lg py-2 text-sm font-medium text-[#6B7280] transition-colors duration-200 hover:text-[#1E3A5F] focus-visible:outline-2 focus-visible:outline-[#00A8E8]"
+                  className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:text-sky-700 focus-visible:outline-2 focus-visible:outline-sky-500"
                 >
-                  ← Kembali ke beranda
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    className="h-4 w-4"
+                  >
+                    <path
+                      d="m12.5 4.5-5.5 5.5 5.5 5.5"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Kembali ke beranda
                 </Link>
               </div>
             </div>
           </div>
-        </div>
+
+          <footer className="border-t border-slate-100 px-6 py-4 text-center sm:px-10 lg:border-t-0 lg:px-12 lg:pb-7">
+            <p className="text-[11px] text-slate-400">
+              © {new Date().getFullYear()} RSV Helmet. Hak cipta dilindungi.
+            </p>
+          </footer>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
 

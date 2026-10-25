@@ -38,6 +38,8 @@ export async function login(req: Request, res: Response) {
         name: user.name,
         email: user.email,
         role: user.role,
+        divisiId: user.divisiId ?? null,
+        divisi: user.divisi ?? null,
       },
     });
   } catch (error) {
@@ -61,7 +63,14 @@ export async function me(req: Request, res: Response) {
     }
 
     res.status(200).json({
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        divisiId: user.divisiId ?? null,
+        divisi: user.divisi ?? null,
+      },
       permissions: req.access?.permissions ?? [],
       statusView: req.access?.statusView ?? null,
       exp,

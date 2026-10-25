@@ -1,5 +1,7 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
+import { SumberPemakaianMaterial } from "../../../generated/prisma/enums.js";
+import { getWipRows } from "../wip/wip.js";
 
 export type PemakaianItemInput = {
   permintaanBarangItemId: number;
@@ -41,6 +43,7 @@ export type StokDivisiMaterial = {
   jenis: string | null;
   satuan: string | null;
   diterima: number;
+  masuk: number;
   dipakai: number;
   sisa: number;
 };
@@ -66,6 +69,9 @@ export const ITEM_PERMINTAAN_TIDAK_VALID = "ITEM_PERMINTAAN_TIDAK_VALID";
 export const PEMAKAIAN_DUPLIKAT_ITEM = "PEMAKAIAN_DUPLIKAT_ITEM";
 export const JUMLAH_PEMAKAIAN_INVALID = "JUMLAH_PEMAKAIAN_INVALID";
 export const PEMAKAIAN_TERKUNCI = "PEMAKAIAN_TERKUNCI";
+export const PEMAKAIAN_DIPAKAI_PRODUKSI = "PEMAKAIAN_DIPAKAI_PRODUKSI";
+export const PEMAKAIAN_SUMBER_INTERNAL = "PEMAKAIAN_SUMBER_INTERNAL";
+export const PEMAKAIAN_SUDAH_TRANSFER = "PEMAKAIAN_SUDAH_TRANSFER";
 export const TRANSISI_STATUS_INVALID = "TRANSISI_STATUS_INVALID";
 
 function tanggalPrefix(date: Date): string {
@@ -106,10 +112,6 @@ function effectiveTanggal(input: PemakaianInput | null, existing?: PemakaianReco
   const d = input?.tanggal;
   if (d instanceof Date && !Number.isNaN(d.getTime())) return d;
   return new Date();
-}
-
-function materialKey(itemId: number | null, nama: string, satuan: string | null): string {
-  return itemId !== null ? `item:${itemId}` : `name:${nama.trim().toLowerCase()}|${satuan ?? ""}`;
 }
 
 // Stok divisi untuk satu material = sisa pada pencatatan terakhir divisi itu.
@@ -245,7 +247,9 @@ export async function listPemakaian(params: {
   dari?: Date;
   sampai?: Date;
 }): Promise<{ data: PemakaianRecord[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
-  const where: Prisma.PemakaianMaterialWhereInput = {};
+  const where: Prisma.PemakaianMaterialWhereInput = {
+    sumber: SumberPemakaianMaterial.PERMINTAAN_BARANG,
+  };
   if (params.permintaanId !== undefined) where.permintaanId = params.permintaanId;
   if (params.divisiId !== undefined) where.divisiId = params.divisiId;
   if (params.dari || params.sampai) {
@@ -284,96 +288,97 @@ export async function getPemakaianById(id: number): Promise<PemakaianRecord | nu
   });
 }
 
-// Stok saat ini per divisi = sisa pada pencatatan terbaru tiap material divisi.
-// Kalau rentang tanggal diisi (mutasi periode): diterima = stok awal periode,
-// dipakai = total pemakaian dalam periode, sisa = saldo catatan terakhir dalam periode.
-// Material yang tidak punya catatan di periode itu tidak muncul.
-// ponytail: memuat semua baris PemakaianMaterialItem lalu dedupe di memori.
-// Pindahkan ke agregasi SQL kalau volume data sudah besar.
+// Stok divisi = saldo WIP yang sama dengan endpoint /hasil-produksi-harian/wip.
+// diterima = saldo awal periode, dipakai = keluar periode, sisa = saldo akhir.
 export async function getStokPerDivisi(
   params: { dari?: Date; sampai?: Date } = {},
 ): Promise<StokDivisi[]> {
-  const berperiode = Boolean(params.dari || params.sampai);
-  const where: Prisma.PemakaianMaterialItemWhereInput = {};
-  if (berperiode) {
-    where.pemakaian = {
-      tanggal: {
-        ...(params.dari ? { gte: startOfDay(params.dari) } : {}),
-        ...(params.sampai ? { lt: startOfDay(addDays(params.sampai, 1)) } : {}),
-      },
-    };
-  }
-
-  const rows = await prisma.pemakaianMaterialItem.findMany({
-    where,
-    orderBy: berperiode
-      ? [{ pemakaian: { tanggal: "asc" } }, { id: "asc" }]
-      : [{ updatedAt: "desc" }, { id: "desc" }],
-    include: {
-      pemakaian: { include: { divisi: true } },
-      permintaanItem: { include: { item: true } },
-      item: true,
-    },
-  });
-
-  const byDivisi = new Map<
-    number,
-    {
-      divisiId: number;
-      divisiNama: string;
-      byKey: Map<string, StokDivisiMaterial>;
-      materials: StokDivisiMaterial[];
-    }
-  >();
+  const rows = await getWipRows({ dari: params.dari, sampai: params.sampai });
+  const byDivisi = new Map<number, StokDivisi>();
 
   for (const row of rows) {
-    const divisi = row.pemakaian.divisi;
-    const nama = row.permintaanItem?.nama ?? row.item?.nama ?? row.item?.kode ?? "Material";
-    const satuan = row.satuan ?? row.permintaanItem?.satuan ?? row.item?.unit ?? null;
-    const key = materialKey(row.itemId, nama, satuan);
-
-    let group = byDivisi.get(divisi.id);
+    if (row.divisiId === null) continue;
+    let group = byDivisi.get(row.divisiId);
     if (!group) {
-      group = { divisiId: divisi.id, divisiNama: divisi.nama, byKey: new Map(), materials: [] };
-      byDivisi.set(divisi.id, group);
+      group = {
+        divisiId: row.divisiId,
+        divisiNama: row.divisiNama ?? "",
+        materials: [],
+      };
+      byDivisi.set(row.divisiId, group);
     }
-
-    const existing = group.byKey.get(key);
-    if (existing) {
-      // Tanpa rentang, catatan terbaru sudah jadi yang pertama dilihat.
-      if (!berperiode) continue;
-      existing.dipakai += Number(row.jumlahDipakai) || 0;
-      existing.sisa = Number(row.jumlahSisa) || 0;
-      continue;
-    }
-
-    const material: StokDivisiMaterial = {
+    group.materials.push({
       itemId: row.itemId,
-      key,
-      nama,
-      jenis: row.permintaanItem?.item?.jenis ?? row.item?.jenis ?? null,
-      satuan,
-      diterima: Number(row.jumlahDiterima) || 0,
-      dipakai: Number(row.jumlahDipakai) || 0,
-      sisa: Number(row.jumlahSisa) || 0,
-    };
-    group.byKey.set(key, material);
-    group.materials.push(material);
+      key: `item:${row.itemId}`,
+      nama: row.nama,
+      jenis: row.jenis,
+      satuan: row.unit,
+      diterima: row.saldoAwal,
+      masuk: row.masuk,
+      dipakai: row.keluar,
+      sisa: row.saldoAkhir,
+    });
   }
 
   return [...byDivisi.values()]
     .map((group) => ({
-      divisiId: group.divisiId,
-      divisiNama: group.divisiNama,
+      ...group,
       materials: group.materials.sort((a, b) => a.nama.localeCompare(b.nama)),
     }))
     .sort((a, b) => a.divisiNama.localeCompare(b.divisiNama));
+}
+
+async function pastikanBelumDipakaiProduksi(
+  tx: PrismaTransactionClient,
+  pemakaianId: number,
+  aksi: string,
+): Promise<void> {
+  const linked = await tx.pemakaianMaterialItem.findFirst({
+    where: { pemakaianId, hasilProduksiPemakaian: { some: {} } },
+    select: { id: true },
+  });
+  if (linked) {
+    throw new PemakaianError(
+      PEMAKAIAN_DIPAKAI_PRODUKSI,
+      `Pemakaian material sudah dipakai produksi dan tidak bisa ${aksi}`,
+    );
+  }
+}
+
+async function pastikanPemakaianManual(
+  tx: PrismaTransactionClient,
+  pemakaianId: number,
+  aksi: string,
+): Promise<void> {
+  const existing = await tx.pemakaianMaterial.findUnique({
+    where: { id: pemakaianId },
+    select: { sumber: true },
+  });
+  if (existing && existing.sumber !== SumberPemakaianMaterial.PERMINTAAN_BARANG) {
+    throw new PemakaianError(
+      PEMAKAIAN_SUMBER_INTERNAL,
+      `Pemakaian material internal WIP tidak bisa ${aksi} dari halaman gudang`,
+    );
+  }
+
+  const alokasi = await tx.wipTransferAlokasi.findFirst({
+    where: { pemakaianMaterialItem: { pemakaianId } },
+    select: { id: true },
+  });
+  if (alokasi) {
+    throw new PemakaianError(
+      PEMAKAIAN_SUDAH_TRANSFER,
+      `Pemakaian material sudah dipakai transfer WIP dan tidak bisa ${aksi}`,
+    );
+  }
 }
 
 export async function updatePemakaian(id: number, input: PemakaianInput, userId: number | null = null): Promise<PemakaianRecord | null> {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.pemakaianMaterial.findUnique({ where: { id }, select: { id: true } });
     if (!existing) return null;
+    await pastikanPemakaianManual(tx, id, "diubah");
+    await pastikanBelumDipakaiProduksi(tx, id, "diubah");
     const tanggal = effectiveTanggal(input);
     const rows = await validateAndPrepare(tx, input, id);
     return tx.pemakaianMaterial.update({
@@ -396,8 +401,12 @@ export async function updatePemakaian(id: number, input: PemakaianInput, userId:
 }
 
 export async function deletePemakaian(id: number): Promise<boolean> {
-  const existing = await prisma.pemakaianMaterial.findUnique({ where: { id }, select: { id: true } });
-  if (!existing) return false;
-  await prisma.pemakaianMaterial.delete({ where: { id } });
-  return true;
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.pemakaianMaterial.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return false;
+    await pastikanPemakaianManual(tx, id, "dihapus");
+    await pastikanBelumDipakaiProduksi(tx, id, "dihapus");
+    await tx.pemakaianMaterial.delete({ where: { id } });
+    return true;
+  });
 }

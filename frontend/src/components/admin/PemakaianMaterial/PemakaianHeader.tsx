@@ -161,7 +161,7 @@ export const PemakaianHeader: React.FC<PemakaianHeaderProps> = ({
           }`}
         >
           <FontAwesomeIcon icon={faBoxesStacked} />
-          <span>Monitoring Stok Divisi</span>
+          <span>Monitoring WIP Divisi</span>
         </button>
       </div>
     </header>

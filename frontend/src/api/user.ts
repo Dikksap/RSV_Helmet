@@ -7,6 +7,8 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  divisiId?: number | null;
+  divisi?: { id: number; nama: string } | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -43,9 +45,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const getUsers = () => request<User[]>("/users");
 export const getUserById = (id: number) => request<User>(`/users/${id}`);
-export const createUser = (body: { name: string; email: string; password: string; role?: string }) =>
+export const createUser = (body: {
+  name: string;
+  email: string;
+  password: string;
+  role?: string;
+  divisiId?: number | null;
+}) =>
   request<User>("/users", { method: "POST", body: JSON.stringify(body) });
-export const updateUser = (id: number, body: { name?: string; email?: string; password?: string; role?: string }) =>
-  request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) });
+export const updateUser = (
+  id: number,
+  body: { name?: string; email?: string; password?: string; role?: string; divisiId?: number | null },
+) => request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) });
 export const deleteUser = (id: number) =>
   request<{ message: string }>(`/users/${id}`, { method: "DELETE" });

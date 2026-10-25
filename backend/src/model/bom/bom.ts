@@ -164,7 +164,9 @@ export async function updateBom(id: number, data: UpdateBomInput) {
 
   const itemsForCycle = data.items !== undefined
     ? data.items
-    : existing.items.map((item) => ({ subassemblyId: item.subassemblyId }));
+    : existing.items.map((item) => ({
+        subassemblyId: "subassemblyId" in item ? item.subassemblyId : null,
+      }));
 
   await assertNoSubassemblyCycle(finalSubassemblyId, itemsForCycle);
 

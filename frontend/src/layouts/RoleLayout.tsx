@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
@@ -18,11 +18,14 @@ import { checkSession, clearAuth, getToken, getUser, logout } from "../api/auth"
 import { NotificationCenter } from "./admin/NotificationCenter";
 import logoUrl from "../assets/logo.png";
 
-export type NavItem = { to: string; label: string; icon: IconDefinition; end?: boolean };
+export type NavItem = { to: string; label: string; icon: IconDefinition; end?: boolean; description?: string };
 export type NavGroup = { label: string; icon: IconDefinition; children: NavItem[] };
 
 export interface RoleLayoutProps {
   role: string;
+  allowedRoles?: string[];
+  profileTo?: string;
+  subheader?: ReactNode;
   brand: string;
   subtitle: string;
   titleFallback: string;
@@ -30,7 +33,13 @@ export interface RoleLayoutProps {
   groups: NavGroup[];
 }
 
-const ROLE_LABELS: Record<string, string> = { admin: "Administrator", gudang: "Warehouse" };
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrator",
+  gudang: "Warehouse",
+  produksi: "Produksi",
+  qc: "QC",
+  user: "Operator",
+};
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
 
@@ -177,9 +186,20 @@ function SidebarContent({
   );
 }
 
-function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: RoleLayoutProps) {
+function RoleLayout({
+  role,
+  allowedRoles,
+  profileTo,
+  subheader,
+  brand,
+  subtitle,
+  titleFallback,
+  main,
+  groups,
+}: RoleLayoutProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const allowed = useMemo(() => allowedRoles ?? [role], [allowedRoles, role]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(collapseKey(role)) === "1");
@@ -193,14 +213,14 @@ function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: Role
     });
 
   useEffect(() => {
-    if (getUser()?.role !== role) {
+    if (!allowed.includes(getUser()?.role ?? "")) {
       navigate("/login", { replace: true });
       return;
     }
 
     let cancelled = false;
     checkSession().then((current) => {
-      if (cancelled || current === role) return;
+      if (cancelled || (current && allowed.includes(current))) return;
       clearAuth();
       navigate("/login?session=expired", { replace: true });
     });
@@ -208,7 +228,7 @@ function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: Role
     return () => {
       cancelled = true;
     };
-  }, [navigate, pathname, role]);
+  }, [allowed, navigate, pathname]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tutup drawer/menu saat pindah halaman
@@ -240,7 +260,7 @@ function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: Role
     navigate("/login", { replace: true });
   };
 
-  if (user?.role !== role) return null;
+  if (!allowed.includes(user?.role ?? "")) return null;
 
   const sidebar = (collapsedAt: boolean) => (
     <SidebarContent
@@ -346,7 +366,7 @@ function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: Role
                         <p className="text-xs text-slate-500">{userRoleLabel}</p>
                       </div>
                       <Link
-                        to={`/${role}/profil`}
+                        to={profileTo ?? `/${role}/profil`}
                         role="menuitem"
                         className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#0F1C2E] no-underline hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
                       >
@@ -369,6 +389,10 @@ function RoleLayout({ role, brand, subtitle, titleFallback, main, groups }: Role
             </div>
           </div>
         </header>
+
+        {subheader && (
+          <div className="border-b border-slate-200 bg-white px-4 py-2 sm:px-6">{subheader}</div>
+        )}
 
         <main className="min-w-0 flex-1 px-4 pb-8 pt-5 sm:px-6 md:pt-6">
           <div className="mx-auto w-full max-w-[1600px]">

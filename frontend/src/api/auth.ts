@@ -1,4 +1,4 @@
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
 export interface LoginCredentials {
   email: string;
@@ -10,6 +10,8 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  divisiId?: number | null;
+  divisi?: { id: number; nama: string } | null;
 }
 
 export interface LoginResponse {
@@ -155,6 +157,7 @@ export function redirectToLogin(): void {
 export function homeForRole(role: string | undefined): string {
   if (role === "admin") return "/admin/home";
   if (role === "gudang") return "/gudang/home";
-  if (role === "user") return "/scan-qr";
+  if (role === "produksi" || role === "qc") return "/divisi/home";
+  if (role === "user") return getUser()?.divisiId ? "/divisi/home" : "/scan-qr";
   return "/";
 }

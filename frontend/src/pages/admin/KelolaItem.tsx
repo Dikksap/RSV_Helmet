@@ -13,8 +13,8 @@ import { inputCls, labelCls } from "../../components/admin/VariantProduk/constan
 import { ItemImportModal } from "../../components/admin/KelolaItem/ItemImportModal";
 import { downloadCsv } from "../../lib/csv";
 
-const primaryBtn = "inline-flex items-center justify-center gap-2 rounded-lg bg-[#00A8E8] px-6 py-3 text-[15px] font-medium text-white transition hover:bg-[#0088C0] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none";
-const secondaryBtn = "inline-flex items-center justify-center gap-2 rounded-lg border border-[#D1D5DB] bg-white px-4 py-3 text-[15px] font-medium text-[#1F2937] hover:bg-[#F5F7FA]";
+const primaryBtn = "inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#00A8E8] px-3.5 py-2 text-xs font-medium text-white transition hover:bg-[#0088C0] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none sm:px-5 sm:py-2.5 sm:text-sm";
+const secondaryBtn = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-2 text-xs font-medium text-[#1F2937] hover:bg-[#F5F7FA] sm:px-4 sm:py-2.5 sm:text-sm";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/60";
 
 function ItemActions({
@@ -29,19 +29,17 @@ function ItemActions({
   onHapus: () => void;
 }) {
   return (
-    <div className="flex items-center justify-end gap-1.5">
-      <button type="button" aria-label={`Stok ${nama}`} title="Lihat stok" onClick={onStok} className={`min-h-[40px] rounded-lg bg-[#00A8E8]/10 px-3 py-2 text-xs font-semibold text-[#0088C0] transition hover:bg-[#00A8E8] hover:text-white ${FOCUS}`}>Stok</button>
-      <button type="button" aria-label={`Edit ${nama}`} title="Edit" onClick={onEdit} className={`grid min-h-[40px] min-w-[40px] place-items-center rounded-lg bg-[#F59E0B]/10 p-2 text-[#B45309] transition hover:bg-[#F59E0B] hover:text-white ${FOCUS}`}><FontAwesomeIcon icon={faPen} className="h-4 w-4" /></button>
-      <button type="button" aria-label={`Hapus ${nama}`} title="Hapus" onClick={onHapus} className={`grid min-h-[40px] min-w-[40px] place-items-center rounded-lg bg-[#EF4444]/10 p-2 text-[#EF4444] transition hover:bg-[#EF4444] hover:text-white ${FOCUS}`}><FontAwesomeIcon icon={faTrash} className="h-4 w-4" /></button>
+    <div className="flex items-center justify-end gap-1">
+      <button type="button" aria-label={`Stok ${nama}`} title="Lihat stok" onClick={onStok} className={`min-h-[34px] rounded-lg bg-[#00A8E8]/10 px-2.5 py-1.5 text-[11px] font-semibold text-[#0088C0] transition hover:bg-[#00A8E8] hover:text-white sm:min-h-[38px] sm:px-3 sm:text-xs ${FOCUS}`}>Stok</button>
+      <button type="button" aria-label={`Edit ${nama}`} title="Edit" onClick={onEdit} className={`grid min-h-[34px] min-w-[34px] place-items-center rounded-lg bg-[#F59E0B]/10 p-1.5 text-[#B45309] transition hover:bg-[#F59E0B] hover:text-white sm:min-h-[38px] sm:min-w-[38px] sm:p-2 ${FOCUS}`}><FontAwesomeIcon icon={faPen} className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></button>
+      <button type="button" aria-label={`Hapus ${nama}`} title="Hapus" onClick={onHapus} className={`grid min-h-[34px] min-w-[34px] place-items-center rounded-lg bg-[#EF4444]/10 p-1.5 text-[#EF4444] transition hover:bg-[#EF4444] hover:text-white sm:min-h-[38px] sm:min-w-[38px] sm:p-2 ${FOCUS}`}><FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></button>
     </div>
   );
 }
 
 const emptyModal = { open: false, editing: null as Item | null, kode: "", nama: "", divisiId: "", unit: "pcs", jenis: "", isActive: true, busy: false };
 
-// Saran jenis: nilai baku + nilai yang sudah ada di data (bebas isi).
 const JENIS_SARAN = ["RAW MATERIAL", "SM", "HABIS PAKAI"];
-// Sentinel filter: hanya item tanpa jenis (tak mungkin jadi nilai asli).
 const JENIS_TANPA = "__TANPA__";
 
 export default function KelolaItem() {
@@ -90,7 +88,6 @@ export default function KelolaItem() {
           ...(f.sampai ? { sampai: f.sampai } : {}),
         }),
       ]);
-      // Saldo/ringkasan pelengkap: yang gagal dikosongkan tanpa menggagalkan halaman.
       setSaldo(hasilSaldo.status === "fulfilled" ? hasilSaldo.value.saldo : {});
       setRingkasan(hasilRingkasan.status === "fulfilled" ? hasilRingkasan.value : {});
     } finally {
@@ -116,7 +113,6 @@ export default function KelolaItem() {
     }
   }, [refreshAngka]);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat awal sekali, pola sama seperti KelolaUser
     void load();
   }, [load]);
 
@@ -298,103 +294,108 @@ export default function KelolaItem() {
   };
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div className="max-w-2xl">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Master</p>
-          <h1 className="text-[26px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Stock Material</h1>
-          <p className="mt-2 text-base text-[#6B7280]">Master item untuk pilihan permintaan barang.</p>
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header Compact */}
+      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div className="max-w-2xl space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#00A8E8] sm:text-xs">Master</p>
+          <h1 className="text-xl font-bold tracking-tight text-[#1E3A5F] sm:text-3xl">Stock Material</h1>
+          <p className="text-xs text-[#6B7280] sm:text-sm">Master item untuk pilihan permintaan barang.</p>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-          <button type="button" onClick={openAdd} className={primaryBtn}>
-            <FontAwesomeIcon icon={faCirclePlus} className="h-4 w-4" /> Tambah Item
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button type="button" onClick={openAdd} className={`${primaryBtn} col-span-2 sm:col-span-1`}>
+            <FontAwesomeIcon icon={faCirclePlus} className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Tambah Item
           </button>
           <button type="button" onClick={handleExport} disabled={loading || saldoLoading || ringkasanLoading || rows.length === 0} className={secondaryBtn} title="Unduh tampil/filter saat ini sebagai CSV">
-            <FontAwesomeIcon icon={faFileExport} className="h-4 w-4" /> Export
+            <FontAwesomeIcon icon={faFileExport} className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Export
           </button>
           <button type="button" onClick={() => setShowImport(true)} className={secondaryBtn}>
-            <FontAwesomeIcon icon={faFileImport} className="h-4 w-4" /> Import
+            <FontAwesomeIcon icon={faFileImport} className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Import
           </button>
         </div>
       </header>
 
-      <div aria-live="polite" className="space-y-3">
-        {loading && <p className="animate-pulse text-[15px] text-[#6B7280]">Memuat data item...</p>}
-        {error && <p role="alert" className="rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-[#EF4444]">{error}</p>}
-        {notice && <p role="status" className="rounded-lg border border-[#10B981]/30 bg-[#10B981]/10 px-4 py-3 text-[#1F2937]">{notice}</p>}
+      {/* Status & Notifikasi */}
+      <div aria-live="polite" className="space-y-2">
+        {loading && <p className="animate-pulse text-xs text-[#6B7280] sm:text-sm">Memuat data item...</p>}
+        {error && <p role="alert" className="rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444] sm:px-4 sm:py-3 sm:text-sm">{error}</p>}
+        {notice && <p role="status" className="rounded-lg border border-[#10B981]/30 bg-[#10B981]/10 px-3 py-2 text-xs text-[#1F2937] sm:px-4 sm:py-3 sm:text-sm">{notice}</p>}
       </div>
 
       {!loading && !error && (
-        <main className="space-y-4">
-          <section className="rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-6">
-            <div className="grid gap-3 sm:grid-cols-[1fr_200px_200px_auto] sm:items-end">
+        <main className="space-y-3 sm:space-y-4">
+          {/* Section Filter Compact */}
+          <section className="rounded-xl bg-white p-3.5 shadow-xs sm:p-5">
+            <div className="grid gap-2.5 sm:grid-cols-[1fr_180px_180px_auto] sm:items-end sm:gap-3">
               <div>
-                <label htmlFor="item-search" className="mb-1 block text-sm font-medium text-[#1F2937]">Cari item</label>
+                <label htmlFor="item-search" className="mb-1 block text-xs font-medium text-[#1F2937] sm:text-sm">Cari item</label>
                 <div className="relative">
-                  <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
-                  <input id="item-search" type="search" className={`${inputCls} pl-9`} placeholder="ketik kode / nama..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                  <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#6B7280]" />
+                  <input id="item-search" type="search" className={`${inputCls} py-2 pl-8 text-xs sm:text-sm`} placeholder="ketik kode / nama..." value={search} onChange={(e) => setSearch(e.target.value)} />
                 </div>
               </div>
               <div>
-                <label htmlFor="item-divisi" className="mb-1 block text-sm font-medium text-[#1F2937]">Divisi</label>
-                <select id="item-divisi" className={inputCls} value={divisiFilter} onChange={(e) => setDivisiFilter(e.target.value)}>
+                <label htmlFor="item-divisi" className="mb-1 block text-xs font-medium text-[#1F2937] sm:text-sm">Divisi</label>
+                <select id="item-divisi" className={`${inputCls} py-2 text-xs sm:text-sm`} value={divisiFilter} onChange={(e) => setDivisiFilter(e.target.value)}>
                   <option value="">Semua divisi</option>
                   {divisi.map((d) => <option key={d.id} value={String(d.id)}>{d.nama}</option>)}
                 </select>
               </div>
               <div>
-                <label htmlFor="item-jenis" className="mb-1 block text-sm font-medium text-[#1F2937]">Jenis</label>
-                <select id="item-jenis" className={inputCls} value={jenisFilter} onChange={(e) => setJenisFilter(e.target.value)}>
+                <label htmlFor="item-jenis" className="mb-1 block text-xs font-medium text-[#1F2937] sm:text-sm">Jenis</label>
+                <select id="item-jenis" className={`${inputCls} py-2 text-xs sm:text-sm`} value={jenisFilter} onChange={(e) => setJenisFilter(e.target.value)}>
                   <option value="">Semua jenis</option>
                   <option value={JENIS_TANPA}>— Tanpa jenis —</option>
                   {jenisOptions.map((j) => <option key={j} value={j}>{j}</option>)}
                 </select>
               </div>
-              <label className="flex items-center gap-2 pb-3 text-sm font-medium text-[#1F2937]">
-                <input type="checkbox" checked={hanyaAktif} onChange={(e) => setHanyaAktif(e.target.checked)} className="h-4 w-4 accent-[#00A8E8]" />
+              <label className="flex items-center gap-2 py-1 text-xs font-medium text-[#1F2937] sm:pb-2.5 sm:text-sm">
+                <input type="checkbox" checked={hanyaAktif} onChange={(e) => setHanyaAktif(e.target.checked)} className="h-3.5 w-3.5 accent-[#00A8E8] sm:h-4 sm:w-4" />
                 Hanya aktif
               </label>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-[200px_200px_auto_1fr] sm:items-end">
+
+            <div className="mt-2.5 grid gap-2.5 border-t border-slate-100 pt-2.5 sm:mt-3 sm:grid-cols-[180px_180px_auto_1fr] sm:items-end sm:gap-3 sm:pt-3">
               <div>
-                <label htmlFor="item-dari" className="mb-1 block text-sm font-medium text-[#1F2937]">Dari periode</label>
-                <input id="item-dari" type="date" className={inputCls} value={dari} max={sampai || undefined} onChange={(e) => ubahDari(e.target.value)} />
+                <label htmlFor="item-dari" className="mb-1 block text-xs font-medium text-[#1F2937] sm:text-sm">Dari periode</label>
+                <input id="item-dari" type="date" className={`${inputCls} py-2 text-xs sm:text-sm`} value={dari} max={sampai || undefined} onChange={(e) => ubahDari(e.target.value)} />
               </div>
               <div>
-                <label htmlFor="item-sampai" className="mb-1 block text-sm font-medium text-[#1F2937]">Sampai periode</label>
-                <input id="item-sampai" type="date" className={inputCls} value={sampai} min={dari || undefined} onChange={(e) => ubahSampai(e.target.value)} />
+                <label htmlFor="item-sampai" className="mb-1 block text-xs font-medium text-[#1F2937] sm:text-sm">Sampai periode</label>
+                <input id="item-sampai" type="date" className={`${inputCls} py-2 text-xs sm:text-sm`} value={sampai} min={dari || undefined} onChange={(e) => ubahSampai(e.target.value)} />
               </div>
               <div>
                 {(dari || sampai) && (
                   <button type="button" onClick={resetPeriode} className={secondaryBtn}>Reset periode</button>
                 )}
               </div>
-              <p className="text-[13px] text-[#6B7280] sm:pb-3 sm:text-right">Masuk/Keluar/Net: {labelPeriode}. Stok: saldo aktual.</p>
+              <p className="text-[11px] text-[#6B7280] sm:pb-2.5 sm:text-right sm:text-xs">Masuk/Keluar/Net: {labelPeriode}. Stok: saldo aktual.</p>
             </div>
-            {periodeError && <p role="alert" className="mt-3 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-[#EF4444]">{periodeError}</p>}
-            <p className="mt-3 text-[13px] text-[#6B7280]">{filtered.length}/{rows.length} tampil{selected.size > 0 ? ` · ${selected.size} dipilih` : ""}</p>
+            {periodeError && <p role="alert" className="mt-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444] sm:mt-3 sm:px-4 sm:py-3 sm:text-sm">{periodeError}</p>}
+            <p className="mt-2 text-[11px] text-[#6B7280] sm:mt-3 sm:text-xs">{filtered.length}/{rows.length} tampil{selected.size > 0 ? ` · ${selected.size} dipilih` : ""}</p>
           </section>
 
+          {/* Edit Massal / Bulk Bar */}
           {selected.size > 0 && (
-            <section aria-live="polite" className="space-y-3 rounded-xl border border-[#00A8E8]/30 bg-[#00A8E8]/5 p-4">
-              <p className="text-sm font-semibold text-[#1E3A5F]">{selected.size} item dipilih — edit massal:</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg bg-white p-3">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-[#1F2937]">
-                    <input type="checkbox" checked={bulkUbahJenis} onChange={(e) => setBulkUbahJenis(e.target.checked)} className="h-4 w-4 accent-[#00A8E8]" />
+            <section aria-live="polite" className="space-y-2.5 rounded-xl border border-[#00A8E8]/30 bg-[#00A8E8]/5 p-3 sm:space-y-3 sm:p-4">
+              <p className="text-xs font-semibold text-[#1E3A5F] sm:text-sm">{selected.size} item dipilih — edit massal:</p>
+              <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+                <div className="rounded-lg bg-white p-2.5 sm:p-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-[#1F2937] sm:text-sm">
+                    <input type="checkbox" checked={bulkUbahJenis} onChange={(e) => setBulkUbahJenis(e.target.checked)} className="h-3.5 w-3.5 accent-[#00A8E8] sm:h-4 sm:w-4" />
                     Ubah jenis {bulkUbahJenis && <span className="font-normal text-[#6B7280]">(kosong = hapus)</span>}
                   </label>
-                  <input type="text" list="bulk-jenis-options" disabled={!bulkUbahJenis} className={`${inputCls} mt-2`} placeholder="cth: RAW MATERIAL" value={bulkJenis} onChange={(e) => setBulkJenis(e.target.value)} />
+                  <input type="text" list="bulk-jenis-options" disabled={!bulkUbahJenis} className={`${inputCls} mt-1.5 py-1.5 text-xs sm:mt-2 sm:py-2 sm:text-sm`} placeholder="cth: RAW MATERIAL" value={bulkJenis} onChange={(e) => setBulkJenis(e.target.value)} />
                   <datalist id="bulk-jenis-options">
                     {jenisOptions.map((j) => <option key={j} value={j} />)}
                   </datalist>
                 </div>
-                <div className="rounded-lg bg-white p-3">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-[#1F2937]">
-                    <input type="checkbox" checked={bulkUbahDivisi} onChange={(e) => setBulkUbahDivisi(e.target.checked)} className="h-4 w-4 accent-[#00A8E8]" />
+                <div className="rounded-lg bg-white p-2.5 sm:p-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-[#1F2937] sm:text-sm">
+                    <input type="checkbox" checked={bulkUbahDivisi} onChange={(e) => setBulkUbahDivisi(e.target.checked)} className="h-3.5 w-3.5 accent-[#00A8E8] sm:h-4 sm:w-4" />
                     Ubah divisi
                   </label>
-                  <select disabled={!bulkUbahDivisi} className={`${inputCls} mt-2`} value={bulkDivisi} onChange={(e) => setBulkDivisi(e.target.value)}>
+                  <select disabled={!bulkUbahDivisi} className={`${inputCls} mt-1.5 py-1.5 text-xs sm:mt-2 sm:py-2 sm:text-sm`} value={bulkDivisi} onChange={(e) => setBulkDivisi(e.target.value)}>
                     <option value="">— Tanpa divisi (lepas) —</option>
                     {divisi.map((d) => <option key={d.id} value={String(d.id)}>{d.nama}</option>)}
                   </select>
@@ -407,12 +408,13 @@ export default function KelolaItem() {
             </section>
           )}
 
-          <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+          {/* Desktop Table & Mobile Cards */}
+          <section className="overflow-hidden rounded-xl bg-white shadow-xs">
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[1020px] text-left">
                 <thead className="bg-[#F5F7FA] text-[#6B7280]">
                   <tr>
-                    <th className="px-4 py-4">
+                    <th className="px-3.5 py-3">
                       <input
                         type="checkbox"
                         aria-label="Pilih semua yang tampil"
@@ -421,26 +423,26 @@ export default function KelolaItem() {
                         className="h-4 w-4 accent-[#00A8E8]"
                       />
                     </th>
-                    <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider">No</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Kode</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Nama</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Jenis</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Divisi</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" title="Total masuk pada periode terpilih">Masuk</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" title="Total keluar pada periode terpilih">Keluar</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" title="Masuk dikurangi keluar pada periode terpilih">Net</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" title="Saldo aktual saat ini">Stok</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Unit</th>
-                    <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider">Aksi</th>
+                    <th className="px-3.5 py-3 text-xs font-semibold uppercase tracking-wider">No</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Kode</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Nama</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Jenis</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Divisi</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total masuk pada periode terpilih">Masuk</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total keluar pada periode terpilih">Keluar</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Masuk dikurangi keluar pada periode terpilih">Net</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Saldo aktual saat ini">Stok</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Unit</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={13} className="px-6 py-8 text-center italic text-[#6B7280]">Belum ada item.</td></tr>
+                    <tr><td colSpan={13} className="px-6 py-6 text-center text-xs italic text-[#6B7280]">Belum ada item.</td></tr>
                   ) : filtered.map((r, i) => (
-                    <tr key={r.id} className="text-[15px] hover:bg-[#F5F7FA]">
-                      <td className="px-4 py-4">
+                    <tr key={r.id} className="text-xs hover:bg-[#F5F7FA] sm:text-sm">
+                      <td className="px-3.5 py-3">
                         <input
                           type="checkbox"
                           aria-label={`Pilih ${r.nama}`}
@@ -449,22 +451,22 @@ export default function KelolaItem() {
                           className="h-4 w-4 accent-[#00A8E8]"
                         />
                       </td>
-                      <td className="px-4 py-4 tabular-nums text-[#6B7280]">{i + 1}</td>
-                      <td className="px-6 py-4 font-mono text-sm font-semibold text-[#1E3A5F]">{r.kode}</td>
-                      <td className="px-6 py-4 font-medium text-[#1F2937]">{r.nama}</td>
-                      <td className="px-6 py-4 text-[#6B7280]">{r.jenis ?? <span className="italic">—</span>}</td>
-                      <td className="px-6 py-4 text-[#6B7280]">{r.divisi?.nama ?? <span className="italic">—</span>}</td>
-                      <td className="px-6 py-4 text-right tabular-nums text-[#0E7A55]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.masuk.toLocaleString("id-ID") ?? "—")}</td>
-                      <td className="px-6 py-4 text-right tabular-nums text-[#B91C1C]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.keluar.toLocaleString("id-ID") ?? "—")}</td>
-                      <td className="px-6 py-4 text-right font-semibold tabular-nums text-[#1F2937]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.net.toLocaleString("id-ID") ?? "—")}</td>
-                      <td className="px-6 py-4 text-right tabular-nums text-[#1F2937]">{saldoLoading ? "…" : (saldo[r.id]?.toLocaleString("id-ID") ?? "—")}</td>
-                      <td className="px-6 py-4 text-[#6B7280]">{r.unit}</td>
-                      <td className="px-6 py-4">
-                        <span className={`rounded-md px-2 py-0.5 text-[13px] font-medium ${r.isActive ? "bg-[#10B981]/10 text-[#0E7A55]" : "bg-slate-100 text-slate-500"}`}>
+                      <td className="px-3.5 py-3 tabular-nums text-[#6B7280]">{i + 1}</td>
+                      <td className="px-5 py-3 font-mono text-xs font-semibold text-[#1E3A5F] sm:text-sm">{r.kode}</td>
+                      <td className="px-5 py-3 font-medium text-[#1F2937]">{r.nama}</td>
+                      <td className="px-5 py-3 text-[#6B7280]">{r.jenis ?? <span className="italic">—</span>}</td>
+                      <td className="px-5 py-3 text-[#6B7280]">{r.divisi?.nama ?? <span className="italic">—</span>}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-[#0E7A55]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.masuk.toLocaleString("id-ID") ?? "—")}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-[#B91C1C]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.keluar.toLocaleString("id-ID") ?? "—")}</td>
+                      <td className="px-5 py-3 text-right font-semibold tabular-nums text-[#1F2937]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.net.toLocaleString("id-ID") ?? "—")}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-[#1F2937]">{saldoLoading ? "…" : (saldo[r.id]?.toLocaleString("id-ID") ?? "—")}</td>
+                      <td className="px-5 py-3 text-[#6B7280]">{r.unit}</td>
+                      <td className="px-5 py-3">
+                        <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${r.isActive ? "bg-[#10B981]/10 text-[#0E7A55]" : "bg-slate-100 text-slate-500"}`}>
                           {r.isActive ? "Aktif" : "Nonaktif"}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3">
                         <ItemActions nama={r.nama} onStok={() => bukaStok(r.id)} onEdit={() => openEdit(r)} onHapus={() => void remove(r)} />
                       </td>
                     </tr>
@@ -473,19 +475,19 @@ export default function KelolaItem() {
               </table>
             </div>
 
-            {/* Mobile: daftar card ringkas */}
+            {/* Mobile: Daftar Kartu Compact */}
             <ul className="divide-y divide-slate-100 md:hidden">
               {filtered.length === 0 ? (
-                <li className="px-4 py-8 text-center italic text-[#6B7280]">Belum ada item.</li>
+                <li className="px-4 py-6 text-center text-xs italic text-[#6B7280]">Belum ada item.</li>
               ) : filtered.map((r, i) => (
                 <li key={r.id}>
-                  <div className="flex items-start gap-2 px-4 pt-3.5">
+                  <div className="flex items-start gap-2.5 px-3.5 pt-3">
                     <input
                       type="checkbox"
                       aria-label={`Pilih ${r.nama}`}
                       checked={selected.has(r.id)}
                       onChange={() => toggleSelect(r.id)}
-                      className="mt-1 h-4 w-4 shrink-0 accent-[#00A8E8]"
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#00A8E8]"
                     />
                     <button
                       type="button"
@@ -493,29 +495,29 @@ export default function KelolaItem() {
                       aria-label={`Lihat stok ${r.nama}`}
                       className={`block w-full text-left ${FOCUS}`}
                     >
-                    <span className="block truncate text-sm font-bold text-[#1E3A5F]">
-                      {i + 1}. {r.nama}
-                    </span>
-                    <span className="mt-0.5 block truncate font-mono text-xs text-slate-500">
-                      {r.kode} · {r.divisi?.nama ?? "—"}{r.jenis ? ` · ${r.jenis}` : ""}
-                    </span>
-                    <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="tabular-nums text-sm font-bold text-[#1E3A5F]">
-                        {saldoLoading ? "…" : (saldo[r.id]?.toLocaleString("id-ID") ?? "—")}{" "}
-                        <span className="text-[11px] font-medium text-slate-400">{r.unit}</span>
+                      <span className="block truncate text-xs font-bold text-[#1E3A5F]">
+                        {i + 1}. {r.nama}
                       </span>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${r.isActive ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/25" : "bg-slate-100 text-slate-500"}`}
-                      >
-                        {r.isActive ? "Aktif" : "Nonaktif"}
+                      <span className="mt-0.5 block truncate font-mono text-[11px] text-slate-500">
+                        {r.kode} · {r.divisi?.nama ?? "—"}{r.jenis ? ` · ${r.jenis}` : ""}
                       </span>
-                    </span>
-                    <span className="mt-1 block text-xs tabular-nums text-slate-500">
-                      {ringkasanLoading ? "Memuat ringkasan…" : `Masuk ${ringkasan[r.id]?.masuk.toLocaleString("id-ID") ?? "—"} · Keluar ${ringkasan[r.id]?.keluar.toLocaleString("id-ID") ?? "—"} · Net ${ringkasan[r.id]?.net.toLocaleString("id-ID") ?? "—"}`}
-                    </span>
-                  </button>
+                      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span className="tabular-nums text-xs font-bold text-[#1E3A5F]">
+                          {saldoLoading ? "…" : (saldo[r.id]?.toLocaleString("id-ID") ?? "—")}{" "}
+                          <span className="text-[10px] font-medium text-slate-400">{r.unit}</span>
+                        </span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ${r.isActive ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/25" : "bg-slate-100 text-slate-500"}`}
+                        >
+                          {r.isActive ? "Aktif" : "Nonaktif"}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-[10px] tabular-nums text-slate-500">
+                        {ringkasanLoading ? "Memuat ringkasan…" : `Masuk ${ringkasan[r.id]?.masuk.toLocaleString("id-ID") ?? "—"} · Keluar ${ringkasan[r.id]?.keluar.toLocaleString("id-ID") ?? "—"} · Net ${ringkasan[r.id]?.net.toLocaleString("id-ID") ?? "—"}`}
+                      </span>
+                    </button>
                   </div>
-                  <div className="flex items-center justify-end border-t border-dashed border-slate-100 px-4 py-1.5">
+                  <div className="flex items-center justify-end border-t border-dashed border-slate-100 px-3.5 py-1.5">
                     <ItemActions nama={r.nama} onStok={() => bukaStok(r.id)} onEdit={() => openEdit(r)} onHapus={() => void remove(r)} />
                   </div>
                 </li>
@@ -525,26 +527,27 @@ export default function KelolaItem() {
         </main>
       )}
 
+      {/* Modal Edit / Tambah */}
       {modal.open && (
         <Modal title={`${modal.editing ? "Edit" : "Tambah"} Item`} onClose={() => setModal(emptyModal)}>
-          <div className="space-y-4">
-            <label className={labelCls}><span>Kode *</span><input className={`${inputCls} font-mono`} placeholder="cth: BRG-001" value={modal.kode} onChange={(e) => setModal((m) => ({ ...m, kode: e.target.value }))} /></label>
-            <label className={labelCls}><span>Nama *</span><input className={inputCls} placeholder="cth: Baut M8" value={modal.nama} onChange={(e) => setModal((m) => ({ ...m, nama: e.target.value }))} /></label>
-            <label className={labelCls}><span>Divisi</span>
-              <select className={inputCls} value={modal.divisiId} onChange={(e) => setModal((m) => ({ ...m, divisiId: e.target.value }))}>
+          <div className="space-y-3 sm:space-y-4">
+            <label className={labelCls}><span className="text-xs sm:text-sm">Kode *</span><input className={`${inputCls} py-2 font-mono text-xs sm:text-sm`} placeholder="cth: BRG-001" value={modal.kode} onChange={(e) => setModal((m) => ({ ...m, kode: e.target.value }))} /></label>
+            <label className={labelCls}><span className="text-xs sm:text-sm">Nama *</span><input className={`${inputCls} py-2 text-xs sm:text-sm`} placeholder="cth: Baut M8" value={modal.nama} onChange={(e) => setModal((m) => ({ ...m, nama: e.target.value }))} /></label>
+            <label className={labelCls}><span className="text-xs sm:text-sm">Divisi</span>
+              <select className={`${inputCls} py-2 text-xs sm:text-sm`} value={modal.divisiId} onChange={(e) => setModal((m) => ({ ...m, divisiId: e.target.value }))}>
                 <option value="">— Tanpa divisi —</option>
                 {divisi.map((d) => <option key={d.id} value={String(d.id)}>{d.nama}</option>)}
               </select>
             </label>
-            <label className={labelCls}><span>Unit</span><input className={inputCls} placeholder="pcs" value={modal.unit} onChange={(e) => setModal((m) => ({ ...m, unit: e.target.value }))} /></label>
-            <label className={labelCls}><span>Jenis</span>
-              <input className={inputCls} list="item-modal-jenis-options" placeholder="cth: RAW MATERIAL" value={modal.jenis} onChange={(e) => setModal((m) => ({ ...m, jenis: e.target.value }))} />
+            <label className={labelCls}><span className="text-xs sm:text-sm">Unit</span><input className={`${inputCls} py-2 text-xs sm:text-sm`} placeholder="pcs" value={modal.unit} onChange={(e) => setModal((m) => ({ ...m, unit: e.target.value }))} /></label>
+            <label className={labelCls}><span className="text-xs sm:text-sm">Jenis</span>
+              <input className={`${inputCls} py-2 text-xs sm:text-sm`} list="item-modal-jenis-options" placeholder="cth: RAW MATERIAL" value={modal.jenis} onChange={(e) => setModal((m) => ({ ...m, jenis: e.target.value }))} />
               <datalist id="item-modal-jenis-options">
                 {jenisOptions.map((j) => <option key={j} value={j} />)}
               </datalist>
             </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-[#1F2937]">
-              <input type="checkbox" checked={modal.isActive} onChange={(e) => setModal((m) => ({ ...m, isActive: e.target.checked }))} className="h-4 w-4 accent-[#00A8E8]" />
+            <label className="flex items-center gap-2 text-xs font-medium text-[#1F2937] sm:text-sm">
+              <input type="checkbox" checked={modal.isActive} onChange={(e) => setModal((m) => ({ ...m, isActive: e.target.checked }))} className="h-3.5 w-3.5 accent-[#00A8E8] sm:h-4 sm:w-4" />
               Aktif (tampil di pilihan permintaan)
             </label>
             <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">

@@ -1,50 +1,58 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
-import { clearBarangCache } from "../../lib/barangCache.js";
 
-// StatusBarang sekarang dinamis (tabel StatusBarang), tipe = string
 export type StatusBarang = string;
 
-export const gudangSelect = { id: true, kode: true, name: true };
-export type StatusFilter = string | { in: string[] } | { not: string } | undefined;
+export const VALID_STATUSES: StatusBarang[] = [
+  "REGISTER",
+  "FINISHGOOD",
+  "RETUR",
+  "OUT",
+  "BAD",
+];
 
-/**
- * Gabungkan status yang diminta pemanggil dengan scope visibilitas role.
- * scope null/undefined = tanpa batasan (role admin atau panggilan internal),
- * scope [] = tidak ada status yang terlihat.
- */
-export function statusScopeFilter(scope: string[] | null | undefined, status?: string): StatusFilter {
+export const VALID_TRANSITIONS: Record<StatusBarang, StatusBarang[]> = {
+  REGISTER: ["FINISHGOOD", "OUT", "RETUR", "BAD"],
+  FINISHGOOD: ["OUT", "RETUR", "BAD"],
+  RETUR: ["FINISHGOOD", "OUT", "BAD"],
+  OUT: [],
+  BAD: [],
+};
+
+export type StatusFilter = StatusBarang | { in: StatusBarang[] } | undefined;
+
+export function statusScopeFilter(
+  scope: string[] | null | undefined,
+  status?: string,
+): StatusFilter {
   if (scope === null || scope === undefined) return status;
   if (status) return scope.includes(status) ? status : { in: [] };
   return { in: scope };
 }
 
-// Hardcode transisi untuk 5 status awal. Status dinamis baru dianggap
-// terbuka (allow any) agar langsung bisa dipakai tanpa config transisi.
-// Transisi dibaca dari tabel StatusTransition. Jika suatu status sumber
-// belum punya konfigurasi transisi sama sekali, semua tujuan diizinkan.
-// Jika sudah dikonfigurasi, hanya tujuan yang terdaftar yang diizinkan.
-export async function isTransitionAllowed(current: string, next: string): Promise<boolean> {
+export async function isTransitionAllowed(
+  current: string,
+  next: string,
+): Promise<boolean> {
   if (current === next) return true;
   const rows = await prisma.statusTransition.findMany({
     where: { fromKode: current },
     select: { toKode: true },
   });
   if (rows.length === 0) return true;
-  return rows.some((r) => r.toKode === next);
+  return rows.some((row) => row.toKode === next);
 }
 
-export async function getValidStatusKodes(): Promise<string[]> {
-  const rows = await prisma.statusBarang.findMany({
-    where: { isActive: true },
-    select: { kode: true },
-    orderBy: { urutan: "asc" },
-  });
-  return rows.map((r) => r.kode);
+function validateTransition(
+  current: StatusBarang,
+  next: StatusBarang,
+): boolean {
+  if (current === next) return true;
+  return VALID_TRANSITIONS[current]?.includes(next) ?? false;
 }
 
 export async function updateBarangStatus(
   barangId: number,
-  newStatus: string,
+  newStatus: StatusBarang,
   keterangan?: string,
 ): Promise<NonNullable<Awaited<ReturnType<typeof prisma.barang.findUnique>>>> {
   const barang = await prisma.barang.findUnique({ where: { id: barangId } });
@@ -53,17 +61,13 @@ export async function updateBarangStatus(
     throw new Error("Barang tidak ditemukan");
   }
 
-  // Validasi status ada & aktif
-  const statusRow = await prisma.statusBarang.findUnique({ where: { kode: newStatus } });
-  if (!statusRow || !statusRow.isActive) {
-    throw new Error(`Status '${newStatus}' tidak valid atau tidak aktif`);
+  if (!validateTransition(barang.status as StatusBarang, newStatus)) {
+    throw new Error(
+      `Transisi status dari ${barang.status} ke ${newStatus} tidak valid`,
+    );
   }
 
-  if (!(await isTransitionAllowed(barang.status, newStatus))) {
-    throw new Error(`Transisi status dari ${barang.status} ke ${newStatus} tidak valid`);
-  }
-
-  const updated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
+  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const updatedBarang = await tx.barang.update({
       where: { id: barangId },
       data: { status: newStatus },
@@ -85,7 +89,6 @@ export async function updateBarangStatus(
             status: true,
           },
         },
-        gudang: { select: gudangSelect },
       },
     });
 
@@ -99,13 +102,10 @@ export async function updateBarangStatus(
 
     return updatedBarang;
   });
-
-  await clearBarangCache();
-  return updated;
 }
 
 export async function bulkUpdateBarangStatus(
-  items: { id: number; status: string; keterangan?: string }[],
+  items: { id: number; status: StatusBarang; keterangan?: string }[],
 ): Promise<{
   success: Awaited<ReturnType<typeof updateBarangStatus>>[];
   failed: { id: number; error: string }[];
@@ -115,7 +115,11 @@ export async function bulkUpdateBarangStatus(
 
   for (const item of items) {
     try {
-      const updated = await updateBarangStatus(item.id, item.status, item.keterangan);
+      const updated = await updateBarangStatus(
+        item.id,
+        item.status,
+        item.keterangan,
+      );
       success.push(updated);
     } catch (error) {
       failed.push({

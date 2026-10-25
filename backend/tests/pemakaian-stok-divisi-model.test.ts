@@ -1,30 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../src/lib/prisma.js", () => ({
-  default: { pemakaianMaterialItem: { findMany: vi.fn() } },
+vi.mock("../src/model/wip/wip.js", () => ({
+  getWipRows: vi.fn(),
 }));
 
-import prisma from "../src/lib/prisma.js";
+import { getWipRows, type WipRow } from "../src/model/wip/wip.js";
 import { getStokPerDivisi } from "../src/model/pemakaianMaterial/pemakaianMaterial.js";
 
-const findMany = vi.mocked(prisma.pemakaianMaterialItem.findMany);
+const mockedGetWipRows = vi.mocked(getWipRows);
 
-const row = (over: {
-  nama: string;
-  tanggal: string;
-  diterima: number;
-  dipakai: number;
-  sisa: number;
-  itemId?: number | null;
-}) => ({
-  itemId: over.itemId === undefined ? 1 : over.itemId,
-  satuan: "pcs",
-  jumlahDiterima: over.diterima,
-  jumlahDipakai: over.dipakai,
-  jumlahSisa: over.sisa,
-  pemakaian: { tanggal: new Date(over.tanggal), divisi: { id: 1, nama: "Produksi" } },
-  permintaanItem: { nama: over.nama, satuan: "pcs", item: { jenis: "RAW MATERIAL" } },
-  item: null,
+const wipRow = (over: Partial<WipRow>): WipRow => ({
+  itemId: 1,
+  kode: "RAW001",
+  nama: "Kertas A4",
+  unit: "rim",
+  jenis: "RAW",
+  divisiId: 1,
+  divisiNama: "Produksi",
+  saldoAwal: 0,
+  masuk: 0,
+  keluar: 0,
+  saldoAkhir: 0,
+  ...over,
 });
 
 beforeEach(() => {
@@ -32,50 +29,42 @@ beforeEach(() => {
 });
 
 describe("getStokPerDivisi", () => {
-  it("tanpa rentang: pakai catatan terbaru per material", async () => {
-    findMany.mockResolvedValue([
-      row({ nama: "Kertas A4", tanggal: "2026-10-20", diterima: 90, dipakai: 20, sisa: 70 }),
-      row({ nama: "Kertas A4", tanggal: "2026-10-01", diterima: 100, dipakai: 10, sisa: 90 }),
-    ] as never);
-
-    const hasil = await getStokPerDivisi();
-
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {},
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      }),
-    );
-    expect(hasil).toHaveLength(1);
-    expect(hasil[0].materials).toHaveLength(1);
-    expect(hasil[0].materials[0]).toMatchObject({ diterima: 90, dipakai: 20, sisa: 70 });
-  });
-
-  it("dengan rentang: diterima = stok awal periode, dipakai dijumlahkan, sisa = akhir periode", async () => {
-    findMany.mockResolvedValue([
-      row({ nama: "Kertas A4", tanggal: "2026-10-05", diterima: 100, dipakai: 10, sisa: 90 }),
-      row({ nama: "Kertas A4", tanggal: "2026-10-25", diterima: 90, dipakai: 20, sisa: 70 }),
-      // material lain di divisi yang sama
-      row({ nama: "Tinta", tanggal: "2026-10-20", diterima: 5, dipakai: 5, sisa: 0, itemId: 2 }),
-    ] as never);
+  it("memakai angka helper WIP dan mengelompokkan per divisi", async () => {
+    mockedGetWipRows.mockResolvedValue([
+      wipRow({ itemId: 1, nama: "Kertas A4", saldoAwal: 100, masuk: 40, keluar: 70, saldoAkhir: 70 }),
+      wipRow({ itemId: 2, nama: "Tinta", jenis: "CHEMICAL", saldoAwal: 5, masuk: 0, keluar: 5, saldoAkhir: 0 }),
+      wipRow({ itemId: 3, nama: "Busa", unit: "pcs", divisiId: 2, divisiNama: "Buffing", saldoAwal: 10, masuk: 5, keluar: 0, saldoAkhir: 15 }),
+    ]);
 
     const hasil = await getStokPerDivisi({
       dari: new Date(2026, 9, 1),
       sampai: new Date(2026, 9, 31),
     });
 
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          pemakaian: {
-            tanggal: { gte: new Date(2026, 9, 1), lt: new Date(2026, 10, 1) },
-          },
-        },
-        orderBy: [{ pemakaian: { tanggal: "asc" } }, { id: "asc" }],
-      }),
-    );
-    const perNama = Object.fromEntries(hasil[0].materials.map((m) => [m.nama, m]));
-    expect(perNama["Kertas A4"]).toMatchObject({ diterima: 100, dipakai: 30, sisa: 70 });
-    expect(perNama["Tinta"]).toMatchObject({ diterima: 5, dipakai: 5, sisa: 0 });
+    expect(mockedGetWipRows).toHaveBeenCalledWith({
+      dari: new Date(2026, 9, 1),
+      sampai: new Date(2026, 9, 31),
+    });
+    expect(hasil.map((group) => group.divisiNama)).toEqual(["Buffing", "Produksi"]);
+    const produksi = hasil.find((group) => group.divisiId === 1)!;
+    expect(produksi.materials.map((material) => material.nama)).toEqual(["Kertas A4", "Tinta"]);
+    expect(produksi.materials[0]).toMatchObject({
+      itemId: 1,
+      key: "item:1",
+      diterima: 100,
+      masuk: 40,
+      dipakai: 70,
+      sisa: 70,
+      satuan: "rim",
+      jenis: "RAW",
+    });
+  });
+
+  it("melewati baris tanpa divisi", async () => {
+    mockedGetWipRows.mockResolvedValue([
+      wipRow({ divisiId: null, divisiNama: null, saldoAkhir: 9 }),
+    ]);
+
+    expect(await getStokPerDivisi()).toEqual([]);
   });
 });

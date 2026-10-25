@@ -110,7 +110,7 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
             />
             <input
               type="text"
-              placeholder="Cari material atau jenis di stok divisi..."
+              placeholder="Cari material atau jenis di saldo WIP..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/20"
@@ -185,8 +185,8 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
           <p className="flex items-center gap-1.5 text-xs text-slate-500 sm:pb-2.5">
             <FontAwesomeIcon icon={faCalendarDays} className="text-slate-400" />
             {periode.dari || periode.sampai
-              ? "Diterima = stok awal periode, Dipakai = total periode, Sisa = akhir periode."
-              : "Tanpa tanggal: saldo stok terkini per divisi."}
+              ? "Saldo Awal = WIP sebelum periode, Masuk = total masuk, Keluar = pemakaian manual + produksi, Saldo Akhir = WIP akhir periode."
+              : "Tanpa tanggal: Masuk/Keluar = akumulasi, Saldo Akhir = WIP terkini per divisi."}
           </p>
         </div>
       </div>
@@ -207,6 +207,16 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
           {filteredDivisi.map((group) => {
             const totalItems = group.materials.length;
             const totalSisa = group.materials.reduce((acc, m) => acc + m.sisa, 0);
+            const satuan = new Set(
+              group.materials
+                .map((m) => (m.satuan ?? "").trim())
+                .filter(Boolean)
+            );
+            const totalWip =
+              satuan.size === 1 &&
+              group.materials.every((m) => (m.satuan ?? "").trim())
+                ? ` • Total WIP: ${formatNumber(totalSisa)} ${[...satuan][0]}`
+                : "";
 
             return (
               <article
@@ -225,7 +235,7 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
                           {group.divisiNama}
                         </h3>
                         <p className="text-xs text-slate-500">
-                          {totalItems} jenis material • Total sisa: {formatNumber(totalSisa)}
+                          {totalItems} jenis material{totalWip}
                         </p>
                       </div>
                     </div>
@@ -244,7 +254,7 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
                   <div className="p-5 space-y-4">
                     {group.materials.length === 0 ? (
                       <p className="py-6 text-center text-xs text-slate-400">
-                        Belum ada stok material tercatat pada divisi ini.
+                        Belum ada saldo WIP material pada divisi ini.
                       </p>
                     ) : (
                       groupByJenis(group.materials).map(([jenis, materials]) => (
@@ -261,9 +271,10 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
                               <thead className="bg-slate-50/75 text-[11px] font-semibold uppercase text-slate-500">
                                 <tr>
                                   <th className="px-3.5 py-2">Material</th>
-                                  <th className="px-3.5 py-2 text-right">Diterima</th>
-                                  <th className="px-3.5 py-2 text-right">Dipakai</th>
-                                  <th className="px-3.5 py-2 text-right">Sisa Terkini</th>
+                                  <th className="px-3.5 py-2 text-right">Saldo Awal</th>
+                                  <th className="px-3.5 py-2 text-right">Masuk</th>
+                                  <th className="px-3.5 py-2 text-right">Keluar</th>
+                                  <th className="px-3.5 py-2 text-right">Saldo Akhir</th>
                                   <th className="px-3.5 py-2 text-center">Status</th>
                                 </tr>
                               </thead>
@@ -278,6 +289,9 @@ export const StokDivisiBoard: React.FC<StokDivisiBoardProps> = ({
                                     </td>
                                     <td className="px-3.5 py-2 text-right tabular-nums text-slate-500">
                                       {formatNumber(m.diterima)} {m.satuan || ""}
+                                    </td>
+                                    <td className="px-3.5 py-2 text-right tabular-nums text-slate-500">
+                                      {formatNumber(m.masuk)} {m.satuan || ""}
                                     </td>
                                     <td className="px-3.5 py-2 text-right tabular-nums text-slate-500">
                                       {formatNumber(m.dipakai)} {m.satuan || ""}

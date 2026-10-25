@@ -7,6 +7,7 @@ export interface RoleAccess {
   permissions: string[];
   // null = semua status terlihat (role admin melewati matriks)
   statusView: string[] | null;
+  divisiId?: number | null;
 }
 
 /**
@@ -20,6 +21,7 @@ export async function getRoleAccess(userId: number): Promise<RoleAccess | null> 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
+      divisiId: true,
       roleRef: {
         select: {
           kode: true,
@@ -36,13 +38,14 @@ export async function getRoleAccess(userId: number): Promise<RoleAccess | null> 
 
   if (role === ADMIN_ROLE) {
     const all = await prisma.permission.findMany({ select: { kode: true }, orderBy: { id: "asc" } });
-    return { role, permissions: all.map((p) => p.kode), statusView: null };
+    return { role, permissions: all.map((p) => p.kode), statusView: null, divisiId: user.divisiId ?? null };
   }
 
   return {
     role,
     permissions: user.roleRef.permissions.map((rp) => rp.permission.kode),
     statusView: user.roleRef.barangStatus.map((s) => s.statusKode),
+    divisiId: user.divisiId ?? null,
   };
 }
 

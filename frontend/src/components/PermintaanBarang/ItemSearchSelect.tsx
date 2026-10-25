@@ -1,251 +1,282 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faSearch,
+  faTimes,
+  faCheck,
+  faTag,
+  faPen,
+  faBox,
+} from "@fortawesome/free-solid-svg-icons";
 import type { Item } from "../../api/item";
 
-/* ---------- Satu input: ketik = tulis bebas, pilih dropdown = master ---------- */
+type Props = {
+  items: Item[];
+  value: string;
+  nama: string;
+  onPick: (id: string) => void;
+  onNama: (text: string) => void;
+  ariaLabel?: string;
+  listId?: string;
+  inputId?: string;
+  className?: string;
+};
+
 export function ItemSearchSelect({
   items,
   value,
   nama,
   onPick,
   onNama,
-  ariaLabel,
-  listId,
-  className,
-  inputId,
-}: {
-  items: Item[];
-  value: string;
-  nama: string;
-  onPick: (id: string) => void;
-  onNama: (text: string) => void;
-  ariaLabel: string;
-  listId: string;
-  className: string;
-  inputId?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  ariaLabel = "Pilih atau cari barang",
+  inputId = "item-search-input",
+  className = "",
+}: Props) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState(nama);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
-  const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const selected =
-    items.find((item) => String(item.id) === value) ?? null;
-
-  const normalizedQuery = selected ? "" : nama.trim().toLowerCase();
-
-  const matches = (
-    normalizedQuery
-      ? items.filter((item) => {
-          const kode = String(item.kode ?? "").toLowerCase();
-          const namaItem = String(item.nama ?? "").toLowerCase();
-          const unit = String(item.unit ?? "").toLowerCase();
-          const jenis = String(item.jenis ?? "").toLowerCase();
-
-          return (
-            kode.includes(normalizedQuery) ||
-            namaItem.includes(normalizedQuery) ||
-            unit.includes(normalizedQuery) ||
-            jenis.includes(normalizedQuery)
-          );
-        })
-      : items
-  ).slice(0, 8);
+  // State koordinat posisi dropdown
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
-    if (!open) return;
+    setQuery(nama);
+  }, [nama]);
 
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        boxRef.current &&
-        !boxRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-        setActiveIndex(0);
-      }
-    };
+  // Fungsi kalkulasi posisi dropdown persis di bawah input
+  const updateCoords = () => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  };
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        setActiveIndex(0);
-        inputRef.current?.blur();
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
-
+  // Update posisi saat dropdown terbuka atau layar diputar/scroll
+  useEffect(() => {
+    if (isOpen) {
+      updateCoords();
+      window.addEventListener("resize", updateCoords);
+      window.addEventListener("scroll", updateCoords, true);
+    }
     return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateCoords);
+      window.removeEventListener("scroll", updateCoords, true);
     };
-  }, [open]);
+  }, [isOpen]);
 
-  const pick = (id: string) => {
-    onPick(id);
-    setActiveIndex(0);
-    setOpen(false);
-  };
-
-  const clear = () => {
-    if (selected) {
-      onPick("");
-    } else {
-      onNama("");
-    }
-    setActiveIndex(0);
-    setOpen(false);
-    inputRef.current?.focus();
-  };
-
-  // Saran hanya muncul setelah pengguna mengetik sesuatu.
-  const canSuggest = !selected && normalizedQuery !== "";
-  const showList = open && canSuggest;
-
-  const handleKeyDown = (
-    event: React.KeyboardEvent<HTMLInputElement>,
-  ) => {
-    if (selected || !canSuggest) return;
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setOpen(true);
-      setActiveIndex((current) =>
-        current >= matches.length - 1 ? 0 : current + 1,
-      );
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setOpen(true);
-      setActiveIndex((current) =>
-        current <= 0 ? matches.length - 1 : current + 1,
-      );
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      if (!open) {
-        setOpen(true);
-        return;
+  // Handle klik di luar input atau dropdown portal
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        inputRef.current &&
+        !inputRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
+      ) {
+        setIsOpen(false);
       }
-      const item = matches[activeIndex];
-      if (item) {
-        pick(String(item.id));
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items.slice(0, 15);
+
+    return items
+      .filter((item) => {
+        const matchNama = item.nama.toLowerCase().includes(q);
+        const matchKode = item.kode?.toLowerCase().includes(q);
+        const matchDivisi = item.divisi?.nama?.toLowerCase().includes(q);
+        return matchNama || matchKode || matchDivisi;
+      })
+      .slice(0, 25);
+  }, [items, query]);
+
+  const handleSelectMaster = (item: Item) => {
+    onPick(String(item.id));
+    setQuery(item.nama);
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+  };
+
+  const handleInputText = (text: string) => {
+    setQuery(text);
+    onNama(text);
+    setIsOpen(true);
+    setHighlightedIndex(-1);
+  };
+
+  const handleClear = () => {
+    onPick("");
+    onNama("");
+    setQuery("");
+    setIsOpen(true);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!isOpen) {
+      if (e.key === "ArrowDown" || e.key === "Enter") setIsOpen(true);
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev < filteredItems.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredItems.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < filteredItems.length) {
+        handleSelectMaster(filteredItems[highlightedIndex]);
       } else {
-        setOpen(false);
+        setIsOpen(false);
       }
-      return;
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setOpen(false);
-      setActiveIndex(0);
+    } else if (e.key === "Escape") {
+      setIsOpen(false);
     }
   };
-
-  const display = selected ? `${selected.kode} — ${selected.nama}` : nama;
 
   return (
-    <div className="relative" ref={boxRef}>
-      <input
-        ref={inputRef}
-        type="text"
-        id={inputId}
-        aria-label={ariaLabel}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={showList}
-        aria-controls={listId}
-        aria-activedescendant={
-          showList ? `${listId}-option-${activeIndex}` : undefined
-        }
-        autoComplete="off"
-        value={display}
-        readOnly={Boolean(selected)}
-        title={selected ? "Hapus pilihan" : undefined}
-        onChange={(event) => {
-          // Lepaskan master ketika pengguna mulai mengetik lagi.
-          if (selected) {
-            onPick("");
-          }
-          onNama(event.target.value);
-          setActiveIndex(0);
-          setOpen(event.target.value.trim() !== "");
-        }}
-        onFocus={() => {
-          if (canSuggest) setOpen(true);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder="Ketik nama barang..."
-        className={`${className} ${selected ? "bg-[#F3F3F3] font-semibold" : ""}`}
-      />
+    <div className="relative w-full">
+      {/* Input Field */}
+      <div className="relative flex items-center">
+        <FontAwesomeIcon
+          icon={faSearch}
+          className="pointer-events-none absolute left-3.5 h-3.5 w-3.5 text-slate-400"
+        />
 
-      {display && (
-        <button
-          type="button"
-          onClick={clear}
-          aria-label={selected ? "Hapus pilihan" : "Hapus nama barang"}
-          className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[#A3A3A3] hover:bg-[#E30613]/10 hover:text-[#E30613]"
-        >
-          ✕
-        </button>
-      )}
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="text"
+          value={query}
+          onFocus={() => {
+            updateCoords();
+            setIsOpen(true);
+          }}
+          onChange={(e) => handleInputText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          aria-label={ariaLabel}
+          aria-expanded={isOpen}
+          placeholder="Cari nama barang, kode, atau divisi..."
+          className={`${className} pl-9 pr-9 text-xs sm:text-sm`}
+        />
 
-      {showList && (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[#DADADA] bg-white py-1 shadow-[0_8px_24px_rgba(0,0,0,0.15)]"
-        >
-          {matches.map((item, index) => {
-            const id = String(item.id);
-            const isActive = activeIndex === index;
+        {query && (
+          <button
+            type="button"
+            onClick={handleClear}
+            aria-label="Bersihkan pencarian"
+            className="absolute right-3 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          >
+            <FontAwesomeIcon icon={faTimes} className="h-3 w-3" />
+          </button>
+        )}
+      </div>
 
-            return (
-              <li key={id} role="presentation">
-                <button
-                  id={`${listId}-option-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={false}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => pick(id)}
-                  className={`block w-full px-3 py-2 text-left text-[0.85rem] ${
-                    isActive ? "bg-[#E30613]/10" : "hover:bg-[#E30613]/5"
-                  } text-[#171717]`}
-                >
-                  <span className="font-mono">
-                    {item.kode}
-                  </span>{" "}
-                  — {item.nama}{" "}
-                  <span className="text-[#A3A3A3]">
-                    ({item.unit})
-                  </span>
-                  {item.jenis && (
-                    <span className="ml-1 rounded bg-[#F3F3F3] px-1.5 py-0.5 text-[0.75rem] font-medium text-[#6B7280]">
-                      {item.jenis}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
+      {/* Render Dropdown ke Document Body via React Portal */}
+      {isOpen &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: "absolute",
+              top: `${coords.top + 6}px`,
+              left: `${coords.left}px`,
+              width: `${coords.width}px`,
+            }}
+            className="z-[9999] max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-900/15 backdrop-blur-md"
+          >
+            {query.trim() && !items.some((x) => String(x.id) === value) && (
+              <div
+                onClick={() => setIsOpen(false)}
+                className="mb-1.5 flex cursor-pointer items-center gap-2.5 rounded-lg border border-dashed border-amber-300 bg-amber-50/70 p-2.5 text-xs text-amber-900 transition hover:bg-amber-100"
+              >
+                <FontAwesomeIcon icon={faPen} className="h-3 w-3 shrink-0 text-amber-600" />
+                <div className="flex-1 truncate">
+                  <span>Tulis Manual Jika tidak ada: </span>
+                  <strong className="font-bold">{query}</strong>
+                </div>
+              </div>
+            )}
 
-          {matches.length === 0 && (
-            <li
-              role="presentation"
-              className="px-3 py-2 text-[0.85rem] italic text-[#A3A3A3]"
-            >
-              Tidak ada hasil yang cocok.
-            </li>
-          )}
-        </ul>
-      )}
+            {filteredItems.length > 0 ? (
+              <ul className="space-y-0.5">
+                {filteredItems.map((item, idx) => {
+                  const isSelected = String(item.id) === value;
+                  const isHighlighted = idx === highlightedIndex;
+
+                  return (
+                    <li
+                      key={item.id}
+                      onClick={() => handleSelectMaster(item)}
+                      onMouseEnter={() => setHighlightedIndex(idx)}
+                      className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 transition ${
+                        isSelected
+                          ? "bg-red-50 text-[#E30613] font-semibold"
+                          : isHighlighted
+                          ? "bg-slate-100 text-slate-900"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                        <div
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                            isSelected ? "bg-[#E30613] text-white" : "bg-slate-100 text-slate-400"
+                          }`}
+                        >
+                          <FontAwesomeIcon icon={faBox} className="h-3 w-3" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-xs font-bold">{item.nama}</p>
+                            {item.kode && (
+                              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold text-slate-600">
+                                {item.kode}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-0.5 flex items-center gap-2 text-[0.68rem] text-slate-400">
+                            {item.divisi?.nama && (
+                              <span className="flex items-center gap-1">
+                                <FontAwesomeIcon icon={faTag} className="h-2.5 w-2.5" />
+                                {item.divisi.nama}
+                              </span>
+                            )}
+                            {item.unit && <span>• {item.unit}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <FontAwesomeIcon icon={faCheck} className="h-3.5 w-3.5 shrink-0 text-[#E30613]" />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="p-3 text-center text-xs text-slate-400">
+                Tidak ada barang katalog yang sesuai.
+              </div>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

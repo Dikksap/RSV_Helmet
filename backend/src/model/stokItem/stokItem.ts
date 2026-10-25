@@ -7,6 +7,7 @@ export type StokMutasiInput = {
   jumlah: number;
   sumberPermintaanItemId?: number | null;
   sumberOpnameBarisId?: number | null;
+  sumberHasilProduksiItemId?: number | null;
   keterangan?: string | null;
   userId?: number | null;
   tanggal?: Date;
@@ -100,6 +101,7 @@ export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasi
       jumlah: input.jumlah,
       sumberPermintaanItemId: input.sumberPermintaanItemId ?? null,
       sumberOpnameBarisId: input.sumberOpnameBarisId ?? null,
+      sumberHasilProduksiItemId: input.sumberHasilProduksiItemId ?? null,
       keterangan: input.keterangan ?? null,
       userId: input.userId ?? null,
       ...(input.tanggal ? { tanggal: input.tanggal } : {}),

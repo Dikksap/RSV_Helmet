@@ -1,16 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSpinner, faXmark } from "@fortawesome/free-solid-svg-icons";
 
 import {
+  pesanKesalahanPermintaan,
   petakanItemPermintaan,
   setApprovalPermintaan,
   type KeputusanItemInput,
   type PermintaanBarangRecord,
   type PermintaanItemRecord,
 } from "../../../api/permintaanBarang";
+import { getUser, hasPermission } from "../../../api/auth";
 import { getSaldoBulk } from "../../../api/stokItem";
 import { createItem, getItems, type Item } from "../../../api/item";
+import {
+  bolehApprove,
+  masalahApprove,
+  type ApprovalActor,
+} from "./approval";
 
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/60";
@@ -44,6 +51,15 @@ export default function KeputusanApprovalModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const submitLock = useRef(false);
+  const aktor = useMemo<ApprovalActor>(() => {
+    const user = getUser();
+    return {
+      isAdmin: user?.role === "admin",
+      punyaKelolaItem: hasPermission("KELOLA_ITEM"),
+      divisiId: user?.divisiId ?? null,
+    };
+  }, []);
 
   const muatSaldo = async (items: PermintaanItemRecord[]) => {
     const ids = [...new Set(items.map((it) => it.itemId).filter((x): x is number => x != null))];
@@ -124,7 +140,7 @@ export default function KeputusanApprovalModal({
         prev.map((x, i) => (i === index ? { item: updated, saldo: s, maks, nilai: String(maks), error: null } : x)),
       );
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Gagal memetakan item.");
+      setSubmitError(pesanKesalahanPermintaan(e));
     } finally {
       setMapping(index, { busy: false });
     }
@@ -148,21 +164,41 @@ export default function KeputusanApprovalModal({
         prev.map((x, i) => (i === index ? { item: updated, saldo: 0, maks: 0, nilai: "0", error: null } : x)),
       );
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Gagal membuat item master.");
+      setSubmitError(pesanKesalahanPermintaan(e));
     } finally {
       setMapping(index, { busy: false });
     }
   };
 
-  const tanpaMaster = rows.filter((r) => r.item.itemId == null).length;
   const adaError = useMemo(() => rows.some((r) => r.error !== null), [rows]);
   const adaDisetujui = useMemo(
     () => rows.some((r) => r.error === null && Number(r.nilai) > 0),
     [rows],
   );
-  const blokir = tanpaMaster > 0 || loading || adaError || saving;
+  const masalahMapping = useMemo(
+    () =>
+      masalahApprove(
+        record,
+        rows.map((row) => row.item),
+        aktor.isAdmin,
+        true,
+      ),
+    [record, rows, aktor.isAdmin],
+  );
+  const tidakBerhak = bolehApprove(record, aktor)
+    ? null
+    : "Anda tidak berhak menyetujui permintaan untuk divisi ini.";
+  const blokir =
+    tidakBerhak !== null ||
+    masalahMapping !== null ||
+    loading ||
+    adaError ||
+    saving;
 
   const setujui = async () => {
+    if (submitLock.current || blokir || !adaDisetujui) return;
+
+    submitLock.current = true;
     setSaving(true);
     setSubmitError(null);
     const items: KeputusanItemInput[] = rows.map((r) => ({
@@ -178,8 +214,9 @@ export default function KeputusanApprovalModal({
           : `Tidak ada item yang disetujui. Permintaan ${record.noPermintaan} tetap belum disetujui.`,
       );
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Gagal menyetujui permintaan.");
+      setSubmitError(pesanKesalahanPermintaan(e));
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   };
@@ -198,6 +235,12 @@ export default function KeputusanApprovalModal({
             <h2 id="keputusan-title" className="font-mono text-base font-bold text-[#1E3A5F]">
               Setujui {record.noPermintaan}
             </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Divisi approver:{" "}
+              <span className="font-semibold text-slate-700">
+                {record.divisiApprover?.nama ?? "Admin (belum ditentukan)"}
+              </span>
+            </p>
             <p className="mt-1 text-xs text-slate-500">
               Atur jumlah yang disetujui per item. Maksimal sesuai stok. Isi 0 untuk menolak item.
             </p>
@@ -222,6 +265,18 @@ export default function KeputusanApprovalModal({
           {loadError && (
             <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
               {loadError}
+            </p>
+          )}
+
+          {tidakBerhak && (
+            <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {tidakBerhak}
+            </p>
+          )}
+
+          {!loading && !loadError && masalahMapping && (
+            <p role="alert" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              {masalahMapping}
             </p>
           )}
 
@@ -349,6 +404,7 @@ export default function KeputusanApprovalModal({
             type="button"
             onClick={() => void setujui()}
             disabled={blokir || !adaDisetujui}
+            title={tidakBerhak ?? masalahMapping ?? undefined}
             className={`inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
           >
             {saving && <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />}

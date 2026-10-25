@@ -1,6 +1,6 @@
 import { authHeaders, redirectToLogin } from "./auth";
 
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
 export interface StokMutasiRecord {
   id: number;
@@ -90,11 +90,18 @@ export async function getRingkasanBulkStok(ids: number[], filter: StokRiwayatFil
   return hasil;
 }
 
-export const getSaldoBulk = (ids: number[]) =>
-  request<{ saldo: Record<number, number> }>("/items/stok-saldo", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+export async function getSaldoBulk(ids: number[]): Promise<{ saldo: Record<number, number> }> {
+  const uniq = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  const saldo: Record<number, number> = {};
+  for (let i = 0; i < uniq.length; i += 200) {
+    const res = await request<{ saldo: Record<number, number> }>("/items/stok-saldo", {
+      method: "POST",
+      body: JSON.stringify({ ids: uniq.slice(i, i + 200) }),
+    });
+    Object.assign(saldo, res.saldo);
+  }
+  return { saldo };
+}
 
 export const tambahStokItem = (id: number, body: { jumlah: number; keterangan?: string; tanggal?: string }) =>
   request<{ mutasi: StokMutasiRecord; saldo: number }>(`/items/${id}/stok`, {

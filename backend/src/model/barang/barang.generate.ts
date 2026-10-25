@@ -1,5 +1,4 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
-import { clearBarangCache } from "../../lib/barangCache.js";
 
 export type GenerateBarangResult = {
   totalDibuat: number;
@@ -61,16 +60,9 @@ async function getOrCreateActiveBatch(tx: TxClient): Promise<{
 
   if (batch) return batch;
 
-  // Tidak ada batch AKTIF (mis. semua SELESAI): lanjutkan nomor tertinggi,
-  // bukan hardcode 1 yang menabrak unique constraint.
-  const maxRow = await tx.productionBatch.findFirst({
-    orderBy: { nomorBatch: "desc" },
-    select: { nomorBatch: true },
-  });
-
   return tx.productionBatch.create({
     data: {
-      nomorBatch: (maxRow?.nomorBatch ?? 0) + 1,
+      nomorBatch: 1,
       totalProduksi: 0,
       kapasitas: BATCH_KAPASITAS,
       status: "AKTIF",
@@ -147,6 +139,110 @@ async function allocateNomorUrut(
   return mulai;
 }
 
+export async function generateBarangBulkInTransaction(
+  tx: TxClient,
+  variantId: number,
+  jumlah: number,
+  today = new Date(),
+): Promise<GenerateBarangResult> {
+  if (jumlah < 1 || jumlah > 50000) {
+    throw new Error("Jumlah harus antara 1 dan 50000");
+  }
+
+  const variant = await tx.productVariant.findUnique({
+    where: { id: variantId },
+    select: { id: true, kodeVariant: true },
+  });
+  if (!variant) {
+    throw new Error("Variant tidak ditemukan");
+  }
+
+  const dateOnly = new Date(today);
+  dateOnly.setHours(0, 0, 0, 0);
+  const batchGroups: GenerateBarangResult["batches"] = [];
+  let remaining = jumlah;
+
+  await tx.$executeRaw`SELECT id FROM ProductionBatch WHERE status = 'AKTIF' ORDER BY nomorBatch DESC LIMIT 1 FOR UPDATE`;
+  let batch = await getOrCreateActiveBatch(tx);
+
+  while (remaining > 0) {
+    const sisaBatch = batch.kapasitas - batch.totalProduksi;
+    const jumlahBatchIni = Math.min(remaining, sisaBatch);
+
+    if (jumlahBatchIni <= 0) {
+      batch = await createNextBatch(tx, batch.id, batch.nomorBatch);
+      continue;
+    }
+
+    const mulai = await allocateNomorUrut(tx, batch.id, variantId, dateOnly, jumlahBatchIni);
+    const kodeList = Array.from({ length: jumlahBatchIni }, (_, index) =>
+      generateKodeBarang(batch.nomorBatch, variant.kodeVariant, today, mulai + index),
+    );
+
+    await tx.barang.createMany({
+      data: kodeList.map((kodeBarang) => ({
+        kodeBarang,
+        variantId,
+        batchId: batch.id,
+        tanggal: today,
+        status: "REGISTER",
+      })),
+    });
+
+    const createdRows: CreatedBarangRow[] = await tx.barang.findMany({
+      where: { kodeBarang: { in: kodeList } },
+      select: { id: true, kodeBarang: true },
+    });
+    await tx.riwayatBarang.createMany({
+      data: createdRows.map((row) => ({
+        barangId: row.id,
+        status: "REGISTER",
+        keterangan: "Barang dibuat",
+      })),
+    });
+    await tx.productionBatch.update({
+      where: { id: batch.id },
+      data: { totalProduksi: { increment: jumlahBatchIni } },
+    });
+
+    const newTotal = batch.totalProduksi + jumlahBatchIni;
+    if (newTotal >= batch.kapasitas) {
+      await tx.productionBatch.update({
+        where: { id: batch.id },
+        data: { status: "SELESAI" },
+      });
+    }
+    batchGroups.push({
+      kodeBatch: `BC${String(batch.nomorBatch).padStart(3, "0")}`,
+      batchId: batch.id,
+      jumlah: jumlahBatchIni,
+      barang: createdRows,
+    });
+    remaining -= jumlahBatchIni;
+
+    if (remaining > 0) {
+      if (newTotal >= batch.kapasitas) {
+        batch = await tx.productionBatch.create({
+          data: {
+            nomorBatch: batch.nomorBatch + 1,
+            totalProduksi: 0,
+            kapasitas: BATCH_KAPASITAS,
+            status: "AKTIF",
+          },
+          select: { id: true, nomorBatch: true, totalProduksi: true, kapasitas: true },
+        });
+      } else {
+        batch = await tx.productionBatch.findUniqueOrThrow({
+          where: { id: batch.id },
+          select: { id: true, nomorBatch: true, totalProduksi: true, kapasitas: true },
+        });
+      }
+    }
+  }
+
+  return { totalDibuat: jumlah, batches: batchGroups };
+}
+
 export async function generateBarangBulk(
   variantId: number,
   jumlah: number,
@@ -155,141 +251,13 @@ export async function generateBarangBulk(
     throw new Error("Jumlah harus antara 1 dan 50000");
   }
 
-  const variant = await prisma.productVariant.findUnique({
-    where: { id: variantId },
-    select: { id: true, kodeVariant: true },
-  });
-
-  if (!variant) {
-    throw new Error("Variant tidak ditemukan");
-  }
-
   const today = new Date();
-  const dateOnly = new Date(today);
-  dateOnly.setHours(0, 0, 0, 0);
   const MAX_RETRIES = 5;
-
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const result = await prisma.$transaction(async (tx: TxClient) => {        const batchGroups: GenerateBarangResult["batches"] = [];
-        let remaining = jumlah;
-
-        await tx.$executeRaw`SELECT id FROM ProductionBatch WHERE status = 'AKTIF' ORDER BY nomorBatch DESC LIMIT 1 FOR UPDATE`;
-
-        let batch = await getOrCreateActiveBatch(tx);
-
-        while (remaining > 0) {
-          const sisaBatch = batch.kapasitas - batch.totalProduksi;
-          const jumlahBatchIni = Math.min(remaining, sisaBatch);
-
-          if (jumlahBatchIni <= 0) {
-            batch = await createNextBatch(tx, batch.id, batch.nomorBatch);
-            continue;
-          }
-
-          const mulai = await allocateNomorUrut(
-            tx,
-            batch.id,
-            variantId,
-            dateOnly,
-            jumlahBatchIni,
-          );
-          const kodeList: string[] = [];
-
-          for (let n = 0; n < jumlahBatchIni; n++) {
-            kodeList.push(
-              generateKodeBarang(
-                batch.nomorBatch,
-                variant.kodeVariant,
-                today,
-                mulai + n,
-              ),
-            );
-          }
-
-          await tx.barang.createMany({
-            data: kodeList.map((kodeBarang) => ({
-              kodeBarang,
-              variantId,
-              batchId: batch.id,
-              tanggal: today,
-              status: "REGISTER",
-            })),
-          });
-
-          const createdRows: CreatedBarangRow[] = await tx.barang.findMany({
-            where: { kodeBarang: { in: kodeList } },
-            select: { id: true, kodeBarang: true },
-          });
-
-          await tx.riwayatBarang.createMany({
-            data: createdRows.map((row) => ({
-              barangId: row.id,
-              status: "REGISTER",
-              keterangan: "Barang dibuat",
-            })),
-          });
-
-          await tx.productionBatch.update({
-            where: { id: batch.id },
-            data: { totalProduksi: { increment: jumlahBatchIni } },
-          });
-
-          const newTotal = batch.totalProduksi + jumlahBatchIni;
-          if (newTotal >= batch.kapasitas) {
-            await tx.productionBatch.update({
-              where: { id: batch.id },
-              data: { status: "SELESAI" },
-            });
-          }
-
-          batchGroups.push({
-            kodeBatch: `BC${String(batch.nomorBatch).padStart(3, "0")}`,
-            batchId: batch.id,
-            jumlah: jumlahBatchIni,
-            barang: createdRows,
-          });
-
-          remaining -= jumlahBatchIni;
-
-          if (remaining > 0) {
-            if (newTotal >= batch.kapasitas) {
-              batch = await tx.productionBatch.create({
-                data: {
-                  nomorBatch: batch.nomorBatch + 1,
-                  totalProduksi: 0,
-                  kapasitas: BATCH_KAPASITAS,
-                  status: "AKTIF",
-                },
-                select: {
-                  id: true,
-                  nomorBatch: true,
-                  totalProduksi: true,
-                  kapasitas: true,
-                },
-              });
-            } else {
-              batch = await tx.productionBatch.findUniqueOrThrow({
-                where: { id: batch.id },
-                select: {
-                  id: true,
-                  nomorBatch: true,
-                  totalProduksi: true,
-                  kapasitas: true,
-                },
-              });
-            }
-          }
-        }
-
-        return {
-          totalDibuat: jumlah,
-          batches: batchGroups,
-        } satisfies GenerateBarangResult;
-      });
-
-      await clearBarangCache();
-      return result;
+      return await prisma.$transaction((tx: TxClient) =>
+        generateBarangBulkInTransaction(tx, variantId, jumlah, today),
+      );
     } catch (error: unknown) {
       if (isRetryableTxError(error) && attempt < MAX_RETRIES - 1) {
         await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
@@ -298,7 +266,6 @@ export async function generateBarangBulk(
       throw error;
     }
   }
-
   throw new Error("Gagal generate barang setelah beberapa percobaan");
 }
 
@@ -335,16 +302,9 @@ export async function getGenerateInfo(variantId: number): Promise<{
   });
 
   if (!batch) {
-    // Tanpa batch AKTIF, generate akan membuka nomor tertinggi + 1 —
-    // tampilkan itu agar preview sama dengan kode yang nanti dibuat.
-    const maxRow = await prisma.productionBatch.findFirst({
-      orderBy: { nomorBatch: "desc" },
-      select: { nomorBatch: true },
-    });
-    const nextNomor = (maxRow?.nomorBatch ?? 0) + 1;
     batch = {
       id: 0,
-      nomorBatch: nextNomor,
+      nomorBatch: 1,
       totalProduksi: 0,
       kapasitas: BATCH_KAPASITAS,
     };

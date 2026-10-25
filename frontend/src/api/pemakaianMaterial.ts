@@ -1,6 +1,6 @@
 import { authHeaders, redirectToLogin } from "./auth";
 
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
 export type StatusPemakaianMaterial = "DRAFT" | "DICATAT" | "DIVERIFIKASI";
 
@@ -95,6 +95,7 @@ export interface StokDivisiMaterial {
   jenis: string | null;
   satuan: string | null;
   diterima: number;
+  masuk: number;
   dipakai: number;
   sisa: number;
 }
@@ -103,6 +104,33 @@ export interface StokDivisiRecord {
   divisiId: number;
   divisiNama: string;
   materials: StokDivisiMaterial[];
+}
+
+export const PEMAKAIAN_DIPAKAI_PRODUKSI = "PEMAKAIAN_DIPAKAI_PRODUKSI";
+
+export class PemakaianMaterialApiError extends Error {
+  readonly status: number;
+  readonly kode?: string;
+
+  constructor(message: string, status: number, kode?: string) {
+    super(message);
+    this.name = "PemakaianMaterialApiError";
+    this.status = status;
+    this.kode = kode;
+  }
+}
+
+export function pesanKesalahanPemakaian(error: unknown, fallback: string): string {
+  if (!(error instanceof PemakaianMaterialApiError)) {
+    return error instanceof Error ? error.message : fallback;
+  }
+  if (error.kode === PEMAKAIAN_DIPAKAI_PRODUKSI) {
+    return `${error.message} (409)`;
+  }
+  if (error.status === 409) {
+    return `Konflik data (409): ${error.message}`;
+  }
+  return error.message;
 }
 
 function toSearchParams(params: PemakaianListParams) {
@@ -130,8 +158,15 @@ async function authRequest<T>(path: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     if (response.status === 401) redirectToLogin();
-    const data = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(data?.message || `Request failed: ${response.status}`);
+    const data = (await response.json().catch(() => null)) as {
+      message?: string;
+      kode?: string;
+    } | null;
+    throw new PemakaianMaterialApiError(
+      data?.message || `Request failed: ${response.status}`,
+      response.status,
+      data?.kode,
+    );
   }
 
   const text = await response.text();
@@ -149,8 +184,8 @@ export async function getPemakaianMaterial(id: number): Promise<PemakaianMateria
   return authRequest<PemakaianMaterialRecord>(`/pemakaian-material/${id}`);
 }
 
-// Rentang tanggal opsional: Diterima = stok awal periode, Dipakai = total periode,
-// Sisa = saldo catatan terakhir dalam periode.
+// Rentang tanggal opsional: Diterima = saldo WIP awal periode, Masuk/Keluar = mutasi
+// periode, Sisa = saldo WIP akhir periode.
 export async function getStokDivisi(
   params: { dari?: string; sampai?: string } = {},
 ): Promise<StokDivisiRecord[]> {

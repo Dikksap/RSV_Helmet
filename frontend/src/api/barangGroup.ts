@@ -1,7 +1,7 @@
 import type { StatusBarang } from "./barang";
 import { authHeaders } from "./auth";
 
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
 export interface BarangGroup {
   id: number;

@@ -154,6 +154,8 @@ describe("POST /api/auth/login", () => {
       name: "Admin",
       email: "admin@example.com",
       role: "admin",
+      divisiId: null,
+      divisi: null,
     });
     expect(res.body.user.password).toBeUndefined();
 
@@ -165,6 +167,22 @@ describe("POST /api/auth/login", () => {
     expect(payload.email).toBe("admin@example.com");
     expect(payload.name).toBe("Admin");
     expect(payload.role).toBe("admin");
+  });
+
+  it("200 menyertakan divisi user", async () => {
+    mockedFindUserByEmail.mockResolvedValue({
+      ...seedUser,
+      divisiId: 1,
+      divisi: { id: 1, nama: "Buffing" },
+    });
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "admin@example.com", password: "admin123" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.divisiId).toBe(1);
+    expect(res.body.user.divisi).toEqual({ id: 1, nama: "Buffing" });
   });
 });
 
@@ -476,10 +494,35 @@ describe("GET /api/auth/me", () => {
     const token = signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
     const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id: 1, name: "Admin", email: "admin@example.com", role: "admin" });
+    expect(res.body.user).toEqual({
+      id: 1,
+      name: "Admin",
+      email: "admin@example.com",
+      role: "admin",
+      divisiId: null,
+      divisi: null,
+    });
     expect(res.body.permissions).toEqual(["BARANG_LIHAT", "ROLE_KELOLA"]);
     expect(res.body.statusView).toBeNull();
     expect(typeof res.body.exp).toBe("number");
+  });
+
+  it("200 menyertakan divisi dari database", async () => {
+    mockedGetUserById.mockResolvedValue({
+      id: 1,
+      name: "Admin",
+      email: "admin@example.com",
+      role: "admin",
+      divisiId: 2,
+      divisi: { id: 2, nama: "Base Coat" },
+      createdAt: seedUser.createdAt,
+      updatedAt: seedUser.updatedAt,
+    });
+    const token = signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
+    const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.user.divisiId).toBe(2);
+    expect(res.body.user.divisi).toEqual({ id: 2, nama: "Base Coat" });
   });
 
   it("401 jika akun sudah dihapus", async () => {

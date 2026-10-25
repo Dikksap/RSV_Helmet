@@ -2,15 +2,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
-vi.mock("../src/model/user/user.js", () => ({
-  getAllUsers: vi.fn(),
-  getUserById: vi.fn(),
-  createUser: vi.fn(),
-  updateUser: vi.fn(),
-  deleteUser: vi.fn(),
-  findUserByEmail: vi.fn(),
-  getUserRole: vi.fn(),
-}));
+vi.mock("../src/model/user/user.js", () => {
+  class UserError extends Error {
+    readonly code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.name = "UserError";
+      this.code = code;
+    }
+  }
+  return {
+    getAllUsers: vi.fn(),
+    getUserById: vi.fn(),
+    createUser: vi.fn(),
+    updateUser: vi.fn(),
+    deleteUser: vi.fn(),
+    findUserByEmail: vi.fn(),
+    getUserRole: vi.fn(),
+    DIVISI_TIDAK_DITEMUKAN: "DIVISI_TIDAK_DITEMUKAN",
+    UserError,
+  };
+});
 
 vi.mock("../src/model/role/role.js", () => ({
   getRoleKodes: vi.fn().mockResolvedValue(["admin", "user", "gudang", "produksi", "qc"]),
@@ -31,6 +43,8 @@ import {
   updateUser,
   deleteUser,
   getUserRole,
+  DIVISI_TIDAK_DITEMUKAN,
+  UserError,
 } from "../src/model/user/user.js";
 import { signToken } from "../src/lib/jwt.js";
 
@@ -53,6 +67,8 @@ const sampleUser = {
   name: "Budi",
   email: "budi@example.com",
   role: "user",
+  divisiId: null,
+  divisi: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -171,6 +187,40 @@ describe("POST /api/users", () => {
     );
   });
 
+  it("201 sukses dengan divisiId", async () => {
+    mockedCreate.mockResolvedValue({ ...sampleUser, divisiId: 1, divisi: { id: 1, nama: "Buffing" } } as any);
+    const res = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Budi", email: "budi@example.com", password: "rahasia1", divisiId: 1 });
+    expect(res.status).toBe(201);
+    expect(res.body.divisi).toEqual({ id: 1, nama: "Buffing" });
+    expect(mockedCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ divisiId: 1 }),
+    );
+  });
+
+  it("400 divisiId bukan bilangan bulat positif", async () => {
+    for (const divisiId of [0, -1, 1.5, "abc", true]) {
+      const res = await request(app)
+        .post("/api/users")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ name: "Budi", email: "budi@example.com", password: "rahasia1", divisiId });
+      expect(res.status).toBe(400);
+    }
+    expect(mockedCreate).not.toHaveBeenCalled();
+  });
+
+  it("404 divisi tidak ditemukan", async () => {
+    mockedCreate.mockRejectedValue(new UserError(DIVISI_TIDAK_DITEMUKAN, "Divisi tidak ditemukan"));
+    const res = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Budi", email: "budi@example.com", password: "rahasia1", divisiId: 99 });
+    expect(res.status).toBe(404);
+    expect(res.body.kode).toBe(DIVISI_TIDAK_DITEMUKAN);
+  });
+
   it("409 email duplikat", async () => {
     mockedCreate.mockRejectedValue({ code: "P2002" });
     const res = await request(app)
@@ -217,6 +267,48 @@ describe("PUT /api/users/:id", () => {
       .send({ role: "gudang" });
     expect(res.status).toBe(200);
     expect(mockedUpdate).toHaveBeenCalledWith(2, { role: "gudang" });
+  });
+
+  it("200 update divisiId", async () => {
+    mockedUpdate.mockResolvedValue({ ...sampleUser, divisiId: 1, divisi: { id: 1, nama: "Buffing" } } as any);
+    const res = await request(app)
+      .put("/api/users/2")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ divisiId: 1 });
+    expect(res.status).toBe(200);
+    expect(res.body.divisiId).toBe(1);
+    expect(mockedUpdate).toHaveBeenCalledWith(2, { divisiId: 1 });
+  });
+
+  it("200 divisiId null melepas divisi dan dihitung sebagai field", async () => {
+    mockedUpdate.mockResolvedValue(sampleUser as any);
+    const res = await request(app)
+      .put("/api/users/2")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ divisiId: null });
+    expect(res.status).toBe(200);
+    expect(mockedUpdate).toHaveBeenCalledWith(2, { divisiId: null });
+  });
+
+  it("400 divisiId tidak valid", async () => {
+    for (const divisiId of [0, -1, 1.5, "abc"]) {
+      const res = await request(app)
+        .put("/api/users/2")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ divisiId });
+      expect(res.status).toBe(400);
+    }
+    expect(mockedUpdate).not.toHaveBeenCalled();
+  });
+
+  it("404 divisi tidak ditemukan", async () => {
+    mockedUpdate.mockRejectedValue(new UserError(DIVISI_TIDAK_DITEMUKAN, "Divisi tidak ditemukan"));
+    const res = await request(app)
+      .put("/api/users/2")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ divisiId: 99 });
+    expect(res.status).toBe(404);
+    expect(res.body.kode).toBe(DIVISI_TIDAK_DITEMUKAN);
   });
 });
 

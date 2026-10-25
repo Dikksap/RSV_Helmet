@@ -24,10 +24,66 @@ vi.mock("../src/model/permintaanBarang/permintaanBarang.js", () => {
         this.name = "KeputusanItemError";
       }
     }
+    class PermintaanOtomatisError extends Error {
+      readonly code = "PERMINTAAN_OTOMATIS";
+      constructor() {
+        super("Permintaan otomatis hasil produksi tidak dapat diubah.");
+        this.name = "PermintaanOtomatisError";
+      }
+    }
+    class DivisiApprovalError extends Error {
+      readonly code = "DIVISI_TIDAK_BERHAK";
+      constructor(message = "Anda tidak berhak menyetujui permintaan untuk divisi ini.") {
+        super(message);
+        this.name = "DivisiApprovalError";
+      }
+    }
+    class ItemDivisiError extends Error {
+      readonly code = "ITEM_DIVISI_TIDAK_COCOK";
+      constructor(namaItem: string) {
+        super(`Item "${namaItem}" tidak berasal dari divisi approver permintaan ini.`);
+        this.name = "ItemDivisiError";
+      }
+    }
+    class DivisiPemintaError extends Error {
+      readonly code = "DIVISI_PEMINTA_TIDAK_DITEMUKAN";
+      constructor() {
+        super("Divisi peminta tidak ditemukan; approval tidak dapat membuat WIP.");
+        this.name = "DivisiPemintaError";
+      }
+    }
+    class PemakaianDipakaiProduksiError extends Error {
+      readonly code = "PEMAKAIAN_DIPAKAI_PRODUKSI";
+      constructor() {
+        super("Pemakaian material sudah dipakai produksi, approval tidak dapat dibatalkan.");
+        this.name = "PemakaianDipakaiProduksiError";
+      }
+    }
+    class PemakaianSudahTransferError extends Error {
+      readonly code = "PEMAKAIAN_SUDAH_TRANSFER";
+      constructor() {
+        super("Pemakaian material sudah dipakai transfer WIP, approval tidak dapat dibatalkan.");
+        this.name = "PemakaianSudahTransferError";
+      }
+    }
+    class ItemSmGunakanWipError extends Error {
+      readonly code = "ITEM_SM_GUNAKAN_WIP";
+      constructor(readonly items: { kode: string; nama: string }[]) {
+        super("Item SM tidak dapat diminta lewat gudang; gunakan Transfer WIP dari divisi pemilik.");
+        this.name = "ItemSmGunakanWipError";
+      }
+    }
   return {
     PermintaanTerkunciError,
     ItemTanpaMasterError,
     KeputusanItemError,
+    PermintaanOtomatisError,
+    DivisiApprovalError,
+    ItemDivisiError,
+    DivisiPemintaError,
+    PemakaianDipakaiProduksiError,
+    PemakaianSudahTransferError,
+    ItemSmGunakanWipError,
     createPermintaan: vi.fn(),
     listPermintaan: vi.fn(),
     getPermintaanById: vi.fn(),
@@ -38,10 +94,16 @@ vi.mock("../src/model/permintaanBarang/permintaanBarang.js", () => {
   };
 });
 
-let currentAccess: { role: string; permissions: string[]; statusView: null } = {
+let currentAccess: {
+  role: string;
+  permissions: string[];
+  statusView: null;
+  divisiId: number | null;
+} = {
   role: "user",
   permissions: ["KELOLA_ITEM"],
   statusView: null,
+  divisiId: 3,
 };
 
 vi.mock("../src/middleware/auth.js", async (importOriginal) => {
@@ -58,8 +120,8 @@ vi.mock("../src/middleware/auth.js", async (importOriginal) => {
   };
 });
 
-const setAccess = (permissions: string[]) => {
-  currentAccess = { role: "user", permissions, statusView: null };
+const setAccess = (permissions: string[], divisiId: number | null = 3) => {
+  currentAccess = { role: "user", permissions, statusView: null, divisiId };
 };
 
 import permintaanBarangRouter from "../src/routes/permintaan-barang.js";
@@ -74,6 +136,11 @@ import {
   PermintaanTerkunciError,
   ItemTanpaMasterError,
   KeputusanItemError,
+  PermintaanOtomatisError,
+  DivisiApprovalError,
+  ItemDivisiError,
+  DivisiPemintaError,
+  PemakaianDipakaiProduksiError,
 } from "../src/model/permintaanBarang/permintaanBarang.js";
 
 const mocked = {
@@ -101,6 +168,9 @@ const record = (over: Record<string, unknown> = {}) => ({
   tanggalDibutuhkan: null,
   alasan: "Kebutuhan lini",
   approval: "BELUM_DISETUJUI",
+  divisiPemintaId: 2,
+  divisiApproverId: 3,
+  sumber: "MANUAL",
   createdAt: new Date("2026-10-06T03:00:00"),
   updatedAt: new Date("2026-10-06T03:00:00"),
   items: [{ id: 1, permintaanId: 1, nama: "Kertas A4", spesifikasi: "80gsm", jumlah: 5, satuan: "rim", createdAt: new Date(), updatedAt: new Date() }],
@@ -167,6 +237,22 @@ describe("GET /api/permintaan-barang", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.meta.total).toBe(1);
+    expect(mocked.listPermintaan).toHaveBeenCalledWith(
+      expect.objectContaining({ divisiApproverId: 3 }),
+    );
+  });
+
+  it("non-admin menolak filter divisi approver lain", async () => {
+    const res = await request(app).get("/api/permintaan-barang?divisiApproverId=4");
+    expect(res.status).toBe(403);
+    expect(mocked.listPermintaan).not.toHaveBeenCalled();
+  });
+
+  it("non-admin tanpa divisi ditolak", async () => {
+    setAccess(["KELOLA_ITEM"], null);
+    const res = await request(app).get("/api/permintaan-barang");
+    expect(res.status).toBe(403);
+    expect(mocked.listPermintaan).not.toHaveBeenCalled();
   });
 
   it("filter approval diteruskan ke model", async () => {
@@ -178,6 +264,28 @@ describe("GET /api/permintaan-barang", () => {
   it("400 jika approval tidak valid", async () => {
     const res = await request(app).get("/api/permintaan-barang?approval=SALAH");
     expect(res.status).toBe(400);
+  });
+
+  it("filter divisi dan sumber diteruskan ke model", async () => {
+    mocked.listPermintaan.mockResolvedValue({ data: [], meta: { page: 1, limit: 20, total: 0, totalPages: 1 } } as never);
+    const res = await request(app).get(
+      "/api/permintaan-barang?divisiPemintaId=2&divisiApproverId=3&sumber=HASIL_PRODUKSI",
+    );
+    expect(res.status).toBe(200);
+    expect(mocked.listPermintaan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        divisiPemintaId: 2,
+        divisiApproverId: 3,
+        sumber: "HASIL_PRODUKSI",
+      }),
+    );
+  });
+
+  it("400 jika filter divisi bukan integer positif", async () => {
+    const res = await request(app).get("/api/permintaan-barang?divisiApproverId=abc");
+    expect(res.status).toBe(400);
+    const res2 = await request(app).get("/api/permintaan-barang?divisiPemintaId=0");
+    expect(res2.status).toBe(400);
   });
 
   it("rentang dari/sampai diteruskan ke model sebagai Date", async () => {
@@ -208,6 +316,12 @@ describe("GET /api/permintaan-barang/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  it("404 jika divisi approver berbeda", async () => {
+    mocked.getPermintaanById.mockResolvedValue(record({ divisiApproverId: 4 }) as never);
+    const res = await request(app).get("/api/permintaan-barang/1");
+    expect(res.status).toBe(404);
+  });
+
   it("400 jika id bukan angka", async () => {
     const res = await request(app).get("/api/permintaan-barang/abc");
     expect(res.status).toBe(400);
@@ -225,6 +339,13 @@ describe("PUT /api/permintaan-barang/:id", () => {
     mocked.updatePermintaan.mockRejectedValue(new PermintaanTerkunciError());
     const res = await request(app).put("/api/permintaan-barang/1").send(validBody());
     expect(res.status).toBe(409);
+  });
+
+  it("409 untuk request otomatis produksi", async () => {
+    mocked.updatePermintaan.mockRejectedValue(new PermintaanOtomatisError());
+    const res = await request(app).put("/api/permintaan-barang/1").send(validBody());
+    expect(res.status).toBe(409);
+    expect(res.body.kode).toBe("PERMINTAAN_OTOMATIS");
   });
 
   it("404 jika tidak ditemukan", async () => {
@@ -282,6 +403,33 @@ describe("PATCH /api/permintaan-barang/:id/approval", () => {
     expect(res.status).toBe(422);
   });
 
+  it("403 jika user bukan approver divisi", async () => {
+    mocked.setApproval.mockRejectedValue(new DivisiApprovalError());
+    const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "DISETUJUI" });
+    expect(res.status).toBe(403);
+    expect(res.body.kode).toBe("DIVISI_TIDAK_BERHAK");
+  });
+
+  it("409 jika divisi item tidak cocok atau divisi peminta tidak ditemukan", async () => {
+    mocked.setApproval.mockRejectedValue(new ItemDivisiError("Bahan A"));
+    const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "DISETUJUI" });
+    expect(res.status).toBe(409);
+    expect(res.body.kode).toBe("ITEM_DIVISI_TIDAK_COCOK");
+
+    mocked.setApproval.mockRejectedValue(new DivisiPemintaError());
+    const res2 = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "DISETUJUI" });
+    expect(res2.status).toBe(409);
+  });
+
+  it("409 jika pemakaian sudah dipakai produksi saat pembatalan", async () => {
+    mocked.setApproval.mockRejectedValue(new PemakaianDipakaiProduksiError());
+    const res = await request(app)
+      .patch("/api/permintaan-barang/1/approval")
+      .send({ approval: "BELUM_DISETUJUI" });
+    expect(res.status).toBe(409);
+    expect(res.body.kode).toBe("PEMAKAIAN_DIPAKAI_PRODUKSI");
+  });
+
   it("400 jika approval tidak valid", async () => {
     const res = await request(app).patch("/api/permintaan-barang/1/approval").send({ approval: "MAYBE" });
     expect(res.status).toBe(400);
@@ -312,6 +460,17 @@ describe("PATCH /api/permintaan-barang/:id/items/:barangItemId", () => {
     mocked.petakanItemMaster.mockResolvedValue({ error: "NOT_FOUND_MASTER" } as never);
     const res = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 99 });
     expect(res.status).toBe(404);
+  });
+
+  it("409 jika master beda divisi atau request otomatis", async () => {
+    mocked.petakanItemMaster.mockRejectedValue(new ItemDivisiError("Bahan A"));
+    const res = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 3 });
+    expect(res.status).toBe(409);
+    expect(res.body.kode).toBe("ITEM_DIVISI_TIDAK_COCOK");
+
+    mocked.petakanItemMaster.mockRejectedValue(new PermintaanOtomatisError());
+    const res2 = await request(app).patch("/api/permintaan-barang/1/items/7").send({ itemId: 3 });
+    expect(res2.status).toBe(409);
   });
 });
 

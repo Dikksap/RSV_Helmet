@@ -1,14 +1,6 @@
 import { Prisma } from "../../../generated/prisma/client.js";
 import prisma from "../../lib/prisma.js";
-import {
-  BARANG_TTL_STATS,
-  barangScopeKey,
-  barangStatsKey,
-  getBarangCache,
-  setBarangCache,
-} from "../../lib/barangCache.js";
-import { statusScopeFilter, type StatusFilter } from "./barang.status.js";
-
+import { statusScopeFilter, type StatusBarang } from "./barang.status.js";
 
 export type FinishgoodPerBulanRow = {
   bulan: string;
@@ -40,36 +32,34 @@ type BatchDetails = { id: number; nomorBatch: number };
 
 export async function getStatusSummary(statusScope?: string[] | null): Promise<{
   total: number;
-  perStatus: Record<string, number>;
+  perStatus: Record<StatusBarang, number>;
 }> {
-  const cacheKey = barangStatsKey("status-summary", { scope: barangScopeKey(statusScope) });
-  const cached = await getBarangCache<{ total: number; perStatus: Record<string, number> }>(cacheKey);
-  if (cached) return cached;
-
-  const statusFilter = statusScopeFilter(statusScope);
+  const visibleStatus = statusScopeFilter(statusScope);
+  const where = visibleStatus === undefined ? {} : { status: visibleStatus };
   const groups = await prisma.barang.groupBy({
     by: ["status"],
-    where: statusFilter ? { status: statusFilter } : {},
+    where,
     _count: { _all: true },
     orderBy: { status: "asc" },
   });
 
-  const statusRows = await prisma.statusBarang.findMany({ select: { kode: true }, orderBy: { urutan: "asc" } });
-  const visible = new Set<string>(statusScope ?? statusRows.map((s) => s.kode));
-  const perStatus: Record<string, number> = {};
-  for (const s of statusRows) if (visible.has(s.kode)) perStatus[s.kode] = 0;
+  const perStatus: Record<StatusBarang, number> = {
+    REGISTER: 0,
+    FINISHGOOD: 0,
+    RETUR: 0,
+    OUT: 0,
+    BAD: 0,
+  };
 
   let total = 0;
   for (const group of groups) {
-    const status = group.status;
+    const status = group.status as StatusBarang;
     const count = (group._count as { _all: number })._all ?? 0;
     perStatus[status] = count;
     total += count;
   }
 
-  const result = { total, perStatus };
-  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
-  return result;
+  return { total, perStatus };
 }
 
 export async function getBarangStats(filter: {
@@ -77,47 +67,27 @@ export async function getBarangStats(filter: {
   batchId?: number;
 }, statusScope?: string[] | null): Promise<{
   total: number;
-  perStatus: Record<string, number>;
+  perStatus: Record<StatusBarang, number>;
   perVariant: { variantId: number; nama: string; total: number }[];
   perBatch: { batchId: number; nomorBatch: string; total: number }[];
 }> {
-  const cacheKey = barangStatsKey("stats", {
-    ...filter,
-    scope: barangScopeKey(statusScope),
-  });
-  const cachedStats = await getBarangCache<Awaited<ReturnType<typeof getBarangStatsUncached>>>(cacheKey);
-  if (cachedStats) return cachedStats;
-
-  const result = await getBarangStatsUncached(filter, statusScope);
-  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
-  return result;
-}
-
-async function getBarangStatsUncached(filter: {
-  variantId?: number;
-  batchId?: number;
-}, statusScope?: string[] | null): Promise<{
-  total: number;
-  perStatus: Record<string, number>;
-  perVariant: { variantId: number; nama: string; total: number }[];
-  perBatch: { batchId: number; nomorBatch: string; total: number }[];
-}> {
-  const statusFilter = statusScopeFilter(statusScope);
-  const where: { variantId?: number; batchId?: number; status?: StatusFilter } = {};
+  const where: Prisma.BarangWhereInput = {};
   if (filter.variantId !== undefined) where.variantId = filter.variantId;
   if (filter.batchId !== undefined) where.batchId = filter.batchId;
-  if (statusFilter) where.status = statusFilter;
+  const visibleStatus = statusScopeFilter(statusScope);
+  if (visibleStatus !== undefined) where.status = visibleStatus;
 
-  const visibleNonRegister = statusScope?.filter((s) => s !== "REGISTER");
-  const batchWhere: {
-    variantId?: number;
-    batchId?: number;
-    status?: StatusFilter;
-  } = {
-    status: visibleNonRegister ? { in: visibleNonRegister } : { not: "REGISTER" },
+  const batchWhere: Prisma.BarangWhereInput = {
+    AND: [{ status: { not: "REGISTER" } }],
   };
   if (filter.variantId !== undefined) batchWhere.variantId = filter.variantId;
   if (filter.batchId !== undefined) batchWhere.batchId = filter.batchId;
+  if (visibleStatus !== undefined) {
+    batchWhere.AND = [
+      { status: { not: "REGISTER" } },
+      { status: visibleStatus },
+    ];
+  }
 
   const [statusGroups, variantGroups, batchGroups, totalCount] =
     (await prisma.$transaction([
@@ -142,13 +112,17 @@ async function getBarangStatsUncached(filter: {
       prisma.barang.count({ where }),
     ])) as [StatusGroup[], VariantGroup[], BatchGroup[], number];
 
-  const statusRows2 = await prisma.statusBarang.findMany({ select: { kode: true }, orderBy: { urutan: "asc" } });
-  const visible2 = new Set<string>(statusScope ?? statusRows2.map((s) => s.kode));
-  const perStatus: Record<string, number> = {};
-  for (const s of statusRows2) if (visible2.has(s.kode)) perStatus[s.kode] = 0;
+  const perStatus: Record<StatusBarang, number> = {
+    REGISTER: 0,
+    FINISHGOOD: 0,
+    RETUR: 0,
+    OUT: 0,
+    BAD: 0,
+  };
 
   for (const group of statusGroups) {
-    perStatus[group.status] = (group._count as { _all: number })._all ?? 0;
+    perStatus[group.status as StatusBarang] =
+      (group._count as { _all: number })._all ?? 0;
   }
 
   const variantIds = variantGroups.map((group) => group.variantId);
@@ -219,18 +193,6 @@ export async function getFinishgoodPerBulan(
   data: FinishgoodPerBulanRow[];
   meta: { variantId?: number; productId?: number };
 }> {
-  const cacheKey = barangStatsKey("finishgood-per-bulan", {
-    variantId: filter.variantId ?? "",
-    productId: filter.productId ?? "",
-    tanggalAwal: filter.tanggalAwal?.toISOString() ?? "",
-    tanggalAkhir: filter.tanggalAkhir?.toISOString() ?? "",
-  });
-  const cached = await getBarangCache<{
-    data: FinishgoodPerBulanRow[];
-    meta: { variantId?: number; productId?: number };
-  }>(cacheKey);
-  if (cached) return cached;
-
   const where = buildFinishgoodWhere(filter);
 
   const rows = await prisma.$queryRaw<FinishgoodPerBulanRow[]>`
@@ -241,9 +203,7 @@ export async function getFinishgoodPerBulan(
 
   const data = rows.map((row: FinishgoodPerBulanRow) => ({ ...row, jumlah: Number(row.jumlah) }));
 
-  const result = { data, meta: { variantId: filter.variantId, productId: filter.productId } };
-  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
-  return result;
+  return { data, meta: { variantId: filter.variantId, productId: filter.productId } };
 }
 
 // =============================================
@@ -292,21 +252,6 @@ export async function getBatchRentangTanggal(
   selesai: BatchRentangRow[];
   aktif: BatchRentangRow[];
 }> {
-  const cacheKey = barangStatsKey("batch-rentang", {
-    tanggalAwal: filter.tanggalAwal?.toISOString() ?? "",
-    tanggalAkhir: filter.tanggalAkhir?.toISOString() ?? "",
-  });
-  const cached = await getBarangCache<{
-    selesai: BatchRentangRow[];
-    aktif: BatchRentangRow[];
-  }>(cacheKey);
-  if (cached) {
-    return {
-      selesai: cached.selesai.map((r) => ({ ...r, tanggalMulai: r.tanggalMulai ? new Date(r.tanggalMulai) : null, tanggalSelesai: r.tanggalSelesai ? new Date(r.tanggalSelesai) : null })),
-      aktif: cached.aktif.map((r) => ({ ...r, tanggalMulai: r.tanggalMulai ? new Date(r.tanggalMulai) : null, tanggalSelesai: r.tanggalSelesai ? new Date(r.tanggalSelesai) : null })),
-    };
-  }
-
   const [selesaiRows, aktifRows] = await prisma.$transaction([
     prisma.$queryRaw<BatchRentangRawRow[]>`
       SELECT v.batchId, v.nomorBatch, v.jumlahNonRegister, v.tanggalMulai, v.tanggalSelesai
@@ -335,7 +280,5 @@ export async function getBatchRentangTanggal(
   const selesai = selesaiRows.map((row: BatchRentangRawRow) => mapRow(row, row.tanggalSelesai));
   const aktif = aktifRows.map((row: BatchRentangRawRow) => mapRow(row, new Date()));
 
-  const result = { selesai, aktif };
-  await setBarangCache(cacheKey, result, BARANG_TTL_STATS);
-  return result;
+  return { selesai, aktif };
 }

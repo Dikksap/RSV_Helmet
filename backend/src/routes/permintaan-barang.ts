@@ -17,8 +17,8 @@ router.post("/", createPermintaanHandler);
 
 router.use(authenticate);
 
-router.get("/", listPermintaanHandler);
-router.get("/:id", getPermintaanHandler);
+router.get("/", authorize, listPermintaanHandler);
+router.get("/:id", authorize, getPermintaanHandler);
 router.put("/:id", adminOnly, updatePermintaanHandler);
 router.patch("/:id/approval", authorize, requirePermission("KELOLA_ITEM"), setApprovalHandler);
 router.patch("/:id/items/:barangItemId", authorize, requirePermission("KELOLA_ITEM"), petakanItemHandler);

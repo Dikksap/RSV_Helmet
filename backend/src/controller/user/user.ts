@@ -5,6 +5,8 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  DIVISI_TIDAK_DITEMUKAN,
+  UserError,
 } from "../../model/user/user.js";
 import { getRoleKodes } from "../../model/role/role.js";
 
@@ -25,6 +27,20 @@ async function normalizeRole(role: unknown): Promise<{ role: string } | { error:
 function parseId(raw: string) {
   const id = Number(raw);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function parseDivisiId(value: unknown): { value: number | null } | { error: string } {
+  if (value === null) return { value: null };
+  const angka =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : NaN;
+  if (!Number.isInteger(angka) || angka <= 0) {
+    return { error: "Field 'divisiId' harus angka bulat positif atau null" };
+  }
+  return { value: angka };
 }
 
 // GET /api/users
@@ -54,14 +70,32 @@ export async function getUserDetail(req: Request, res: Response) {
   }
 }
 
-async function validateCreate(body: any): Promise<{ error: string } | { data: { name: string; email: string; password: string; role: string } }> {
-  const { name, email, password, role } = body ?? {};
+async function validateCreate(
+  body: any,
+): Promise<
+  { error: string } | { data: { name: string; email: string; password: string; role: string; divisiId?: number | null } }
+> {
+  const { name, email, password, role, divisiId } = body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) return { error: "Field 'name' wajib diisi" };
   if (!email || typeof email !== "string" || !email.trim()) return { error: "Field 'email' wajib diisi" };
   if (!password || typeof password !== "string" || password.length < 6) return { error: "Field 'password' wajib diisi minimal 6 karakter" };
   const resolved = role === undefined ? { role: DEFAULT_ROLE } : await normalizeRole(role);
   if ("error" in resolved) return resolved;
-  return { data: { name: name.trim(), email: email.trim(), password, role: resolved.role } };
+  let divisiValue: number | null | undefined;
+  if (divisiId !== undefined) {
+    const parsed = parseDivisiId(divisiId);
+    if ("error" in parsed) return parsed;
+    divisiValue = parsed.value;
+  }
+  return {
+    data: {
+      name: name.trim(),
+      email: email.trim(),
+      password,
+      role: resolved.role,
+      ...(divisiValue !== undefined ? { divisiId: divisiValue } : {}),
+    },
+  };
 }
 
 // POST /api/users
@@ -74,6 +108,10 @@ export async function createUserHandler(req: Request, res: Response) {
     const user = await createUser(parsed.data);
     res.status(201).json(user);
   } catch (error: any) {
+    if (error instanceof UserError) {
+      const status = error.code === DIVISI_TIDAK_DITEMUKAN ? 404 : 400;
+      return res.status(status).json({ message: error.message, kode: error.code });
+    }
     if (error?.code === "P2002") {
       return res.status(409).json({ message: "Email sudah terdaftar" });
     }
@@ -88,9 +126,15 @@ export async function updateUserHandler(req: Request, res: Response) {
     if (!id) {
       return res.status(400).json({ message: "ID harus angka bulat positif" });
     }
-    const { name, email, password, role } = req.body ?? {};
-    if (name === undefined && email === undefined && password === undefined && role === undefined) {
-      return res.status(400).json({ message: "Minimal satu field: name, email, password, role" });
+    const { name, email, password, role, divisiId } = req.body ?? {};
+    if (
+      name === undefined &&
+      email === undefined &&
+      password === undefined &&
+      role === undefined &&
+      divisiId === undefined
+    ) {
+      return res.status(400).json({ message: "Minimal satu field: name, email, password, role, divisiId" });
     }
     if (name !== undefined && (typeof name !== "string" || !name.trim())) return res.status(400).json({ message: "Field 'name' tidak valid" });
     if (email !== undefined && (typeof email !== "string" || !email.trim())) return res.status(400).json({ message: "Field 'email' tidak valid" });
@@ -101,14 +145,25 @@ export async function updateUserHandler(req: Request, res: Response) {
       if ("error" in resolved) return res.status(400).json({ message: resolved.error });
       roleValue = resolved.role;
     }
+    let divisiValue: number | null | undefined;
+    if (divisiId !== undefined) {
+      const parsed = parseDivisiId(divisiId);
+      if ("error" in parsed) return res.status(400).json({ message: parsed.error });
+      divisiValue = parsed.value;
+    }
     const user = await updateUser(id, {
       ...(name !== undefined ? { name: name.trim() } : {}),
       ...(email !== undefined ? { email: email.trim() } : {}),
       ...(password !== undefined ? { password } : {}),
       ...(roleValue !== undefined ? { role: roleValue } : {}),
+      ...(divisiValue !== undefined ? { divisiId: divisiValue } : {}),
     });
     res.status(200).json(user);
   } catch (error: any) {
+    if (error instanceof UserError) {
+      const status = error.code === DIVISI_TIDAK_DITEMUKAN ? 404 : 400;
+      return res.status(status).json({ message: error.message, kode: error.code });
+    }
     if (error?.code === "P2002") {
       return res.status(409).json({ message: "Email sudah terdaftar" });
     }

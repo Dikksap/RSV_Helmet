@@ -13,6 +13,9 @@ import {
   DIVISI_TIDAK_DITEMUKAN,
   ITEM_PERMINTAAN_TIDAK_VALID,
   PEMAKAIAN_DUPLIKAT_ITEM,
+  PEMAKAIAN_DIPAKAI_PRODUKSI,
+  PEMAKAIAN_SUMBER_INTERNAL,
+  PEMAKAIAN_SUDAH_TRANSFER,
   JUMLAH_PEMAKAIAN_INVALID,
 } from "../../model/pemakaianMaterial/pemakaianMaterial.js";
 
@@ -83,6 +86,12 @@ const handleError = (res: Response, error: unknown, fallback: string) => {
   if (error instanceof PemakaianError) {
     if (error.code === PERMINTAAN_TIDAK_DITEMUKAN || error.code === DIVISI_TIDAK_DITEMUKAN)
       return res.status(404).json({ message: error.message });
+    if (
+      error.code === PEMAKAIAN_DIPAKAI_PRODUKSI ||
+      error.code === PEMAKAIAN_SUMBER_INTERNAL ||
+      error.code === PEMAKAIAN_SUDAH_TRANSFER
+    )
+      return res.status(409).json({ kode: error.code, message: error.message });
     return res.status(400).json({ message: error.message });
   }
   if (errCode(error) === "P2002") {

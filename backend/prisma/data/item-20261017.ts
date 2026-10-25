@@ -1,6 +1,6 @@
 // Sumber: export Kelola Item 2026-10-17 "semua tanggal" (item-20261017-semua-tanggal.csv).
 // masuk/keluar = total ledger StokItemMutasi; stok tidak disimpan karena = masuk - keluar.
-// Kolom divisi pada CSV kosong, jadi seluruh item tanpa divisi.
+// Kolom divisi pada CSV kosong; seed-item memetakan item ke divisi lewat DIVISI_ITEM.
 export const ITEM_20261017 = [
   { kode: "RAW001", nama: "10 mm Busa Adhesive WB Belakang", unit: "Pcs", jenis: "RAW MATERIAL", masuk: 310, keluar: 254 },
   { kode: "RAW002", nama: "10 mm Busa Adhesive WB Depan", unit: "Pcs", jenis: "RAW MATERIAL", masuk: 100, keluar: 0 },

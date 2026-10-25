@@ -2,6 +2,9 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import sharedPrisma from "../src/lib/prisma.js";
+import { seedItem } from "./seed-item.js";
+import { seedProductionFlow } from "./seed-production-flow.js";
 
 const adapter = new PrismaMariaDb({
   host: process.env.DB_HOST || "localhost",
@@ -77,9 +80,32 @@ async function main() {
       "BARANG_UBAH_STATUS",
       "BARANG_GENERATE",
       "BOM_KELOLA",
+      "REPAIR_WORK",
     ],
-    qc: ["BARANG_LIHAT", "BARANG_STATISTIK_LIHAT", "BARANG_SCAN", "BARANG_UBAH_STATUS"],
-    gudang: ["BARANG_LIHAT", "MUTASI_GUDANG", "KELOLA_ITEM", "BOM_KELOLA"],
+    qc: [
+      "BARANG_LIHAT",
+      "BARANG_STATISTIK_LIHAT",
+      "BARANG_SCAN",
+      "BARANG_UBAH_STATUS",
+      "QUALITY_VIEW",
+      "QUALITY_INSPECT",
+      "QUALITY_FINALIZE",
+      "QUALITY_REOPEN",
+      "REPAIR_ASSIGN",
+    ],
+    gudang: [
+      "BARANG_LIHAT",
+      "MUTASI_GUDANG",
+      "KELOLA_ITEM",
+      "BOM_KELOLA",
+      "INVENTORY_VIEW",
+      "INVENTORY_MOVE",
+      "INVENTORY_ADJUST",
+      "SHIPMENT_VIEW",
+      "SHIPMENT_MANAGE",
+      "SHIPMENT_POST",
+      "SHIPMENT_RETURN",
+    ],
   };
 
   const allStatus = statusSeed.map((s) => s.kode);
@@ -102,6 +128,29 @@ async function main() {
     update: { nama: "Kelola Bill of Materials dan subassembly", kelompok: "BOM" },
     create: { kode: "BOM_KELOLA", nama: "Kelola Bill of Materials dan subassembly", kelompok: "BOM" },
   });
+  for (const permission of [
+    { kode: "INVENTORY_VIEW", nama: "Lihat saldo dan mutasi inventory", kelompok: "INVENTORY" },
+    { kode: "INVENTORY_MOVE", nama: "Memindahkan stok antar lokasi", kelompok: "INVENTORY" },
+    { kode: "INVENTORY_ADJUST", nama: "Mencatat saldo awal dan penyesuaian inventory", kelompok: "INVENTORY" },
+    { kode: "INVENTORY_LOCATION_MANAGE", nama: "Memetakan master ke lokasi inventory", kelompok: "INVENTORY" },
+    { kode: "QUALITY_VIEW", nama: "Melihat inspeksi QC", kelompok: "QUALITY" },
+    { kode: "QUALITY_INSPECT", nama: "Mencatat hasil inspeksi QC", kelompok: "QUALITY" },
+    { kode: "QUALITY_FINALIZE", nama: "Memfinalkan keputusan QC", kelompok: "QUALITY" },
+    { kode: "QUALITY_REOPEN", nama: "Membuka ulang reject final QC", kelompok: "QUALITY" },
+    { kode: "QUALITY_ROUTING_MANAGE", nama: "Mengelola routing proses QC dan BOM", kelompok: "QUALITY" },
+    { kode: "REPAIR_ASSIGN", nama: "Menugaskan perbaikan hasil QC", kelompok: "REPAIR" },
+    { kode: "REPAIR_WORK", nama: "Mengerjakan penugasan repair sesuai divisi", kelompok: "REPAIR" },
+    { kode: "SHIPMENT_VIEW", nama: "Melihat shipment pelanggan", kelompok: "SHIPMENT" },
+    { kode: "SHIPMENT_MANAGE", nama: "Mengelola draft shipment pelanggan", kelompok: "SHIPMENT" },
+    { kode: "SHIPMENT_POST", nama: "Memosting pengiriman pelanggan", kelompok: "SHIPMENT" },
+    { kode: "SHIPMENT_RETURN", nama: "Mencatat retur shipment pelanggan", kelompok: "SHIPMENT" },
+  ]) {
+    await prisma.permission.upsert({
+      where: { kode: permission.kode },
+      update: { nama: permission.nama, kelompok: permission.kelompok },
+      create: permission,
+    });
+  }
 
   const permissionId = new Map(
     (await prisma.permission.findMany()).map((p) => [p.kode, p.id]),
@@ -140,6 +189,9 @@ async function main() {
     });
   }
   console.log(`✓ ${divisiNames.length} Divisi selesai`);
+
+  // Item + saldo awal + PM historis ikut seed utama.
+  await seedItem();
 
   // ── Product ────────────────────────────────────────────────────────────
   const product = await prisma.product.upsert({
@@ -247,6 +299,8 @@ async function main() {
     count++;
   }
   console.log(`✓ ${count} ProductVariant selesai`);
+
+  await seedProductionFlow();
 
   // ── Barang (5010 pcs) ─────────────────────────────────────────────────
   // Generation barang tidak idempoten (tanggal acak -> kodeBarang baru),
@@ -486,9 +540,11 @@ async function main() {
 main()
   .then(async () => {
     await prisma.$disconnect();
+    await sharedPrisma.$disconnect();
   })
   .catch(async (e) => {
     console.error(e);
     await prisma.$disconnect();
+    await sharedPrisma.$disconnect();
     process.exit(1);
   });

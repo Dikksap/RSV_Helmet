@@ -1,7 +1,14 @@
 import type { Request, Response } from "express";
 import {
+  DivisiApprovalError,
+  DivisiPemintaError,
+  ItemDivisiError,
   ItemTanpaMasterError,
+  ItemSmGunakanWipError,
   KeputusanItemError,
+  PemakaianDipakaiProduksiError,
+  PemakaianSudahTransferError,
+  PermintaanOtomatisError,
   PermintaanTerkunciError,
   createPermintaan,
   deletePermintaan,
@@ -15,10 +22,13 @@ import {
   type PermintaanInput,
 } from "../../model/permintaanBarang/permintaanBarang.js";
 import { getItemById } from "../../model/item/item.js";
+import { getBatasDivisi } from "../../lib/divisiScope.js";
+import type { SumberPermintaanBarang } from "../../../generated/prisma/enums.js";
 
 const KEBUTUHAN_UNTUK = ["Produksi", "Maintenance", "Proyek","Lainya"] as const;
 const PRIORITAS = ["Normal", "Urgent", "Sangat Urgent"] as const;
 const APPROVAL = ["BELUM_DISETUJUI", "DISETUJUI"] as const;
+const SUMBER = ["MANUAL", "HASIL_PRODUKSI"] as const;
 
 type ParseResult = PermintaanInput | { error: string };
 type ItemParseResult = PermintaanInput["items"][number] | { error: string };
@@ -143,6 +153,15 @@ function parseId(value: string): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function parseOptionalIdQuery(value: unknown, name: string): { value?: number } | { error: string } {
+  if (value === undefined || value === "") return {};
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) {
+    return { error: `Query '${name}' harus angka bulat positif` };
+  }
+  return { value: id };
+}
+
 // GET /api/permintaan-barang
 export async function listPermintaanHandler(req: Request, res: Response) {
   try {
@@ -166,7 +185,34 @@ export async function listPermintaanHandler(req: Request, res: Response) {
       if (!parsed) return res.status(400).json({ message: "Query 'sampai' harus tanggal valid (YYYY-MM-DD)" });
       sampai = parsed;
     }
-    const result = await listPermintaan({ page, limit, approval, dari, sampai });
+    const peminta = parseOptionalIdQuery(req.query.divisiPemintaId, "divisiPemintaId");
+    if ("error" in peminta) return res.status(400).json({ message: peminta.error });
+    const approver = parseOptionalIdQuery(req.query.divisiApproverId, "divisiApproverId");
+    if ("error" in approver) return res.status(400).json({ message: approver.error });
+    const batas = getBatasDivisi(req.access);
+    if (!batas.admin) {
+      if (!batas.divisiId) return res.status(403).json({ message: "Akun belum terhubung ke divisi" });
+      if (approver.value !== undefined && approver.value !== batas.divisiId) {
+        return res.status(403).json({ message: "Anda hanya dapat melihat permintaan divisi sendiri" });
+      }
+    }
+    const divisiApproverId = batas.admin ? approver.value : (batas.divisiId ?? undefined);
+    let sumber: SumberPermintaanBarang | undefined;
+    if (req.query.sumber !== undefined && req.query.sumber !== "") {
+      const parsed = parseEnum(req.query.sumber, SUMBER, null);
+      if ("error" in parsed) return res.status(400).json({ message: parsed.error });
+      sumber = parsed.ok;
+    }
+    const result = await listPermintaan({
+      page,
+      limit,
+      approval,
+      dari,
+      sampai,
+      divisiPemintaId: peminta.value,
+      divisiApproverId,
+      sumber,
+    });
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data permintaan barang", error });
@@ -180,6 +226,13 @@ export async function getPermintaanHandler(req: Request, res: Response) {
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
     const row = await getPermintaanById(id);
     if (!row) return res.status(404).json({ message: "Permintaan tidak ditemukan" });
+    const batas = getBatasDivisi(req.access);
+    if (!batas.admin) {
+      if (!batas.divisiId) return res.status(403).json({ message: "Akun belum terhubung ke divisi" });
+      if (row.divisiApproverId !== batas.divisiId) {
+        return res.status(404).json({ message: "Permintaan tidak ditemukan" });
+      }
+    }
     res.status(200).json(row);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data permintaan barang", error });
@@ -194,6 +247,9 @@ export async function createPermintaanHandler(req: Request, res: Response) {
     const row = await createPermintaan(parsed);
     res.status(201).json(row);
   } catch (error) {
+    if (error instanceof ItemSmGunakanWipError) {
+      return res.status(409).json({ message: error.message, kode: error.code, items: error.items });
+    }
     res.status(500).json({ message: "Gagal menyimpan permintaan barang", error });
   }
 }
@@ -209,8 +265,11 @@ export async function updatePermintaanHandler(req: Request, res: Response) {
     if (!row) return res.status(404).json({ message: "Permintaan tidak ditemukan" });
     res.status(200).json(row);
   } catch (error) {
-    if (error instanceof PermintaanTerkunciError) {
-      return res.status(409).json({ message: error.message });
+    if (error instanceof PermintaanTerkunciError || error instanceof PermintaanOtomatisError) {
+      return res.status(409).json({ message: error.message, kode: error.code });
+    }
+    if (error instanceof ItemSmGunakanWipError) {
+      return res.status(409).json({ message: error.message, kode: error.code, items: error.items });
     }
     if (errCode(error) === "P2025") {
       return res.status(404).json({ message: "Permintaan tidak ditemukan" });
@@ -258,6 +317,19 @@ export async function setApprovalHandler(req: Request, res: Response) {
     if (error instanceof KeputusanItemError) {
       return res.status(422).json({ message: error.message });
     }
+    if (error instanceof DivisiApprovalError) {
+      return res.status(403).json({ message: error.message, kode: error.code });
+    }
+    if (
+      error instanceof ItemDivisiError ||
+      error instanceof ItemSmGunakanWipError ||
+      error instanceof DivisiPemintaError ||
+      error instanceof PemakaianDipakaiProduksiError ||
+      error instanceof PemakaianSudahTransferError ||
+      error instanceof PermintaanTerkunciError
+    ) {
+      return res.status(409).json({ message: error.message, kode: error.code });
+    }
     res.status(500).json({ message: "Gagal memperbarui status approval", error });
   }
 }
@@ -280,8 +352,13 @@ export async function petakanItemHandler(req: Request, res: Response) {
     }
     res.status(200).json(row);
   } catch (error) {
-    if (error instanceof PermintaanTerkunciError) {
-      return res.status(409).json({ message: error.message });
+    if (
+      error instanceof PermintaanTerkunciError ||
+      error instanceof PermintaanOtomatisError ||
+      error instanceof ItemSmGunakanWipError ||
+      error instanceof ItemDivisiError
+    ) {
+      return res.status(409).json({ message: error.message, kode: error.code, ...(error instanceof ItemSmGunakanWipError ? { items: error.items } : {}) });
     }
     res.status(500).json({ message: "Gagal memetakan item ke master", error });
   }

@@ -5,6 +5,7 @@ import {
   deletePemakaianMaterial,
   getStokDivisi,
   listPemakaianMaterial,
+  pesanKesalahanPemakaian,
   updatePemakaianMaterial,
   type CreatePemakaianPayload,
   type PemakaianMaterialRecord,
@@ -14,6 +15,7 @@ import { listPermintaan } from "../../api/permintaanBarang";
 import { downloadCsv } from "../../lib/csv";
 import type { Divisi } from "../../api/divisi";
 import type { PermintaanBarangRecord } from "../../api/permintaanBarang";
+import { saldoWip } from "../../components/admin/PemakaianMaterial/wip";
 import {
   PemakaianHeader,
   PemakaianStats,
@@ -164,49 +166,6 @@ export default function PemakaianMaterial() {
     });
   }, [rows, filters.search]);
 
-  // Build stock balance lookup: Map<divisiId, Map<materialKey, sisa>>
-  const stokDivisiLookup = useMemo(() => {
-    const map = new Map<number, Map<string, number>>();
-    for (const group of stokDivisi) {
-      const matMap = new Map<string, number>();
-      for (const m of group.materials) {
-        matMap.set(m.key, m.sisa);
-        if (m.itemId !== null) {
-          matMap.set(`item:${m.itemId}`, m.sisa);
-        }
-        matMap.set(`name:${m.nama.trim().toLowerCase()}`, m.sisa);
-      }
-      map.set(group.divisiId, matMap);
-    }
-    return map;
-  }, [stokDivisi]);
-
-  // Helper to resolve stock before for an item in a division
-  const resolveStockBefore = useCallback(
-    (
-      divisiId: number,
-      item: {
-        itemId: number | null;
-        nama: string;
-        jumlahDisetujui?: number | null;
-        jumlah?: number;
-      }
-    ): number => {
-      const divMap = stokDivisiLookup.get(divisiId);
-      if (divMap) {
-        if (item.itemId !== null && divMap.has(`item:${item.itemId}`)) {
-          return divMap.get(`item:${item.itemId}`) ?? 0;
-        }
-        const nameKey = `name:${item.nama.trim().toLowerCase()}`;
-        if (divMap.has(nameKey)) {
-          return divMap.get(nameKey) ?? 0;
-        }
-      }
-      return item.jumlahDisetujui ?? item.jumlah ?? 0;
-    },
-    [stokDivisiLookup]
-  );
-
   // Summary Metrics
   const summaryStats: SummaryStatItem[] = useMemo(() => {
     const distinctDivisi = new Set(
@@ -220,6 +179,22 @@ export default function PemakaianMaterial() {
       (sum, g) => sum + g.materials.reduce((mSum, m) => mSum + m.sisa, 0),
       0
     );
+    const totalItemWip = stokDivisi.reduce(
+      (sum, g) => sum + g.materials.length,
+      0
+    );
+    const satuanWip = new Set(
+      stokDivisi
+        .flatMap((g) => g.materials.map((m) => (m.satuan ?? "").trim()))
+        .filter(Boolean)
+    );
+    const materialWip = stokDivisi.flatMap((g) => g.materials);
+    const satuanTunggal =
+      materialWip.length > 0 &&
+      materialWip.every((m) => (m.satuan ?? "").trim()) &&
+      satuanWip.size === 1
+        ? [...satuanWip][0]
+        : null;
 
     return [
       {
@@ -244,11 +219,15 @@ export default function PemakaianMaterial() {
         iconType: "material",
       },
       {
-        label: "Total Sisa Stok",
-        value: totalSisaStok.toLocaleString("id-ID", {
-          maximumFractionDigits: 2,
-        }),
-        hint: "Saldo fisik di seluruh divisi",
+        label: satuanTunggal ? "Total Saldo WIP" : "Item WIP",
+        value: satuanTunggal
+          ? `${totalSisaStok.toLocaleString("id-ID", {
+              maximumFractionDigits: 2,
+            })} ${satuanTunggal}`
+          : totalItemWip,
+        hint: satuanTunggal
+          ? "Saldo WIP di seluruh divisi"
+          : "Baris WIP per divisi/item",
         accent: "#6366F1",
         iconType: "sisa",
       },
@@ -286,7 +265,11 @@ export default function PemakaianMaterial() {
         if (primary) {
           for (const itm of primary.items ?? []) {
             if (itm.statusKeputusan !== "DISETUJUI") continue;
-            const stokSebelum = resolveStockBefore(Number(defaultDivisiId), itm);
+            const stokSebelum =
+              saldoWip(stokDivisi, Number(defaultDivisiId), itm.itemId) ??
+              itm.jumlahDisetujui ??
+              itm.jumlah ??
+              0;
             initialItems[itm.id] = {
               permintaanBarangItemId: itm.id,
               itemId: itm.itemId ?? null,
@@ -314,7 +297,7 @@ export default function PemakaianMaterial() {
         items: initialItems,
       });
     },
-    [divisis, permintaans, resolveStockBefore]
+    [divisis, permintaans, stokDivisi]
   );
 
   // Handle Division change in modal
@@ -337,7 +320,11 @@ export default function PemakaianMaterial() {
         const primary = matching[0];
         for (const itm of primary.items ?? []) {
           if (itm.statusKeputusan !== "DISETUJUI") continue;
-          const stokSebelum = resolveStockBefore(Number(divisiId), itm);
+          const stokSebelum =
+            saldoWip(stokDivisi, Number(divisiId), itm.itemId) ??
+            itm.jumlahDisetujui ??
+            itm.jumlah ??
+            0;
           nextItems[itm.id] = {
             permintaanBarangItemId: itm.id,
             itemId: itm.itemId ?? null,
@@ -359,7 +346,7 @@ export default function PemakaianMaterial() {
         error: null,
       }));
     },
-    [divisis, permintaans, resolveStockBefore]
+    [divisis, permintaans, stokDivisi]
   );
 
   // Handle Permintaan change in modal
@@ -371,10 +358,15 @@ export default function PemakaianMaterial() {
       if (primary && modalForm.divisiId) {
         for (const itm of primary.items ?? []) {
           if (itm.statusKeputusan !== "DISETUJUI") continue;
-          const stokSebelum = resolveStockBefore(
-            Number(modalForm.divisiId),
-            itm
-          );
+          const stokSebelum =
+            saldoWip(
+              stokDivisi,
+              Number(modalForm.divisiId),
+              itm.itemId
+            ) ??
+            itm.jumlahDisetujui ??
+            itm.jumlah ??
+            0;
           nextItems[itm.id] = {
             permintaanBarangItemId: itm.id,
             itemId: itm.itemId ?? null,
@@ -395,7 +387,7 @@ export default function PemakaianMaterial() {
         error: null,
       }));
     },
-    [permintaans, modalForm.divisiId, resolveStockBefore]
+    [permintaans, modalForm.divisiId, stokDivisi]
   );
 
   // Open Edit Modal
@@ -488,10 +480,10 @@ export default function PemakaianMaterial() {
       setModalForm((prev) => ({
         ...prev,
         busy: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Gagal menyimpan pemakaian material.",
+        error: pesanKesalahanPemakaian(
+          err,
+          "Gagal menyimpan pemakaian material.",
+        ),
       }));
     }
   };
@@ -520,10 +512,10 @@ export default function PemakaianMaterial() {
       setModalDelete((prev) => ({
         ...prev,
         busy: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Gagal menghapus transaksi pemakaian.",
+        error: pesanKesalahanPemakaian(
+          err,
+          "Gagal menghapus transaksi pemakaian.",
+        ),
       }));
     }
   };

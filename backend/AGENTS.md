@@ -23,7 +23,7 @@ Instruksi ini berlaku untuk seluruh project `express-api`. Baca sebelum mengubah
 - `src/websocket/`: integrasi WebSocket.
 - `prisma/schema.prisma`: sumber model database.
 - `prisma/migrations/`: histori perubahan schema; jangan mengubah migration lama.
-- `prisma/seed.ts`: data awal database; `prisma/seed-production-order.ts`: seed ProductionOrder (upsert, dijalankan belakangan).
+- `prisma/seed.ts`: data awal database (termasuk `prisma/seed-item.ts`); `prisma/seed-production-order.ts`: seed ProductionOrder (upsert, dijalankan belakangan).
 - `generated/prisma/`: hasil generate Prisma; jangan edit manual.
 - `tests/`: test API dengan Vitest dan Supertest.
 
@@ -213,11 +213,11 @@ Pembatalan selalu maju ke depan lewat migration baru, tidak pernah menghapus his
 
 ```bash
 docker exec -it backend-api-1 npx prisma migrate reset --force
-npm run db:seed                                                           # master, batch, variant, barang
+npm run db:seed                                                           # master, item + stok, batch, variant, barang
 docker exec -it backend-api-1 npx tsx prisma/seed-production-order.ts     # ProductionOrder
 ```
 
-Urutan wajib: `seed.ts` dulu, `seed-production-order.ts` belakangan. Yang kedua bersifat upsert jadi aman diulang, membaca `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` (bukan `DATABASE_URL`), dan harus jalan di dalam container agar host `db` resolve.
+Urutan wajib: `seed.ts` dulu, `seed-production-order.ts` belakangan. Seed utama sudah memanggil `seed-item.ts`; script itu tetap bisa dijalankan standalone. Yang kedua bersifat upsert jadi aman diulang, membaca `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` (bukan `DATABASE_URL`), dan harus jalan di dalam container agar host `db` resolve.
 
 ### Tiga arti "reset"
 
