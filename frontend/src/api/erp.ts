@@ -33,113 +33,6 @@ export interface ErpMovement {
   quantity: number | string;
 }
 
-export interface QualityLine {
-  id: number;
-  pemakaianMaterialItemId: number | null;
-  productVariantId?: number | null;
-  lot?: {
-    id: number;
-    item: { id: number; kode: string; nama: string; unit: string | null } | null;
-    pemakaian: { nomor: string } | null;
-  } | null;
-  variant?: { id: number; kodeVariant: string } | null;
-  inspectedQuantity: number;
-  passedQuantity: number;
-  repairQuantity: number;
-  rejectedQuantity: number;
-  repairAttempt?: { id: number; assignmentId: number; reviewApproved: boolean | null } | null;
-  productionRoutingId?: number | null;
-  productionRouting?: {
-    id: number;
-    version: number;
-    bom: { id: number; kode: string | null; nama: string; version: string };
-    stages: Array<{
-      stage: ProductionProcessStage;
-      divisi: { id: number; nama: string };
-    }>;
-  } | null;
-  defects?: Array<{
-    id: number;
-    description: string;
-    quantity: number | string;
-    repairDivisionId: number | null;
-    repairDivision: { id: number; nama: string } | null;
-    originDivisionId: number | null;
-    originDivision: { id: number; nama: string } | null;
-  }>;
-  producedBarang: Array<{ id: number; kodeBarang: string; status: string }>;
-}
-
-export interface QualityInspection {
-  id: number;
-  number: string;
-  status: "DRAFT" | "COMPLETED";
-  inspectedAt: string;
-  notes: string | null;
-  lines: QualityLine[];
-}
-
-export interface QualityLot {
-  id: number;
-  jumlahSisa: number | string;
-  available: number;
-  satuan: string | null;
-  item: { id: number; kode: string; nama: string; unit: string | null };
-  pemakaian: { id: number; nomor: string; divisi: { id: number; nama: string } };
-  routingVariants: Array<{
-    routingId: number;
-    version: number;
-    productVariantId: number;
-    kodeVariant: string;
-    originDivisions: Array<{ id: number; nama: string }>;
-  }>;
-}
-
-export interface QualityVariant {
-  id: number;
-  kodeVariant: string;
-  product: { nama: string };
-  style: { nama: string };
-  color: { nama: string };
-  size: { nama: string };
-}
-
-export interface RepairAttempt {
-  id: number;
-  outcome: "REPAIRED" | "PARTIAL" | "FAILED";
-  quantityAttempted: number | string;
-  quantityRepaired: number | string;
-  quantityRemaining: number | string;
-  notes: string | null;
-  performedAt: string;
-  performedBy: { id: number; name: string };
-  reviewedAt: string | null;
-  reviewApproved: boolean | null;
-  reviewNotes: string | null;
-  reviewedBy: { id: number; name: string } | null;
-  inspectionLine: { id: number; inspection: { id: number; number: string; status: string } } | null;
-}
-
-export interface RepairAssignment {
-  id: number;
-  quantity: number | string;
-  status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "COMPLETED" | "CANCELLED";
-  repairDivision: { id: number; nama: string };
-  assignedBy: { id: number; name: string };
-  inspectionLine: {
-    inspection: { id: number; number: string; status: string };
-    lot: { id: number; itemId: number; jumlahSisa: number | string; satuan: string | null; item: { id: number; kode: string; nama: string; unit: string | null } } | null;
-    defects: Array<{
-      id: number;
-      description: string;
-      quantity: number | string;
-      originDivisionId: number | null;
-      originDivision: { id: number; nama: string } | null;
-    }>;
-  };
-  attempts: RepairAttempt[];
-}
-
 export type ProductionProcessStage = "BUFFING" | "BASE_COAT" | "DECAL_SOLID" | "DECAL_MOTIF" | "TOP_COAT";
 
 export interface ProductionRouting {
@@ -413,7 +306,7 @@ export const createWipRejectReason = (name: string) =>
     method: "POST",
     body: JSON.stringify({ name }),
   });
-export const listWipRejects = (status?: WipReject["status"]) =>
+export const listWipRejects = (status?: WipReject["status"] | "ACTIVE") =>
   request<WipReject[]>(`/quality/wip-rejects${status ? `?status=${encodeURIComponent(status)}` : ""}`);
 export const createWipReject = (body: {
   itemId: number;
@@ -455,76 +348,9 @@ export const postErpMovement = (body: {
   reason: string;
 }) => request("/inventory/movements", { method: "POST", body: JSON.stringify(body) });
 
-export const listQualityInspections = () => request<QualityInspection[]>("/quality/inspections?take=100");
-export const listQualityLots = () => request<QualityLot[]>("/quality/lots");
-export const listQualityVariants = () => request<QualityVariant[]>("/quality/variants");
 export const listProductionRoutings = () => request<ProductionRouting[]>("/quality/routings");
 export const saveProductionRouting = (productVariantId: number, body: ProductionRoutingInput) =>
   request<ProductionRouting>(`/quality/routings/${productVariantId}`, { method: "PUT", body: JSON.stringify(body) });
-export const listRepairAssignments = () => request<RepairAssignment[]>("/quality/repairs");
-export const createRepairAttempt = (id: number, body: {
-  quantityAttempted: number;
-  quantityRepaired: number;
-  notes?: string;
-}) => request<RepairAssignment>(`/quality/repairs/${id}/attempts`, {
-  method: "POST",
-  body: JSON.stringify(body),
-});
-export const reviewRepairAttempt = (assignmentId: number, attemptId: number, body: {
-  approved: boolean;
-  notes?: string;
-}) => request<{ attempt: RepairAttempt; assignment: RepairAssignment; inspection: QualityInspection | null }>(
-  `/quality/repairs/${assignmentId}/attempts/${attemptId}/review`, {
-  method: "POST",
-  body: JSON.stringify(body),
-});
-export const createQualityInspection = (body: {
-  notes?: string;
-  lines: Array<{
-    pemakaianMaterialItemId: number;
-    productVariantId?: number | null;
-    inspectedQuantity: number;
-    passedQuantity: number;
-    repairQuantity: number;
-    rejectedQuantity: number;
-    defects?: Array<{
-      description: string;
-      quantity: number;
-      foundAtDivisionId?: number | null;
-      originDivisionId?: number | null;
-      repairDivisionId?: number | null;
-    }>;
-  }>;
-}) => request<QualityInspection>("/quality/inspections", { method: "POST", body: JSON.stringify(body) });
-export const finalizeQualityInspection = (id: number) =>
-  request<QualityInspection>(`/quality/inspections/${id}/finalize`, { method: "POST" });
-export const updateQualityInspectionLine = (inspectionId: number, lineId: number, body: {
-  productVariantId?: number | null;
-  passedQuantity: number;
-  repairQuantity: number;
-  rejectedQuantity: number;
-  defects?: Array<{
-    description: string;
-    quantity: number;
-    foundAtDivisionId?: number | null;
-    originDivisionId?: number | null;
-    repairDivisionId?: number | null;
-  }>;
-}) => request<QualityInspection>(`/quality/inspections/${inspectionId}/lines/${lineId}`, {
-  method: "PUT",
-  body: JSON.stringify(body),
-});
-export const reopenQualityInspection = (id: number, reason: string, lines: Array<{
-  sourceLineId: number;
-  inspectedQuantity: number;
-  passedQuantity: number;
-  repairQuantity: number;
-  rejectedQuantity: number;
-  defects?: Array<{ description: string; quantity: number; repairDivisionId?: number | null }>;
-}>) => request<QualityInspection>(`/quality/inspections/${id}/reopen`, {
-  method: "POST",
-  body: JSON.stringify({ reason, lines }),
-});
 export const receiveErpFinishedGoods = (body: {
   qualityInspectionLineId: number;
   locationId: number;

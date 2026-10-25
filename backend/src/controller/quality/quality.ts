@@ -16,6 +16,7 @@ import {
   type ReopenQualityLineInput,
 } from "../../model/quality/quality.js";
 import { InventoryError } from "../../model/inventory/inventory.js";
+import { parseTanggalBisnis, tanggalBisnis } from "../../lib/tanggalBisnis.js";
 import {
   listProductionRoutings,
   saveProductionRouting,
@@ -139,11 +140,22 @@ export async function listWipRejectsHandler(req: Request, res: Response) {
   if (isRepairWorker && !isAdmin && !isQcUser(req) && !divisionId) {
     return res.status(403).json({ message: "Akun belum terhubung ke divisi repair" });
   }
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  const validStatuses = new Set(["OPEN", "IN_PROGRESS", "WAITING_QC", "COMPLETED"]);
+  const requestedStatuses = status?.split(",");
+  if (status && status !== "ACTIVE" &&
+      (!requestedStatuses?.length || requestedStatuses.some((value) => !validStatuses.has(value)))) {
+    return res.status(400).json({ message: "Filter status reject tidak valid" });
+  }
+  const limit = req.query.limit === undefined ? 100 : positiveInt(req.query.limit);
+  if (!limit || limit > 100) {
+    return res.status(400).json({ message: "limit harus 1 sampai 100" });
+  }
   try {
     return res.json(await listWipRejects({
       repairDivisionId: divisionFilter,
-      status: typeof req.query.status === "string" ? req.query.status : undefined,
-      limit: req.query.limit === undefined ? 100 : positiveInt(req.query.limit) ?? undefined,
+      status,
+      limit,
     }));
   } catch (error) {
     return respondError(res, error);
@@ -211,8 +223,9 @@ export async function reviewWipRejectRepairHandler(req: Request, res: Response) 
 }
 
 export async function getQualityDailyReportHandler(req: Request, res: Response) {
-  const date = typeof req.query.date === "string" ? req.query.date : new Date().toISOString().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  const date = typeof req.query.date === "string" ? req.query.date : tanggalBisnis(new Date());
+  const parsedDate = parseTanggalBisnis(date);
+  if (!parsedDate || tanggalBisnis(parsedDate) !== date) {
     return res.status(400).json({ message: "Tanggal laporan harus berformat YYYY-MM-DD" });
   }
   try {

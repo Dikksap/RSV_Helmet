@@ -82,7 +82,7 @@ export async function listRejectOptions() {
     }),
     prisma.divisi.findMany({ select: { id: true, nama: true }, orderBy: { nama: "asc" } }),
     prisma.item.findMany({
-      where: { isActive: true, divisi: { nama: { contains: "coat" } } },
+      where: { isActive: true, jenis: "SM", divisi: { nama: { contains: "coat" } } },
       select: { id: true, nama: true, kode: true, unit: true, divisi: { select: { nama: true } } },
       orderBy: { nama: "asc" },
     }),
@@ -136,8 +136,8 @@ export async function createWipReject(input: {
   if (!Number.isSafeInteger(input.itemId) || input.itemId <= 0 ||
       !Number.isSafeInteger(input.reasonId) || input.reasonId <= 0 ||
       !Number.isSafeInteger(input.repairDivisionId) || input.repairDivisionId <= 0 ||
-      !Number.isFinite(input.quantity) || input.quantity <= 0) {
-    throw new WipRejectError("INVALID_INPUT", "Item, jumlah, alasan, dan divisi repair wajib diisi dengan benar");
+      !Number.isSafeInteger(input.quantity) || input.quantity <= 0) {
+    throw new WipRejectError("INVALID_INPUT", "Item, jumlah pcs, alasan, dan divisi repair wajib diisi dengan benar");
   }
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const item = await tx.item.findUnique({
@@ -236,13 +236,15 @@ export async function listWipRejects(filters: {
   limit?: number;
 }) {
   const allowedStatuses = ["OPEN", "IN_PROGRESS", "WAITING_QC", "COMPLETED"] as const;
-  const status = filters.status && allowedStatuses.includes(filters.status as (typeof allowedStatuses)[number])
-    ? filters.status as (typeof allowedStatuses)[number]
-    : undefined;
+  const statuses = filters.status === "ACTIVE"
+    ? ["OPEN", "IN_PROGRESS", "WAITING_QC"] as const
+    : filters.status?.split(",").filter((value): value is (typeof allowedStatuses)[number] =>
+        allowedStatuses.includes(value as (typeof allowedStatuses)[number]),
+      );
   const rows = await prisma.wipReject.findMany({
     where: {
       ...(filters.repairDivisionId ? { repairDivisionId: filters.repairDivisionId } : {}),
-      ...(status ? { status } : {}),
+      ...(statuses?.length ? { status: { in: [...statuses] } } : {}),
     },
     include: rejectInclude,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -290,10 +292,10 @@ export async function createWipRejectRepairAttempt(input: {
   quantityRepaired: number;
   notes?: string | null;
 }) {
-  if (!Number.isFinite(input.quantityAttempted) || input.quantityAttempted <= 0 ||
-      !Number.isFinite(input.quantityRepaired) || input.quantityRepaired < 0 ||
+  if (!Number.isSafeInteger(input.quantityAttempted) || input.quantityAttempted <= 0 ||
+      !Number.isSafeInteger(input.quantityRepaired) || input.quantityRepaired < 0 ||
       input.quantityRepaired > input.quantityAttempted) {
-    throw new WipRejectError("INVALID_INPUT", "Jumlah diperiksa harus positif; jumlah berhasil tidak boleh melebihi jumlah diperiksa");
+    throw new WipRejectError("INVALID_INPUT", "Jumlah pcs yang diperiksa harus bulat dan positif; jumlah berhasil tidak boleh melebihi jumlah diperiksa");
   }
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     await tx.$queryRaw`SELECT id FROM WipReject WHERE id = ${input.rejectId} FOR UPDATE`;

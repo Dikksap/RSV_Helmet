@@ -66,18 +66,22 @@ export default function QualityControl() {
   const load = useCallback(async () => {
     const [nextOptions, nextRejects, nextReport] = await Promise.all([
       canQualityInspect ? getWipRejectOptions() : Promise.resolve(null),
-      (canQualityInspect || canRepair) ? listWipRejects() : Promise.resolve([]),
+      (canQualityInspect || canRepair) ? listWipRejects(canReview ? undefined : "ACTIVE") : Promise.resolve([]),
       canQualityInspect ? getQualityDailyReport(reportDate) : Promise.resolve(null),
     ]);
     setOptions(nextOptions);
     setRejects(nextRejects);
     setReport(nextReport);
-  }, [canQualityInspect, canRepair, reportDate]);
+  }, [canQualityInspect, canRepair, canReview, reportDate]);
 
   useEffect(() => {
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load data when role or date changes
     load().catch((reason: unknown) => {
+      if (!active) return;
       setError(reason instanceof Error ? reason.message : "Gagal memuat data QC Akhir.");
     });
+    return () => { active = false; };
   }, [load]);
 
   const queue = useMemo(
@@ -138,10 +142,10 @@ export default function QualityControl() {
   }
 
   const setRepairForm = (rejectId: number, update: Partial<RepairForm>) => {
-    setRepairForms((current) => ({
-      ...current,
-      [rejectId]: { attempted: "", repaired: "", notes: "", ...current[rejectId], ...update },
-    }));
+    setRepairForms((current) => {
+      const previous = current[rejectId] ?? { attempted: "", repaired: "", notes: "" };
+      return { ...current, [rejectId]: { ...previous, ...update } };
+    });
   };
 
   const normalLines = report?.normalOutput ?? [];
@@ -181,7 +185,7 @@ export default function QualityControl() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
                   Jumlah reject
-                  <input className={field} type="number" min="0.000001" step="0.001" value={rejectQuantity}
+                  <input className={field} type="number" min="1" step="1" value={rejectQuantity}
                     onChange={(event) => setRejectQuantity(event.target.value)} placeholder="Contoh: 2" required />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
@@ -381,12 +385,12 @@ function RejectCard({
         <form className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2" onSubmit={onRepair}>
           <label className="text-sm font-medium text-slate-700">
             Jumlah yang diperiksa
-            <input className={field} type="number" min="0.000001" step="0.001" required value={repairForm.attempted}
+            <input className={field} type="number" min="1" step="1" required value={repairForm.attempted}
               onChange={(event) => onRepairFormChange({ attempted: event.target.value })} />
           </label>
           <label className="text-sm font-medium text-slate-700">
             Berhasil diperbaiki
-            <input className={field} type="number" min="0" step="0.001" required value={repairForm.repaired}
+            <input className={field} type="number" min="0" step="1" required value={repairForm.repaired}
               onChange={(event) => onRepairFormChange({ repaired: event.target.value })} />
           </label>
           <label className="text-sm font-medium text-slate-700 sm:col-span-2">

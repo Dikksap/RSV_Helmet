@@ -1,6 +1,6 @@
 # Todolist — Audit dan Refactor ERP Produksi RSV
 
-> Status terbaru: pengguna secara eksplisit menyetujui reset dan seed ulang hanya untuk database Docker lokal `express_api`; seluruh 50 migration telah diterapkan dan seed WIP per divisi berhasil diverifikasi. Database produksi tidak diubah atau diverifikasi.
+> Status terbaru: pengguna secara eksplisit menyetujui reset dan seed ulang hanya untuk database Docker lokal `express_api`; seluruh 51 migration telah diterapkan dan seed WIP per divisi berhasil diverifikasi. Database produksi tidak diubah atau diverifikasi.
 > Batas keselamatan: jangan mengarahkan reset ke target selain container API `backend-api-1` yang terhubung ke service DB Docker lokal `db` dan database `express_api`. Saldo pembuka legacy dan cutover produksi tetap belum disetujui.
 > Jangan menggabungkan fitur RFID/IoT.
 
@@ -12,15 +12,15 @@
 - [x] Sudah ada pencatatan WIP/transaksi produksi: `WipTransfer`, `WipTransferItem`, `WipTransferAlokasi`, `HasilProduksiHarian`, `HasilProduksiHarianItem`, dan `HasilProduksiPemakaian`.
 - [x] `Barang` merepresentasikan unit helm dengan varian, status, dan lokasi gudang; riwayat status dan mutasi gudang sudah tersedia.
 - [x] Audit statis API, hak akses, proses transaksi, serta UI selesai; hasilnya dicatat di bagian 1.
-- [x] Database Docker lokal dapat diverifikasi; 50 migration berstatus up to date setelah reset dan seed ulang yang disetujui pengguna.
+- [x] Database Docker lokal dapat diverifikasi; 51 migration berstatus up to date setelah reset dan seed ulang yang disetujui pengguna.
 - [x] Rancangan konseptual disetujui sebagai dasar verifikasi database dan perencanaan.
 - [x] Pengguna memberi persetujuan untuk implementasi kode/schema/API/UI dan pembuatan migration aditif, dengan larangan menjalankan migration/mengubah database tanpa persetujuan cutover terpisah.
 
 ## 1. Audit Sistem yang Berjalan
 
-- [x] Petakan model Prisma dan 50 migration yang relevan dengan produksi, stok, WIP, QC, repair, Finish Good, dan pengiriman.
+- [x] Petakan model Prisma dan 51 migration yang relevan dengan produksi, stok, WIP, QC, repair, Finish Good, dan pengiriman.
 - [x] Periksa urutan migration dan validitas schema secara statis (`npx prisma validate` lulus).
-- [x] Periksa status migration database Docker lokal: dari container API, `npx prisma migrate status` menyatakan 50 migration ditemukan dan database `express_api` up to date. Hasil ini bukan verifikasi database produksi.
+- [x] Periksa status migration database Docker lokal: dari container API, `npx prisma migrate status` menyatakan 51 migration ditemukan dan database `express_api` up to date. Hasil ini bukan verifikasi database produksi.
 - [x] Identifikasi relasi yang tumpang tindih atau berpotensi menggandakan sumber kebenaran, khususnya:
   - [x] `ProductionRealization` / `ProductionRealizationStage` dibandingkan dengan `HasilProduksiHarian`.
   - [x] `StokItemMutasi` dibandingkan dengan saldo `PemakaianMaterialItem.jumlahSisa`.
@@ -63,7 +63,7 @@ Tidak ada model yang dinyatakan aman untuk dihapus sebagai “tidak digunakan”
 #### Batas audit
 
 - Temuan di atas berasal dari schema, migration, source, route, consumer, dan tes di worktree saat ini; banyak file backend/frontend sedang memiliki perubahan lokal, sehingga audit menggambarkan versi lokal tersebut, bukan hanya commit terakhir.
-- `npx prisma validate` berhasil. Setelah pengguna menyetujui reset target Docker lokal `express_api`, seluruh 50 migration diterapkan dan seed selesai; database produksi tidak disentuh.
+- `npx prisma validate` berhasil. Setelah pengguna menyetujui reset target Docker lokal `express_api`, seluruh 51 migration diterapkan dan seed selesai; database produksi tidak disentuh.
 - Audit repository dan profil database lokal selesai secara read-only; database produksi/cutover belum dapat diidentifikasi atau diverifikasi.
 
 #### Verifikasi read-only database Docker lokal
@@ -187,7 +187,7 @@ Saldo dihitung sebagai gerakan masuk dikurangi gerakan keluar per item/lokasi. T
 
 ## 3. Migrasi dan Perlindungan Data
 
-- [x] Reset, penerapan 50 migration, dan seed ulang database Docker lokal `express_api` setelah persetujuan eksplisit; tindakan ini tidak menjadi pengganti backup atau pemeriksaan database produksi.
+- [x] Reset, penerapan 51 migration, dan seed ulang database Docker lokal `express_api` setelah persetujuan eksplisit; tindakan ini tidak menjadi pengganti backup atau pemeriksaan database produksi.
 - [x] Susun pendekatan transisi konseptual tanpa menebak data historis; pemetaan dan saldo pembuka final masih menunggu keputusan serta rekonsiliasi.
 - [x] Konfirmasi Docker lokal `express_api` sebagai sumber database untuk perencanaan cutover.
 - [ ] Tetapkan identitas/master gudang FG dan lokasi divisi; rekonsiliasi status fisik/QC barang legacy tetap diperlukan.
@@ -219,7 +219,7 @@ Rencana transisi terarah berdasarkan snapshot lokal (masih draft, tidak dijalank
 
 #### Status implementasi
 
-Reset lokal database Docker `express_api` telah dijalankan atas persetujuan pengguna; seluruh 50 migration diterapkan dan seed ulang selesai. Seed produksi membuat 32 routing aktif beserta BOM untuk seluruh varian/ukuran, 16 dokumen hasil produksi dengan input dan output per divisi, 15 transfer WIP, serta saldo ledger akhir satu unit untuk masing-masing dari delapan Item Top Coat. Kuantitas input dan hasil seimbang di setiap divisi pada fixture. Data mapping Base Coat → Decal merupakan contoh konsisten yang disetujui pengguna untuk seed, bukan konfirmasi BOM aktual. Database produksi tidak disentuh. Saldo pembuka legacy dan cutover/rekonsiliasi produksi belum disahkan.
+Reset lokal database Docker `express_api` telah dijalankan atas persetujuan pengguna; seluruh 51 migration diterapkan dan seed ulang selesai. Seed produksi membuat 32 routing aktif beserta BOM untuk seluruh varian/ukuran, 16 dokumen hasil produksi dengan input dan output per divisi, 15 transfer WIP, serta saldo ledger akhir satu unit untuk masing-masing dari delapan Item Top Coat. Kuantitas input dan hasil seimbang di setiap divisi pada fixture. Data mapping Base Coat → Decal merupakan contoh konsisten yang disetujui pengguna untuk seed, bukan konfirmasi BOM aktual. Database produksi tidak disentuh. Saldo pembuka legacy dan cutover/rekonsiliasi produksi belum disahkan.
 
 ## 4. Implementasi Setelah Persetujuan
 
@@ -238,7 +238,7 @@ Reset lokal database Docker `express_api` telah dijalankan atas persetujuan peng
 
 ## 5. Pengujian dan Kriteria Penerimaan
 
-Status validasi terakhir: Prisma schema valid; Prisma Client berhasil digenerate; seluruh migration diterapkan dan status up to date (50/50); backend dan frontend build lulus; tes model QC/repair terarah (5) dan suite frontend (41) lulus. Full suite backend menjalankan 578 tes: 575 lulus dan 3 tes penjadwalan produksi gagal pada ekspektasi tanggal/alokasi; kegagalan berulang pada file penjadwalan yang tidak terkait perubahan QC ini. Pengujian integrasi siklus repair, ledger, serta konkurensi masih perlu dilengkapi.
+Status validasi terakhir: Prisma schema valid; Prisma Client berhasil digenerate; seluruh migration diterapkan dan status up to date (51/51); backend dan frontend build lulus; tes model QC/repair terarah (5) dan suite frontend (41) lulus. Full suite backend menjalankan 578 tes: 575 lulus dan 3 tes penjadwalan produksi gagal pada ekspektasi tanggal/alokasi; kegagalan berulang pada file penjadwalan yang tidak terkait perubahan QC ini. Pengujian integrasi siklus repair, ledger, serta konkurensi masih perlu dilengkapi.
 
 - [ ] Uji saldo WIP harian: saldo akhir hari sebelumnya sama dengan saldo awal hari berikutnya.
 - [ ] Uji transformasi input-output multi-item dan pencatatan sisa, tanpa mengandalkan BOM sebagai bukti konsumsi.
@@ -251,28 +251,16 @@ Status validasi terakhir: Prisma schema valid; Prisma Client berhasil digenerate
 - [x] Jalankan Prisma validate/generate, backend/frontend build, tes model QC/repair (5), suite frontend (41), serta terapkan migration secara aditif pada `express_api`.
 - [ ] Kriteria akhir: seluruh material dan unit dapat ditelusuri; saldo dapat direkonsiliasi; QC Akhir memegang keputusan kualitas; siklus repair, Finish Good, dan pengiriman tidak menggandakan hitungan.
 
-## 6. Perbaikan QC Akhir dan Alur Batok
+## 6. QC Akhir Sederhana dan Laporan Produksi
 
-Keputusan proses untuk pekerjaan ini:
+QC Akhir bekerja per item hasil Topcoat tanpa meminta atau menampilkan ProductVariant/ID internal. Petugas QC memilih item, alasan reject (yang dapat dikelola untuk dropdown), dan divisi tujuan repair. Reject masuk antrean WIP divisi; operator divisi melakukan repair dan hasilnya kembali untuk pemeriksaan QC. Laporan harian menampilkan hasil normal dan hasil repair secara ringkas.
 
-- QC Akhir hanya menerima hasil proses Topcoat.
-- Jalur produksi: Buffing → Basecoat (batok hitam/putih/platinum grey) → Decal (varian decal aktif) → Topcoat (varian produk) → QC Akhir.
-- QC menetapkan divisi asal defect. Jika hasil repair disetujui, kuantitas kembali ke tahap asal dan harus melewati tahap sesudahnya; repair Topcoat kembali langsung ke antrean QC.
-- Tahap produksi dipetakan secara eksplisit. BOM aktif per varian wajib tersedia sebagai validasi konfigurasi/hasil; jangan menebak hubungan dari teks bebas.
-- Target laporan: jumlah masuk, sedang beredar/WIP, diproses, reject, repair, saldo, dan selisih opname per tahap/item; selisih dicatat sebagai koreksi beralasan tanpa mengubah histori.
-- Tidak boleh menjalankan migration atau mengubah database sampai pengguna memberikan persetujuan cutover terpisah.
-
-- [x] Audit definisi Item WIP, varian, BOM aktif, serta hasil produksi/transfer yang tersedia; jangan mengubah atau seed master produksi tanpa persetujuan.
-- [x] Tambahkan konfigurasi routing per varian dan tahap Buffing/Basecoat/Decal/Topcoat, termasuk pasangan Item input/output dan BOM aktif; validasi konfigurasi lengkap serta urutan tahap.
-- [x] Batasi antrean QC Akhir ke saldo WIP output Topcoat yang benar-benar tersedia; tampilkan Item, varian, saldo, nomor dokumen, dan bukan ID lot internal.
-- [x] Wajibkan QC memilih divisi asal defect dari tahap routing dan gunakan divisi yang sama sebagai tujuan repair.
-- [x] Review repair sebelum Top Coat membuat lot WIP di tahap asal untuk proses berikutnya; repair Top Coat kembali ke inspeksi QC. Transfer WIP routed dibatasi ke tahap berikutnya.
-- [x] Hubungkan hasil/opsi varian dengan BOM aktif; blokir konfigurasi/inspeksi jika routing/BOM aktif tidak tersedia atau pasangan input/output tidak cocok.
-- [x] Buat laporan aliran WIP/QC/repair dengan saldo pembuka/penutup, mutasi produksi/transfer/QC/repair/penyesuaian, hasil inspeksi final, dan review repair per periode/divisi/item.
-- [x] Tambahkan opname fisik khusus WIP per lokasi divisi/item; simpan saldo sistem, jumlah fisik, selisih, dan alasan wajib dalam sesi append-only.
-- [x] Posting koreksi selisih sebagai mutasi inventory `ADJUSTMENT`; penambahan membuat lot WIP ber-sumber `OPNAME`, pengurangan mengurangi saldo lot FIFO dan ledger secara atomik. Tidak ada endpoint edit/hapus.
-- [x] Tambahkan migration aditif, API, permission yang tersedia, dan UI laporan/opname di area admin dan gudang; migration diterapkan ke database Docker lokal setelah persetujuan.
-- [ ] Tambahkan tes integrasi report dan transaksi koreksi lot/ledger beserta role database; lengkapi verifikasi manual alur opname end-to-end.
-- [x] Dokumentasikan report, batas detail mutasi, setup opname, status migration lokal, dan batas cutover pada `backend/README.md`.
+- [x] Pisahkan alur QC reject dari ProductVariant dan gunakan item Topcoat sebagai pilihan yang mudah dipahami.
+- [x] Sediakan input reject dengan alasan, petugas QC, divisi repair, dan pengelolaan daftar alasan.
+- [x] Sediakan antrean reject WIP berbasis divisi, pengambilan/penyelesaian repair, dan pemeriksaan QC setelah repair.
+- [x] Sediakan laporan harian hasil produksi normal dan hasil repair.
+- [x] Terapkan migration alur QC pada database Docker lokal `express_api` setelah persetujuan reset; status akhir 51/51 migration up to date.
+- [x] Jalankan kembali seed setelah perubahan seed agar akun contoh `produksi@example.com` terhubung ke divisi Buffing. Seed melewati fixture WIP yang sudah ada, sehingga tidak menduplikasi data produksi.
+- [ ] Lengkapi pengujian integrasi alur repair dan laporan harian; database produksi tidak disentuh dan reset selanjutnya memerlukan persetujuan eksplisit.
 
 ---

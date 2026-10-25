@@ -190,6 +190,16 @@ async function main() {
   }
   console.log(`✓ ${divisiNames.length} Divisi selesai`);
 
+  const buffingDivision = await prisma.divisi.findUniqueOrThrow({
+    where: { nama: "Buffing" },
+    select: { id: true },
+  });
+  await prisma.user.updateMany({
+    where: { email: "produksi@example.com", divisiId: null },
+    data: { divisiId: buffingDivision.id },
+  });
+  console.log("✓ Operator Produksi contoh terhubung ke divisi Buffing");
+
   // Item + saldo awal + PM historis ikut seed utama.
   await seedItem();
 

@@ -120,7 +120,7 @@ const routes = (
       <Route path="/divisi/transfer-wip" element={<DivisiTransferWip />} />
       <Route path="/divisi/permintaan" element={<DivisiPermintaan />} />
       <Route path="/divisi/anggota" element={<AnggotaDivisi />} />
-      <Route path="/divisi/quality" element={<RequireRole roles={["admin", "qc", "produksi"]}><QualityControl /></RequireRole>} />
+      <Route path="/divisi/quality" element={<RequireRole roles={["admin", "qc", "produksi", "user"]}><QualityControl /></RequireRole>} />
     </Route>
 
     <Route
