@@ -25,7 +25,13 @@ vi.mock("../src/lib/redis.js", () => ({
 }));
 
 import authRouter from "../src/routes/auth.js";
-import { authenticate, adminOnly, requireRole } from "../src/middleware/auth.js";
+import {
+  authenticate,
+  adminOnly,
+  authorize,
+  requirePermission,
+  requireRole,
+} from "../src/middleware/auth.js";
 import { findUserByEmail, findUserByIdWithPassword, getUserById, getUserRole, updateUser } from "../src/model/user/user.js";
 import { getRoleAccess } from "../src/model/role/role.js";
 import { signToken, verifyToken, type TokenPayload } from "../src/lib/jwt.js";
@@ -64,6 +70,16 @@ protectedApp.use(express.json());
 protectedApp.use("/api/protected", authenticate, (_req, res) => {
   res.status(200).json({ user: (_req as any).user ?? null });
 });
+
+const permissionApp = express();
+permissionApp.use(express.json());
+permissionApp.get(
+  "/api/quality/routings",
+  authenticate,
+  authorize,
+  requirePermission("QUALITY_ROUTING_MANAGE"),
+  (_req, res) => res.status(200).json({ data: [] }),
+);
 
 const seedUser = {
   id: 1,
@@ -234,14 +250,59 @@ describe("Middleware authenticate", () => {
 // Middleware adminOnly
 // =============================================
 
-describe("Middleware adminOnly", () => {
+describe("Middleware adminOnly tanpa token", () => {
   it("401 jika tanpa token", async () => {
     const res = await request(adminApp).get("/api/admin/dashboard");
 
     expect(res.status).toBe(401);
     expect(res.body.message).toContain("Token tidak ditemukan");
   });
+});
 
+describe("Middleware requirePermission", () => {
+    it("admin tetap punya akses meski permission baru belum terdaftar di database", async () => {
+      const token = signToken({
+        id: 1,
+        email: "admin@example.com",
+        name: "Admin",
+        role: "admin",
+      });
+      mockedGetRoleAccess.mockResolvedValue({
+        role: "admin",
+        permissions: ["BARANG_LIHAT"],
+        statusView: null,
+      });
+
+      const res = await request(permissionApp)
+        .get("/api/quality/routings")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+    });
+
+    it("tetap menolak role non-admin tanpa permission yang diperlukan", async () => {
+      const token = signToken({
+        id: 1,
+        email: "operator@example.com",
+        name: "Operator",
+        role: "user",
+      });
+      mockedGetRoleAccess.mockResolvedValue({
+        role: "user",
+        permissions: ["BARANG_LIHAT"],
+        statusView: null,
+      });
+
+      const res = await request(permissionApp)
+        .get("/api/quality/routings")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain("QUALITY_ROUTING_MANAGE");
+    });
+});
+
+describe("Middleware adminOnly", () => {
   it("403 jika role bukan admin", async () => {
     mockedGetUserRole.mockResolvedValue("user");
     const token = signToken({ id: 1, email: "user@example.com", name: "User", role: "user" });

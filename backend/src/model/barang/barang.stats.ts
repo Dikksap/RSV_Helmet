@@ -178,6 +178,7 @@ export type BarangRekapVariantFilter = {
 };
 
 export type BarangRekapVariantRow = {
+  tanggal: string | null;
   variantId: number;
   kodeVariant: string;
   product: string;
@@ -190,9 +191,10 @@ export type BarangRekapVariantRow = {
 };
 
 type VariantStatusGroup = {
+  tanggal: string | null;
   variantId: number;
   status: string;
-  _count: { _all: number };
+  jumlah: bigint;
 };
 
 export async function getBarangRekapVariant(
@@ -203,27 +205,39 @@ export async function getBarangRekapVariant(
   statuses: string[];
   total: number;
 }> {
-  const where: Prisma.BarangWhereInput = {};
   const visibleStatus = statusScopeFilter(statusScope);
-  if (visibleStatus !== undefined) where.status = visibleStatus;
-  if (filter.tanggalAwal || filter.tanggalAkhir) {
-    where.tanggal = {};
-    if (filter.tanggalAwal) where.tanggal.gte = filter.tanggalAwal;
-    if (filter.tanggalAkhir) where.tanggal.lte = filter.tanggalAkhir;
+  const conditions: Prisma.Sql[] = [Prisma.sql`1 = 1`];
+  if (filter.tanggalAwal) {
+    conditions.push(Prisma.sql`b.tanggal >= ${filter.tanggalAwal}`);
+  }
+  if (filter.tanggalAkhir) {
+    conditions.push(Prisma.sql`b.tanggal <= ${filter.tanggalAkhir}`);
+  }
+  if (typeof visibleStatus === "string") {
+    conditions.push(Prisma.sql`b.status = ${visibleStatus}`);
+  } else if (visibleStatus && visibleStatus.in.length > 0) {
+    conditions.push(
+      Prisma.sql`b.status IN (${Prisma.join(visibleStatus.in)})`,
+    );
+  } else if (visibleStatus) {
+    conditions.push(Prisma.sql`1 = 0`);
   }
 
-  const [groups, statusRows] = (await prisma.$transaction([
-    prisma.barang.groupBy({
-      by: ["variantId", "status"],
-      where,
-      _count: { _all: true },
-    }),
+  const [groups, statusRows] = await Promise.all([
+    prisma.$queryRaw<VariantStatusGroup[]>(Prisma.sql`
+      SELECT DATE_FORMAT(b.tanggal, '%Y-%m-%d') AS tanggal,
+             b.variantId AS variantId,
+             b.status AS status,
+             COUNT(*) AS jumlah
+      FROM Barang b
+      WHERE ${Prisma.join(conditions, " AND ")}
+      GROUP BY DATE(b.tanggal), b.variantId, b.status`),
     prisma.statusBarang.findMany({
       where: { isActive: true },
       orderBy: { urutan: "asc" },
       select: { kode: true },
     }),
-  ])) as [VariantStatusGroup[], { kode: string }[]];
+  ]);
 
   const statuses = statusRows
     .map((row) => row.kode)
@@ -248,12 +262,14 @@ export async function getBarangRekapVariant(
   });
   const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
 
-  const rows = new Map<number, BarangRekapVariantRow>();
+  const rows = new Map<string, BarangRekapVariantRow>();
   for (const group of groups) {
     const variant = variantMap.get(group.variantId);
-    let row = rows.get(group.variantId);
+    const key = `${group.tanggal ?? ""}\u0000${group.variantId}`;
+    let row = rows.get(key);
     if (!row) {
       row = {
+        tanggal: group.tanggal,
         variantId: group.variantId,
         kodeVariant: variant?.kodeVariant ?? `V${group.variantId}`,
         product: variant?.product.nama ?? "-",
@@ -264,15 +280,16 @@ export async function getBarangRekapVariant(
         perStatus: Object.fromEntries(statuses.map((kode) => [kode, 0])),
         total: 0,
       };
-      rows.set(group.variantId, row);
+      rows.set(key, row);
     }
-    const count = group._count._all ?? 0;
+    const count = Number(group.jumlah);
     row.perStatus[group.status] = count;
     row.total += count;
   }
 
   const data = [...rows.values()].sort(
     (a, b) =>
+      (b.tanggal ?? "").localeCompare(a.tanggal ?? "") ||
       b.total - a.total ||
       a.product.localeCompare(b.product) ||
       a.style.localeCompare(b.style) ||

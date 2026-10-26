@@ -634,6 +634,7 @@ describe("GET /api/barang/rekap-variant", () => {
     mocked.getBarangRekapVariant.mockResolvedValue({
       data: [
         {
+          tanggal: "2026-01-15",
           variantId: 1,
           kodeVariant: "W001",
           product: "Helmet",
@@ -655,6 +656,7 @@ describe("GET /api/barang/rekap-variant", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].tanggal).toBe("2026-01-15");
     expect(res.body.data[0].kodeVariant).toBe("W001");
     expect(res.body.total).toBe(5);
 

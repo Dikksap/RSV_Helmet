@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBoxesStacked, faRotate } from "@fortawesome/free-solid-svg-icons";
+import {
+  faBoxesStacked,
+  faFilePdf,
+  faRotate,
+} from "@fortawesome/free-solid-svg-icons";
 import {
   getBarangRekapVariant,
   type BarangRekapVariantRow,
@@ -9,6 +13,7 @@ import { BarangTabs } from "../../components/admin/DaftarBarang/BarangTabs";
 import { Pagination } from "../../components/admin/DaftarBarang/Pagination";
 import { DATE_PRESETS, getPresetRange } from "../../lib/datePresets";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
+import { downloadRekapBarangVariantPdf } from "../../lib/rekapBarangVariantPdf";
 import { useStatusOptions } from "../../lib/useStatusOptions";
 
 const BASE = "inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
@@ -21,7 +26,13 @@ type RekapResult = {
 };
 
 type RekapRow = { row: BarangRekapVariantRow; total: number };
-type RekapGroup = { key: string; item: string; rows: RekapRow[]; total: number };
+type RekapGroup = {
+  key: string;
+  tanggal: string | null;
+  item: string;
+  rows: RekapRow[];
+  total: number;
+};
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
 const FIELD =
@@ -183,11 +194,12 @@ export default function RekapBarangVariant() {
   const groups = useMemo(() => {
     const map = new Map<string, RekapGroup>();
     for (const item of filtered) {
-      const key = `${item.row.product}\u0000${item.row.style}\u0000${item.row.color}`;
+      const key = `${item.row.tanggal ?? ""}\u0000${item.row.product}\u0000${item.row.style}\u0000${item.row.color}`;
       let group = map.get(key);
       if (!group) {
         group = {
           key,
+          tanggal: item.row.tanggal,
           item: `${item.row.style} ${item.row.color}`,
           rows: [],
           total: 0,
@@ -206,7 +218,11 @@ export default function RekapBarangVariant() {
             a.row.size.localeCompare(b.row.size),
         ),
       }))
-      .sort((a, b) => a.item.localeCompare(b.item));
+      .sort(
+        (a, b) =>
+          (b.tanggal ?? "").localeCompare(a.tanggal ?? "") ||
+          a.item.localeCompare(b.item),
+      );
   }, [filtered]);
 
   const totalPages = Math.max(1, Math.ceil(groups.length / pageSize));
@@ -446,7 +462,7 @@ export default function RekapBarangVariant() {
               <div className="min-w-0">
                 <h2 className="font-semibold text-[#1E3A5F]">Data Rekap Varian</h2>
                 <p className="mt-0.5 text-xs text-[#6B7280]">
-                  {periodeLabel} · {n(groups.length)} item · {n(filtered.length)} varian ·{" "}
+                  {periodeLabel} · {n(new Set(filtered.map(({ row }) => row.tanggal)).size)} tanggal · {n(filtered.length)} varian-hari ·{" "}
                   {n(grandTotal)} barang
                   {loading && <span className="ml-1">· memuat…</span>}
                 </p>
@@ -471,6 +487,24 @@ export default function RekapBarangVariant() {
                 </label>
                 <button
                   type="button"
+                  onClick={() =>
+                    downloadRekapBarangVariantPdf(
+                      groups,
+                      visibleStatuses,
+                      periodeLabel,
+                      (kode) => statusMeta.get(kode)?.label ?? kode,
+                      `laporan-rekap-variant-${tanggalAwal || "semua"}-${tanggalAkhir || "tanggal"}.pdf`,
+                    )
+                  }
+                  disabled={loading || filtered.length === 0}
+                  className={`${MASTER_BTN} text-[#1E3A5F]`}
+                  title="Unduh seluruh data sesuai filter sebagai PDF"
+                >
+                  <FontAwesomeIcon icon={faFilePdf} className="h-3.5 w-3.5" />
+                  Laporan PDF
+                </button>
+                <button
+                  type="button"
                   onClick={load}
                   disabled={loading}
                   className={MASTER_BTN}
@@ -487,7 +521,7 @@ export default function RekapBarangVariant() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <caption className="sr-only">
-                  Rekap jumlah barang per item, ukuran, dan status
+                  Rekap jumlah barang per tanggal, item, ukuran, dan status
                 </caption>
                 <thead>
                   <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-[#6B7280]">
@@ -509,43 +543,65 @@ export default function RekapBarangVariant() {
                     const rowsBefore = pageGroups
                       .slice(0, groupIndex)
                       .reduce((sum, item) => sum + item.rows.length, 0);
-                    return group.rows.map(({ row }, rowIndex) => (
-                      <tr
-                        key={row.variantId}
-                        className="border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA]"
-                      >
-                        <td className="px-4 py-2.5 tabular-nums text-[#6B7280]">
-                          {rowOffset + rowsBefore + rowIndex + 1}
-                        </td>
-                        {rowIndex === 0 && (
-                          <td
-                            rowSpan={group.rows.length}
-                            className="border-l border-slate-100 px-4 py-2.5 align-top font-medium text-[#1F2937]"
-                          >
-                            {group.item}
+                    const dateHeader =
+                      groupIndex === 0 ||
+                      pageGroups[groupIndex - 1].tanggal !== group.tanggal;
+                    return [
+                      ...(dateHeader
+                        ? [
+                            <tr
+                              key={`tanggal-${group.tanggal ?? "kosong"}-${groupIndex}`}
+                              className="border-b border-slate-100 bg-[#1E3A5F]/5"
+                            >
+                              <th
+                                colSpan={visibleStatuses.length + 4}
+                                className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-[#1E3A5F]"
+                              >
+                                {group.tanggal
+                                  ? formatTanggal(group.tanggal)
+                                  : "Tanpa tanggal"}
+                              </th>
+                            </tr>,
+                          ]
+                        : []),
+                      ...group.rows.map(({ row }, rowIndex) => (
+                        <tr
+                          key={`${group.key}-${row.variantId}`}
+                          className="border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA]"
+                        >
+                          <td className="px-4 py-2.5 tabular-nums text-[#6B7280]">
+                            {rowOffset + rowsBefore + rowIndex + 1}
                           </td>
-                        )}
-                        <td className="px-4 py-2.5 text-[#1F2937]">
-                          {row.size}
-                        </td>
-                        {visibleStatuses.map((kode) => (
-                          <td
-                            key={kode}
-                            className="px-4 py-2.5 text-right tabular-nums text-[#6B7280]"
-                          >
-                            {n(row.perStatus[kode] ?? 0)}
+                          {rowIndex === 0 && (
+                            <td
+                              rowSpan={group.rows.length}
+                              className="border-l border-slate-100 px-4 py-2.5 align-top font-medium text-[#1F2937]"
+                            >
+                              {group.item}
+                            </td>
+                          )}
+                          <td className="px-4 py-2.5 text-[#1F2937]">
+                            {row.size}
                           </td>
-                        ))}
-                        {rowIndex === 0 && (
-                          <td
-                            rowSpan={group.rows.length}
-                            className="border-l border-slate-100 px-4 py-2.5 text-right align-top font-bold tabular-nums text-[#1E3A5F]"
-                          >
-                            {n(group.total)}
-                          </td>
-                        )}
-                      </tr>
-                    ));
+                          {visibleStatuses.map((kode) => (
+                            <td
+                              key={kode}
+                              className="px-4 py-2.5 text-right tabular-nums text-[#6B7280]"
+                            >
+                              {n(row.perStatus[kode] ?? 0)}
+                            </td>
+                          ))}
+                          {rowIndex === 0 && (
+                            <td
+                              rowSpan={group.rows.length}
+                              className="border-l border-slate-100 px-4 py-2.5 text-right align-top font-bold tabular-nums text-[#1E3A5F]"
+                            >
+                              {n(group.total)}
+                            </td>
+                          )}
+                        </tr>
+                      )),
+                    ];
                   })}
                 </tbody>
                 <tfoot>

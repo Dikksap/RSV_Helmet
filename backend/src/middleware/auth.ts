@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { verifyToken, type TokenPayload } from "../lib/jwt.js";
 import { isTokenRevoked } from "../lib/tokenBlacklist.js";
 import { getUserRole } from "../model/user/user.js";
-import { getRoleAccess, type RoleAccess } from "../model/role/role.js";
+import { ADMIN_ROLE, getRoleAccess, type RoleAccess } from "../model/role/role.js";
 
 declare global {
   namespace Express {
@@ -111,7 +111,10 @@ export function requirePermission(...allowed: readonly string[]) {
       return res.status(401).json({ message: "Token tidak ditemukan" });
     }
 
-    if (!allowed.some((kode) => access.permissions.includes(kode))) {
+    if (
+      access.role !== ADMIN_ROLE &&
+      !allowed.some((kode) => access.permissions.includes(kode))
+    ) {
       return res.status(403).json({ message: `Akses ditolak. Memerlukan permission: ${allowed.join(", ")}.` });
     }
 

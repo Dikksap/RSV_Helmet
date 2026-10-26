@@ -290,6 +290,7 @@ export async function getBarangStats(
 }
 
 export interface BarangRekapVariantRow {
+  tanggal: string | null;
   variantId: number;
   kodeVariant: string;
   product: string;
