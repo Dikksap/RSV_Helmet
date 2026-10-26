@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCopy, faGripVertical, faMagnifyingGlass, faRotateLeft, faSave } from "@fortawesome/free-solid-svg-icons";
+import { faChevronDown, faCopy, faFolderOpen, faGripVertical, faMagnifyingGlass, faPlus, faRotateLeft, faSave, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { getItems, type Item } from "../../../api/item";
-import { createBom, getBoms, updateBom, type BomItemInput } from "../../../api/bom";
+import { createBom, deleteBom, getBoms, updateBom, type Bom, type BomItemInput } from "../../../api/bom";
 import { createSubassembly, getSubassemblies } from "../../../api/subassembly";
 import { getProducts, type ProductVariant } from "../../../api/products";
 import { cloneNodes, countRows, depthOf, findNode, flatten, nid, normalizeNodes, rp, sumTree, unitCost, type BomNode, type FlatRow } from "./bomTree";
@@ -17,6 +17,20 @@ const LEVEL_COLORS = ["#0F1C2E", "#006E99", "#4452c4", "#96590a", "#a23b72"];
 const LEVEL_LABELS = ["Produk jadi", "Komponen langsung", "Isi rakitan L1", "Isi rakitan L2", "Level lebih dalam"];
 const CELL_INPUT = "w-full min-w-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-[#1F2937] outline-none hover:border-[#D1D5DB] focus:border-[#00A8E8] focus:bg-white";
 
+interface Blueprint {
+  id: string;
+  name: string;
+  code: string;
+  nodes: BomNode[];
+  bomId?: number;
+}
+
+interface SavedBlueprint extends Blueprint {
+  version: string;
+  isActive: boolean;
+  output: string;
+}
+
 interface Draft {
   name: string;
   code: string;
@@ -24,7 +38,7 @@ interface Draft {
   productVariantId: number | null;
   qty: number;
   nodes: BomNode[];
-  blueprints: { id: string; name: string; code: string; nodes: BomNode[] }[];
+  blueprints: Blueprint[];
 }
 
 const KEY = "rsv-bom-builder-v1";
@@ -38,6 +52,50 @@ const initial: Draft = {
   nodes: [],
   blueprints: [],
 };
+
+function nodesFromBom(bom: Bom, boms: Bom[], ancestors = new Set<number>()): BomNode[] {
+  if (ancestors.has(bom.id)) return [];
+  const nextAncestors = new Set(ancestors);
+  nextAncestors.add(bom.id);
+
+  return bom.items.map((entry) => {
+    const nestedBom = entry.subassemblyId == null
+      ? undefined
+      : boms.find((candidate) => candidate.subassemblyId === entry.subassemblyId && candidate.version === bom.version)
+        ?? boms.find((candidate) => candidate.subassemblyId === entry.subassemblyId);
+    const quantity = Number(entry.quantity);
+
+    return {
+      id: nid(),
+      ...(entry.item ? { itemId: entry.item.id } : {}),
+      kode: entry.item?.kode ?? entry.subassembly?.kode ?? "",
+      nama: entry.item?.nama ?? entry.subassembly?.nama ?? "Komponen tidak dikenal",
+      unit: entry.unit ?? entry.item?.unit ?? "pcs",
+      qty: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+      cost: 0,
+      kids: nestedBom ? nodesFromBom(nestedBom, boms, nextAncestors) : [],
+    };
+  });
+}
+
+function blueprintFromBom(bom: Bom, boms: Bom[]): SavedBlueprint {
+  const output = bom.productVariant
+    ? [bom.productVariant.product.nama, bom.productVariant.kodeVariant].filter(Boolean).join(" · ")
+    : bom.subassembly
+      ? `${bom.subassembly.kode} · ${bom.subassembly.nama}`
+      : "Output tidak diketahui";
+
+  return {
+    id: `db-${bom.id}`,
+    bomId: bom.id,
+    name: bom.nama,
+    code: bom.kode ?? bom.productVariant?.kodeVariant ?? bom.subassembly?.kode ?? "",
+    nodes: nodesFromBom(bom, boms),
+    version: bom.version,
+    isActive: bom.isActive,
+    output,
+  };
+}
 
 function loadDraft(): Draft {
   try {
@@ -75,11 +133,18 @@ function loadDraft(): Draft {
 
 type DragPayload = { kind: "node" | "item" | "bp"; id: string };
 type DropZone = "before" | "after" | "in";
+type VariantEntry = { variant: ProductVariant; productName: string; prefix: string };
+type BlueprintEntry = Blueprint & { origin: "database" | "local"; detail?: string; isActive?: boolean };
+
+const variantLabel = (entry: VariantEntry) =>
+  [entry.productName, entry.variant.style.nama, entry.variant.color.nama, entry.variant.size.nama].filter(Boolean).join(" ");
 
 export function BomBuilder() {
   const [draft, setDraft] = useState<Draft>(() => loadDraft());
+  const [savedBoms, setSavedBoms] = useState<Bom[]>([]);
+  const [loadingSavedBoms, setLoadingSavedBoms] = useState(true);
   const [items, setItems] = useState<Item[]>([]);
-  const [variants, setVariants] = useState<{ variant: ProductVariant; productName: string; prefix: string }[]>([]);
+  const [variants, setVariants] = useState<VariantEntry[]>([]);
   const [variantSearch, setVariantSearch] = useState("");
   const [variantSelectOpen, setVariantSelectOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -90,6 +155,9 @@ export function BomBuilder() {
   const [zone, setZone] = useState<{ id: string; z: DropZone } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [blueprintOpen, setBlueprintOpen] = useState(true);
+  const [blueprintModalOpen, setBlueprintModalOpen] = useState(false);
+  const [selectedBlueprintIds, setSelectedBlueprintIds] = useState<string[]>([]);
   const armTimer = useRef<number | undefined>(undefined);
 
   const flash = useCallback((m: string) => {
@@ -117,6 +185,19 @@ export function BomBuilder() {
       flash(error instanceof Error ? error.message : "Gagal memuat data komponen dan varian produk");
     });
   }, [flash]);
+
+  const refreshSavedBoms = useCallback(async () => {
+    setSavedBoms(await getBoms());
+  }, []);
+
+  useEffect(() => {
+    void getBoms()
+      .then(setSavedBoms)
+      .catch((error: unknown) => {
+        flash(error instanceof Error ? `Gagal memuat blueprint database: ${error.message}` : "Gagal memuat blueprint database");
+      })
+      .finally(() => setLoadingSavedBoms(false));
+  }, [flash, refreshSavedBoms]);
 
   /** Klik pertama minta konfirmasi, klik kedua dalam 3 detik menjalankan aksi. */
   const arm = (key: string, fn: () => void) => {
@@ -226,12 +307,13 @@ export function BomBuilder() {
 
   const shownItems = useMemo(() => filteredGroups.reduce((s, [, list]) => s + list.length, 0), [filteredGroups]);
 
-  const variantLabel = (entry: (typeof variants)[number]) =>
-    [entry.productName, entry.variant.style.nama, entry.variant.color.nama, entry.variant.size.nama].filter(Boolean).join(" ");
   const selectedVariant = variants.find(({ variant }) => variant.id === draft.productVariantId);
-  const matchingVariants = variants.filter((entry) =>
-    variantLabel(entry).toLocaleLowerCase().includes(variantSearch.trim().toLocaleLowerCase()),
-  );
+  const matchingVariants = useMemo(() => {
+    const term = variantSearch.trim().toLocaleLowerCase();
+    return variants
+      .filter((entry) => variantLabel(entry).toLocaleLowerCase().includes(term))
+      .sort((a, b) => variantLabel(a).localeCompare(variantLabel(b), "id", { sensitivity: "base" }));
+  }, [variants, variantSearch]);
 
   const depth = useMemo(() => depthOf(draft.nodes), [draft.nodes]);
 
@@ -241,6 +323,19 @@ export function BomBuilder() {
     const per = sumTree(draft.nodes);
     return { per, total: per * draft.qty, rows: countRows(draft.nodes), kinds: acc.size, flat: Array.from(acc.values()) };
   }, [draft.nodes, draft.qty]);
+
+  const savedBlueprints = useMemo(
+    () => savedBoms.map((bom) => blueprintFromBom(bom, savedBoms)),
+    [savedBoms],
+  );
+  const allBlueprints: BlueprintEntry[] = [
+    ...savedBlueprints.map((blueprint) => ({
+      ...blueprint,
+      origin: "database" as const,
+      detail: `Versi ${blueprint.version} · ${blueprint.output}`,
+    })),
+    ...draft.blueprints.map((blueprint) => ({ ...blueprint, origin: "local" as const })),
+  ];
 
   const saveBlueprint = () => {
     if (!draft.nodes.length) { flash("BOM masih kosong"); return; }
@@ -322,7 +417,6 @@ export function BomBuilder() {
             : bom.subassemblyId === output.subassemblyId),
         );
         const body = {
-          ...(code.trim() ? { kode: code.trim() } : {}),
           nama: name.trim(),
           version: draft.version.trim(),
           isActive: true,
@@ -332,7 +426,10 @@ export function BomBuilder() {
         if (matchingBom) {
           await updateBom(matchingBom.id, body);
         } else {
-          const created = await createBom(body);
+          const created = await createBom({
+            ...body,
+            ...(output.productVariantId !== undefined && code.trim() ? { kode: code.trim() } : {}),
+          });
           boms.push(created);
         }
       };
@@ -344,6 +441,11 @@ export function BomBuilder() {
         selectedVariant.variant.kodeVariant ?? "",
       );
       flash("BOM berhasil disimpan atau diperbarui di database");
+      try {
+        await refreshSavedBoms();
+      } catch (error) {
+        flash(`BOM tersimpan, tetapi daftar blueprint gagal diperbarui: ${error instanceof Error ? error.message : "Terjadi kesalahan"}`);
+      }
     } catch (error) {
       flash(`Gagal menyimpan BOM: ${error instanceof Error ? error.message : "Terjadi kesalahan"}. Jika sebagian subassembly sudah dibuat, periksa kembali sebelum mencoba lagi.`);
     } finally {
@@ -351,25 +453,67 @@ export function BomBuilder() {
     }
   };
 
-  const loadBlueprint = (id: string) => {
-    const bp = draft.blueprints.find((b) => b.id === id);
-    if (!bp) return;
+  const loadBlueprint = (bp: Blueprint) => {
     const go = () => patch((d) => {
       d.nodes = cloneNodes(bp.nodes);
       d.name = bp.name;
       d.code = bp.code ? `${bp.code}-salinan` : "";
     });
-    if (draft.nodes.length) arm(`load:${id}`, go);
+    if (draft.nodes.length) arm(`load:${bp.id}`, go);
     else go();
   };
 
-  const insertBlueprint = (id: string) => patch((d) => {
-    const bp = d.blueprints.find((b) => b.id === id);
-    if (!bp) return;
+  const insertBlueprint = (bp: Blueprint) => patch((d) => {
     d.nodes.push({ id: nid(), kode: bp.code, nama: bp.name, unit: "set", qty: 1, cost: 0, kids: cloneNodes(bp.nodes) });
   });
 
   const delBlueprint = (id: string) => patch((d) => { d.blueprints = d.blueprints.filter((b) => b.id !== id); });
+
+  const delSavedBom = async (id: number) => {
+    try {
+      await deleteBom(id);
+      setSavedBoms((prev) => prev.filter((bom) => bom.id !== id));
+      flash("BOM dihapus dari database");
+    } catch (error) {
+      flash(`Gagal menghapus BOM: ${error instanceof Error ? error.message : "Terjadi kesalahan"}`);
+    }
+  };
+
+  const closeBlueprintModal = () => {
+    setBlueprintModalOpen(false);
+    setSelectedBlueprintIds([]);
+  };
+
+  const selectedBlueprints = allBlueprints.filter((b) => selectedBlueprintIds.includes(b.id));
+
+  const toggleBlueprint = (id: string) => setSelectedBlueprintIds((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  );
+
+  const insertSelectedBlueprints = () => {
+    patch((d) => {
+      selectedBlueprints.forEach((bp) => {
+        d.nodes.push({ id: nid(), kode: bp.code, nama: bp.name, unit: "set", qty: 1, cost: 0, kids: cloneNodes(bp.nodes) });
+      });
+    });
+    flash(`${selectedBlueprints.length} blueprint disisipkan sebagai sub-rakitan`);
+  };
+
+  const deleteSelectedBlueprints = async () => {
+    const localIds = selectedBlueprints.filter((b) => b.origin === "local").map((b) => b.id);
+    if (localIds.length) patch((d) => { d.blueprints = d.blueprints.filter((b) => !localIds.includes(b.id)); });
+
+    const dbIds = selectedBlueprints.flatMap((b) => (b.origin === "database" && b.bomId ? [b.bomId] : []));
+    const results = await Promise.allSettled(dbIds.map((id) => deleteBom(id)));
+    const deletedIds = dbIds.filter((_, i) => results[i].status === "fulfilled");
+    if (deletedIds.length) setSavedBoms((prev) => prev.filter((bom) => !deletedIds.includes(bom.id)));
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    setSelectedBlueprintIds([]);
+    flash(failed
+      ? `${deletedIds.length + localIds.length} blueprint dihapus, ${failed} gagal dihapus dari database`
+      : `${deletedIds.length + localIds.length} blueprint dihapus`);
+  };
 
   const copyCsv = () => {
     const rows: (string | number)[][] = [["Level", "No", "Kode", "Komponen", "Jumlah", "Satuan", "Harga satuan", "Subtotal"]];
@@ -520,6 +664,76 @@ export function BomBuilder() {
     );
   };
 
+  const renderBlueprintItem = (b: BlueprintEntry, selectable = false) => (
+    <li
+      key={b.id}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData("text/plain", b.id);
+        setDrag({ kind: "bp", id: b.id });
+      }}
+      onDragEnd={() => { setDrag(null); setZone(null); }}
+      title={b.detail ? `${b.name} · ${b.detail}` : b.name}
+      className="mb-1 flex cursor-grab items-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-1.5 py-1 text-[13px] transition hover:border-[#00A8E8] hover:bg-[#E6F6FD]"
+    >
+      {selectable && (
+        <input
+          type="checkbox"
+          checked={selectedBlueprintIds.includes(b.id)}
+          onChange={() => toggleBlueprint(b.id)}
+          aria-label={`Pilih ${b.name}`}
+          className="h-3.5 w-3.5 shrink-0 accent-[#00A8E8]"
+        />
+      )}
+      <span className="shrink-0 text-[#9AA7B6]" aria-hidden="true"><FontAwesomeIcon icon={faGripVertical} className="h-3 w-3" /></span>
+      <div className="min-w-0 flex-1">
+        <div className="break-words font-medium text-[#1F2937]">{b.name}</div>
+        <div className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+          <span className={`shrink-0 rounded px-1 text-[9px] ${b.origin === "database" ? "bg-[#E6F6FD] text-[#006E99]" : "bg-[#F5F7FA] text-[#6B7280]"}`}>
+            {b.origin === "database" ? "DB" : "lokal"}
+          </span>
+          {b.origin === "database" && !b.isActive && (
+            <span className="shrink-0 rounded bg-[#FEF2F2] px-1 text-[9px] text-[#B91C1C]">nonaktif</span>
+          )}
+          <span className="truncate">{b.code || "-"} · {countRows(b.nodes)} baris · {rp(sumTree(b.nodes))}</span>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center">
+        <button
+          type="button"
+          onClick={() => loadBlueprint(b)}
+          title="Ganti BOM saat ini dengan blueprint ini"
+          aria-label={`Muat ${b.name}`}
+          className={`rounded px-1 py-0.5 text-[11px] ${armed === `load:${b.id}` ? "bg-[#FEF3C7] font-semibold text-[#92400E]" : "text-[#6B7280] hover:text-[#006E99]"}`}
+        >
+          {armed === `load:${b.id}` ? "Yakin?" : <FontAwesomeIcon icon={faFolderOpen} className="h-3 w-3" />}
+        </button>
+        <button
+          type="button"
+          onClick={() => insertBlueprint(b)}
+          title="Sisipkan sebagai sub-rakitan"
+          aria-label={`Sisipkan ${b.name}`}
+          className="rounded px-1 py-0.5 text-[11px] text-[#6B7280] hover:text-[#006E99]"
+        >
+          <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onClick={() => arm(`del:${b.id}`, () => {
+            if (b.origin === "database" && b.bomId) void delSavedBom(b.bomId);
+            else delBlueprint(b.id);
+          })}
+          title={armed === `del:${b.id}` ? "Klik lagi untuk menghapus" : b.origin === "database" ? "Hapus BOM dari database" : "Hapus blueprint lokal"}
+          aria-label={`Hapus ${b.name}`}
+          className={`rounded px-1 py-0.5 text-[11px] ${armed === `del:${b.id}` ? "bg-[#EF4444]/10 font-semibold text-[#DC2626]" : "text-[#6B7280] hover:text-[#EF4444]"}`}
+        >
+          {armed === `del:${b.id}` ? "Yakin?" : <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />}
+        </button>
+      </div>
+    </li>
+  );
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -550,61 +764,43 @@ export function BomBuilder() {
 
       <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="space-y-6">
-          <section className="rounded-xl border border-[#EDF0F4] bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-            <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-[#6B7280]">Blueprint BOM</h3>
-            {draft.blueprints.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280]">Belum ada blueprint. Simpan BOM saat ini sebagai blueprint.</p>
-            ) : (
-              <ul>
-                {draft.blueprints.map((b) => (
-                  <li
-                    key={b.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = "copy";
-                      e.dataTransfer.setData("text/plain", b.id);
-                      setDrag({ kind: "bp", id: b.id });
-                    }}
-                    onDragEnd={() => { setDrag(null); setZone(null); }}
-                    className="mb-1.5 cursor-grab rounded-lg border border-[#D1D5DB] bg-white p-2 text-[13px] transition hover:border-[#00A8E8] hover:bg-[#E6F6FD]"
+          <section className="rounded-xl border border-[#EDF0F4] bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[13px] font-semibold uppercase tracking-wide text-[#6B7280]">
+                Blueprint BOM <span className="font-normal normal-case text-[#9AA7B6]">({allBlueprints.length})</span>
+              </h3>
+              <div className="flex items-center gap-1">
+                {allBlueprints.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setBlueprintModalOpen(true)}
+                    className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#006E99] hover:bg-[#E6F6FD]"
                   >
-                    <div className="flex items-start gap-2">
-                      <span className="mt-0.5 text-[#9AA7B6]" aria-hidden="true"><FontAwesomeIcon icon={faGripVertical} className="h-3.5 w-3.5" /></span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-[#1F2937]">{b.name}</div>
-                        <div className="truncate text-[11px] text-[#6B7280]">
-                          {b.code || "-"}, {countRows(b.nodes)} baris, {rp(sumTree(b.nodes))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-1.5 flex gap-1.5 pl-5">
-                      <button
-                        type="button"
-                        onClick={() => loadBlueprint(b.id)}
-                        title="Ganti BOM saat ini dengan blueprint ini"
-                        className="rounded border border-[#D1D5DB] px-2 py-0.5 text-[11px] hover:bg-white"
-                      >
-                        {armed === `load:${b.id}` ? "Yakin?" : "Muat"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => insertBlueprint(b.id)}
-                        title="Sisipkan sebagai sub-rakitan"
-                        className="rounded border border-[#D1D5DB] px-2 py-0.5 text-[11px] hover:bg-white"
-                      >
-                        Sisipkan
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => arm(`del:${b.id}`, () => delBlueprint(b.id))}
-                        className={`rounded px-2 py-0.5 text-[11px] hover:bg-[#EF4444]/10 ${armed === `del:${b.id}` ? "text-[#DC2626]" : "text-[#6B7280]"}`}
-                      >
-                        {armed === `del:${b.id}` ? "Yakin?" : "Hapus"}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    Lihat semua
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBlueprintOpen((open) => !open)}
+                  aria-expanded={blueprintOpen}
+                  title={blueprintOpen ? "Ringkas daftar blueprint" : "Buka daftar blueprint"}
+                  className="rounded px-1 py-0.5 text-[#6B7280] hover:text-[#1F2937]"
+                >
+                  <FontAwesomeIcon icon={faChevronDown} className={`h-3 w-3 transition-transform ${blueprintOpen ? "" : "-rotate-90"}`} />
+                </button>
+              </div>
+            </div>
+            {blueprintOpen && (
+              <div className="mt-2">
+                {loadingSavedBoms && <p className="mb-2 text-[12px] text-[#6B7280]">Memuat BOM dari database...</p>}
+                {allBlueprints.length === 0 ? (
+                  <p className="text-[13px] text-[#6B7280]">Belum ada blueprint. Simpan BOM saat ini sebagai blueprint.</p>
+                ) : (
+                  <ul className="max-h-[260px] overflow-y-auto pr-1">
+                    {allBlueprints.map((blueprint) => renderBlueprintItem(blueprint))}
+                  </ul>
+                )}
+              </div>
             )}
           </section>
 
@@ -843,6 +1039,77 @@ export function BomBuilder() {
           )}
         </section>
       </div>
+
+      {blueprintModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={closeBlueprintModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="blueprint-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[85vh] w-full max-w-5xl flex-col rounded-xl border border-[#EDF0F4] bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-[#EDF0F4] px-5 py-3">
+              <h2 id="blueprint-modal-title" className="text-[16px] font-semibold text-[#1E3A5F]">
+                Semua Blueprint BOM <span className="font-normal text-[#6B7280]">({allBlueprints.length})</span>
+              </h2>
+              <button
+                type="button"
+                onClick={closeBlueprintModal}
+                aria-label="Tutup daftar blueprint"
+                className="rounded px-2 py-1 text-[18px] leading-none text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#EDF0F4] bg-[#F9FAFB] px-5 py-2">
+              <label className="flex items-center gap-1.5 text-[12px] text-[#1F2937]">
+                <input
+                  type="checkbox"
+                  checked={allBlueprints.length > 0 && selectedBlueprintIds.length === allBlueprints.length}
+                  onChange={(e) => setSelectedBlueprintIds(e.target.checked ? allBlueprints.map((b) => b.id) : [])}
+                  className="h-3.5 w-3.5 accent-[#00A8E8]"
+                />
+                Pilih semua
+              </label>
+              <span className="text-[12px] text-[#6B7280]">{selectedBlueprintIds.length} dipilih</span>
+              <div className="ml-auto flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={insertSelectedBlueprints}
+                  disabled={selectedBlueprintIds.length === 0}
+                  className="rounded border border-[#D1D5DB] bg-white px-2 py-1 text-[12px] font-medium text-[#1F2937] hover:bg-[#E6F6FD] disabled:pointer-events-none disabled:opacity-40"
+                >
+                  Sisipkan terpilih
+                </button>
+                <button
+                  type="button"
+                  onClick={() => arm("del-selected", () => void deleteSelectedBlueprints())}
+                  disabled={selectedBlueprintIds.length === 0}
+                  className={`rounded border px-2 py-1 text-[12px] font-medium disabled:pointer-events-none disabled:opacity-40 ${armed === "del-selected" ? "border-[#EF4444] bg-[#EF4444] text-white" : "border-[#D1D5DB] bg-white text-[#B91C1C] hover:bg-[#FEF2F2]"}`}
+                >
+                  {armed === "del-selected" ? "Yakin? Klik lagi" : "Hapus terpilih"}
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {allBlueprints.length === 0 ? (
+                <p className="py-10 text-center text-[13px] text-[#6B7280]">Belum ada blueprint. Simpan BOM saat ini sebagai blueprint.</p>
+              ) : (
+                <ul className="grid gap-1.5 sm:grid-cols-2">
+                  {allBlueprints.map((b) => renderBlueprintItem(b, true))}
+                </ul>
+              )}
+            </div>
+            <p className="border-t border-[#EDF0F4] px-5 py-2 text-[11px] text-[#6B7280]">
+              Seret kartu ke struktur BOM untuk menyisipkan sebagai sub-rakitan, atau pakai tombol muat dan sisipkan.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -126,30 +126,56 @@ export async function getBomById(id: number) {
 
 export async function createBom(data: CreateBomInput) {
   await assertNoSubassemblyCycle(data.subassemblyId ?? null, data.items);
-  return prisma.bom.create({
-    data: {
-      kode: data.kode ?? undefined,
-      nama: data.nama,
-      version: data.version,
-      isActive: data.isActive ?? true,
-      berlakuMulai: data.berlakuMulai,
-      berlakuSelesai: data.berlakuSelesai,
-      productVariant: data.productVariantId ? { connect: { id: data.productVariantId } } : undefined,
-      subassembly: data.subassemblyId ? { connect: { id: data.subassemblyId } } : undefined,
-      items: {
-        create: data.items.map((item) => ({
-          ...(item.urutan !== null && item.urutan !== undefined ? { urutan: item.urutan } : {}),
-          quantity: item.quantity,
-
-          ...(item.unit !== undefined && item.unit !== null ? { unit: item.unit } : {}),
-          ...(item.scrapPercent !== undefined && item.scrapPercent !== null ? { scrapPercent: item.scrapPercent } : {}),
-          item: item.itemId ? { connect: { id: item.itemId } } : undefined,
-          subassembly: item.subassemblyId ? { connect: { id: item.subassemblyId } } : undefined,
-        })),
+  try {
+    return await prisma.bom.create({
+      data: {
+        kode: data.kode ?? undefined,
+        nama: data.nama,
+        version: data.version,
+        isActive: data.isActive ?? true,
+        berlakuMulai: data.berlakuMulai,
+        berlakuSelesai: data.berlakuSelesai,
+        productVariant: data.productVariantId ? { connect: { id: data.productVariantId } } : undefined,
+        subassembly: data.subassemblyId ? { connect: { id: data.subassemblyId } } : undefined,
+        items: {
+          create: data.items.map((item) => ({
+            ...(item.urutan !== null && item.urutan !== undefined ? { urutan: item.urutan } : {}),
+            quantity: item.quantity,
+            ...(item.unit !== undefined && item.unit !== null ? { unit: item.unit } : {}),
+            ...(item.scrapPercent !== undefined && item.scrapPercent !== null ? { scrapPercent: item.scrapPercent } : {}),
+            item: item.itemId ? { connect: { id: item.itemId } } : undefined,
+            subassembly: item.subassemblyId ? { connect: { id: item.subassemblyId } } : undefined,
+          })),
+        },
       },
-    },
-    include,
-  });
+      include,
+    });
+  } catch (error) {
+    if ((error as { code?: string })?.code !== "P2002") throw error;
+
+    const outputWhere = data.productVariantId != null
+      ? { productVariantId: data.productVariantId, version: data.version }
+      : data.subassemblyId != null
+        ? { subassemblyId: data.subassemblyId, version: data.version }
+        : null;
+    if (!outputWhere) throw error;
+
+    const existing = await prisma.bom.findFirst({
+      where: outputWhere,
+      select: { id: true },
+    });
+    if (!existing) {
+      if (!data.kode) throw error;
+      const codeOwner = await prisma.bom.findUnique({
+        where: { kode: data.kode },
+        select: { id: true },
+      });
+      if (!codeOwner) throw error;
+      return createBom({ ...data, kode: null });
+    }
+
+    return updateBom(existing.id, data);
+  }
 }
 
 export async function updateBom(id: number, data: UpdateBomInput) {

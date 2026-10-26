@@ -5,6 +5,19 @@ import { DUS_CAPACITY, familyOfDus, nextDusName } from "../../lib/dus";
 import { useStatusOptions } from "../../lib/useStatusOptions";
 import { beep } from "../../lib/beep";
 import { assignBarangToGroup, createBarangGroup, getBarangGroups, type BarangGroup } from "../../api/barangGroup";
+import {
+  buildScanReportText,
+  clearScanReport,
+  groupReportItems,
+  loadScanReport,
+  mergeReportItems,
+  reportDateLabel,
+  saveScanReport,
+  todayKey,
+  type ScanReportItem,
+} from "../../lib/scanReport";
+import { downloadScanReportPdf } from "../../lib/scanReportPdf";
+import { Modal } from "../../components/admin/VariantProduk/Modal";
 
 type ScannedItem = {
   id: number;
@@ -52,7 +65,7 @@ function ScanQr() {
   const isDusMode = searchParams.get("mode") === "dus";
   const { options: statusOptions, loading: statusLoading } = useStatusOptions();
 
-  const [rawStatus, setRawStatus] = useState<StatusBarang>(
+  const [rawStatus] = useState<StatusBarang>(
     () => searchParams.get("status")?.trim().toUpperCase() || "FINISHGOOD",
   );
   const status =
@@ -77,6 +90,9 @@ function ScanQr() {
   const [showFailed, setShowFailed] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [resetArmed, setResetArmed] = useState(false);
+  const [report, setReport] = useState<ScanReportItem[]>(loadScanReport);
+  const [showReport, setShowReport] = useState(false);
+  const [resetReportArmed, setResetReportArmed] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -103,6 +119,19 @@ function ScanQr() {
     const id = window.setTimeout(() => setResetArmed(false), 3000);
     return () => window.clearTimeout(id);
   }, [resetArmed]);
+  useEffect(() => {
+    if (!showReport) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowReport(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showReport]);
+  useEffect(() => {
+    if (!resetReportArmed) return;
+    const id = window.setTimeout(() => setResetReportArmed(false), 3000);
+    return () => window.clearTimeout(id);
+  }, [resetReportArmed]);
 
   const notify = useCallback((type: Toast["type"], msg: string) => setToast({ type, msg }), []);
   const focusInput = () => inputRef.current?.focus();
@@ -286,6 +315,59 @@ function ScanQr() {
     }
   };
 
+  const addToReport = (saved: ScannedItem[], dus?: string) => {
+    const entries = saved.map<ScanReportItem>((it) => ({
+      kode: it.kode,
+      variant: it.variant,
+      status: it.targetStatus,
+      waktu: it.waktu,
+      dus,
+    }));
+    setReport((prev) => {
+      const next = mergeReportItems(prev, entries);
+      saveScanReport(next);
+      return next;
+    });
+  };
+
+  const copyReport = async () => {
+    const text = buildScanReportText(report, reportDateLabel(), statusLabel);
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("success", "Teks laporan disalin.");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      notify(ok ? "success" : "error", ok ? "Teks laporan disalin." : "Gagal menyalin — pakai Unduh PDF.");
+    }
+  };
+
+  const downloadReport = () => {
+    try {
+      downloadScanReportPdf(report, reportDateLabel(), todayKey(), statusLabel);
+      notify("success", "PDF laporan diunduh.");
+    } catch (e) {
+      notify("error", errMsg(e, "Gagal membuat PDF."));
+    }
+  };
+
+  const handleResetReport = () => {
+    if (!resetReportArmed) {
+      setResetReportArmed(true);
+      return;
+    }
+    setResetReportArmed(false);
+    setReport([]);
+    clearScanReport();
+    notify("success", "Laporan harian direset.");
+  };
+
   const saveStatuses = async (items: ScannedItem[], onStep: () => void) => {
     const ok = new Set<string>();
     const failed: BulkScanItemResult[] = [];
@@ -321,6 +403,7 @@ function ScanQr() {
       const { ok, failed } = await saveStatuses(pending, tick);
 
       if (!isDusMode) {
+        addToReport(pending.filter((it) => ok.has(keyOf(it.kode))));
         setScannedItems((prev) => prev.filter((it) => it.loading || !ok.has(keyOf(it.kode))));
         if (failed.length === 0) notify("success", `${ok.size} item tersimpan.`);
         else if (ok.size === 0) notify("error", failed[0].reason ?? failed[0].error ?? `${failed.length} item gagal diproses.`);
@@ -338,6 +421,7 @@ function ScanQr() {
       }
 
       await assignBarangToGroup(target.id, ready.map((it) => it.id));
+      addToReport(ready, target.nama);
       const keys = new Set(ready.map((it) => keyOf(it.kode)));
       setScannedItems((prev) => prev.filter((it) => !keys.has(keyOf(it.kode))));
       tick();
@@ -394,6 +478,7 @@ function ScanQr() {
   const perVariant = Object.entries(
     validItems.reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.variant]: (acc[it.variant] ?? 0) + 1 }), {}),
   );
+  const reportGroups = groupReportItems(report);
   const last = scannedItems[0];
 
   const statusBadge = (kode: string) => {
@@ -454,28 +539,10 @@ function ScanQr() {
               <p id="status-label" className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#64748B]">
                 Status tujuan
               </p>
-              <div role="radiogroup" aria-labelledby="status-label" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5 lg:mx-0 lg:flex-wrap lg:px-0">
-                {statusOptions.map((o) => {
-                  const on = o.value === status;
-                  return (
-                    <button
-                      key={o.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={on}
-                      disabled={saving}
-                      onClick={() => setRawStatus(o.value)}
-                      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition disabled:opacity-50 ${FOCUS} ${
-                        on ? "border-[#1E3A5F] bg-[#1E3A5F] text-white" : "border-[#E5E9F0] bg-white text-[#475569] hover:border-[#1E3A5F]/40"
-                      }`}
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white/60" style={{ backgroundColor: o.warna ?? "#94A3B8" }} />
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-1.5 text-xs text-[#64748B]">Berlaku untuk scan berikutnya.</p>
+              <span className="inline-flex h-9 items-center gap-2 rounded-full border border-[#E5E9F0] bg-white px-3.5 text-sm font-semibold text-[#0F1C2E]">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: statusOpt(status)?.warna ?? "#94A3B8" }} />
+                {statusLabel(status)}
+              </span>
             </section>
 
             {isDusMode && (
@@ -689,18 +756,30 @@ function ScanQr() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col p-4 sm:p-5 lg:overflow-y-auto">
-          <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-[#64748B]">Daftar scan</h2>
-            {validCount > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowSummary((v) => !v)}
-                aria-expanded={showSummary}
-                className={`rounded text-xs font-semibold text-[#0088C0] hover:underline ${FOCUS}`}
+                onClick={() => {
+                  setResetReportArmed(false);
+                  setShowReport(true);
+                }}
+                className={`rounded-lg border border-[#E5E9F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] transition hover:border-[#1E3A5F]/40 ${FOCUS}`}
               >
-                {showSummary ? "Sembunyikan ringkasan" : "Ringkasan per varian"}
+                Laporan harian{report.length > 0 && ` (${report.length})`}
               </button>
-            )}
+              {validCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowSummary((v) => !v)}
+                  aria-expanded={showSummary}
+                  className={`rounded text-xs font-semibold text-[#0088C0] hover:underline ${FOCUS}`}
+                >
+                  {showSummary ? "Sembunyikan ringkasan" : "Ringkasan per varian"}
+                </button>
+              )}
+            </div>
           </div>
 
           {showSummary && validCount > 0 && (
@@ -804,6 +883,84 @@ function ScanQr() {
           </div>
         </section>
       </main>
+
+      {showReport && (
+        <Modal title="Laporan scan harian" onClose={() => setShowReport(false)} size="lg">
+          {report.length === 0 ? (
+            <p className="py-10 text-center text-sm text-[#64748B]">Belum ada item tersimpan hari ini.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold">{reportDateLabel()}</p>
+                <p className="text-sm text-[#64748B]">{report.length} item tersimpan</p>
+              </div>
+              <div className="mt-3 overflow-hidden rounded-lg border border-[#E5E9F0]">
+                <table className="w-full text-xs">
+                  <thead className="bg-[#F6F8FB] text-left text-[#64748B]">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 font-semibold">Varian</th>
+                      <th scope="col" className="px-2 py-2 font-semibold">Status</th>
+                      <th scope="col" className="px-3 py-2 text-right font-semibold">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5E9F0]">
+                    {reportGroups.map((g) => (
+                      <tr key={`${g.variant}|${g.status}`}>
+                        <td className="px-3 py-2 text-[#0F1C2E]">{g.variant}</td>
+                        <td className="px-2 py-2">{statusBadge(g.status)}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums">{g.jumlah}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <ul className="mt-3 max-h-[50vh] divide-y divide-[#E5E9F0] overflow-y-auto rounded-lg border border-[#E5E9F0]">
+                {report.map((it, i) => (
+                  <li key={`${it.kode}-${it.status}-${i}`} className="flex items-center gap-2 px-3 py-2">
+                    <span className="w-6 shrink-0 text-right text-xs font-semibold tabular-nums text-[#94A3B8]">{i + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-sm font-bold">{it.kode}</span>
+                      <span className="block truncate text-xs text-[#64748B]">
+                        {it.variant} · {it.waktu}
+                        {it.dus ? ` · ${it.dus}` : ""}
+                      </span>
+                    </span>
+                    {statusBadge(it.status)}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={copyReport}
+                  className={`h-10 flex-1 rounded-lg border border-[#E5E9F0] bg-white text-sm font-semibold text-[#475569] transition hover:border-[#1E3A5F]/40 ${FOCUS}`}
+                >
+                  Salin teks
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadReport}
+                  className={`h-10 flex-1 rounded-lg bg-[#1E3A5F] text-sm font-semibold text-white transition hover:bg-[#162C48] ${FOCUS}`}
+                >
+                  Unduh PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetReport}
+                  className={`h-10 w-full rounded-lg border text-sm font-semibold transition ${FOCUS} ${
+                    resetReportArmed
+                      ? "border-[#EF4444] bg-[#EF4444] text-white"
+                      : "border-red-200 bg-white text-[#EF4444] hover:bg-red-50"
+                  }`}
+                >
+                  {resetReportArmed ? "Yakin? Ketuk lagi untuk reset laporan" : "Reset laporan harian"}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-[#64748B]">Tersimpan lokal di perangkat ini — otomatis kosong saat tanggal berganti.</p>
+            </>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
