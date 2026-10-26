@@ -19,7 +19,6 @@ import {
   hariIni,
   hitungKekuranganWip,
   kelompokkanItem,
-  ringkasForm,
   totalPerItem,
   validasiInputProduksi,
   type BarisError,
@@ -65,9 +64,7 @@ interface DaftarBarisProps {
 
 interface SuksesProduksi {
   nomor: string;
-  itemInput: string | null;
-  unitInput: string | null;
-  wipAkhir: number | null;
+  inputs: { nama: string; jumlah: number; unit: string; wipAkhir: number | null }[];
   hasil: { nama: string; jumlah: number; unit: string }[];
 }
 
@@ -129,7 +126,11 @@ function DaftarBaris({
                     >
                       <option value="">Pilih item...</option>
                       {opsi.map((data) => (
-                        <option key={data.id} value={data.id}>
+                        <option
+                          key={data.id}
+                          value={data.id}
+                          disabled={rows.some((selectedRow) => selectedRow.key !== row.key && selectedRow.itemId === String(data.id))}
+                        >
                           {data.kode} — {data.nama} ({data.unit})
                         </option>
                       ))}
@@ -249,7 +250,6 @@ export default function FormHasilProduksi({
   const savingRef = useRef(false);
   const [konfirmasi, setKonfirmasi] = useState(false);
 
-  const ringkasan = useMemo(() => ringkasForm(inputRows, hasilRows), [inputRows, hasilRows]);
   const wipSaldo = useMemo(
     () => Object.fromEntries(wipRows.map((row) => [row.itemId, angka(row.saldoAkhir)])),
     [wipRows],
@@ -385,9 +385,9 @@ export default function FormHasilProduksi({
         ],
       });
 
-      const inputDetail = record.items.find((item) => item.tipe === "MASUK") ?? null;
-      let wipAkhir: number | null = null;
-      if (inputDetail) {
+      const inputDetails = record.items.filter((item) => item.tipe === "MASUK");
+      const inputs = await Promise.all(inputDetails.map(async (inputDetail) => {
+        let wipAkhir: number | null;
         try {
           const wip = await getWipHasilProduksiHarian({
             divisiId: record.divisiId,
@@ -398,13 +398,17 @@ export default function FormHasilProduksi({
         } catch {
           wipAkhir = null;
         }
-      }
+        return {
+          nama: inputDetail.item.nama,
+          jumlah: angka(inputDetail.jumlah),
+          unit: inputDetail.item.unit,
+          wipAkhir,
+        };
+      }));
 
       setSuccess({
         nomor: record.nomor,
-        itemInput: inputDetail?.item.nama ?? null,
-        unitInput: inputDetail?.item.unit ?? null,
-        wipAkhir,
+        inputs,
         hasil: record.items
           .filter((item) => item.tipe === "HASIL")
           .map((item) => ({
@@ -461,8 +465,8 @@ export default function FormHasilProduksi({
       </div>
 
       <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800">
-        Input produksi memakai WIP divisi. Stok input sudah dikurangi saat approval/pemakaian, jadi simpan produksi tidak
-        membuat pengurangan stok kedua.
+        Input produksi memakai WIP divisi. Jumlah pada setiap item input akan mengurangi saldo WIP item tersebut secara FIFO;
+        pencatatan ini tidak membuat pengurangan stok gudang kedua.
       </p>
 
       <form onSubmit={cekForm} className="mt-5 space-y-5">
@@ -543,12 +547,12 @@ export default function FormHasilProduksi({
 
         <DaftarBaris
           judul="2. Item Input"
-          deskripsi="Pilih satu material dari WIP divisi ini. Baris ini hanya mencatat aktivitas; tidak membuat mutasi KELUAR baru."
+          deskripsi="Tambahkan semua material yang dipakai. Jumlah tiap item akan diambil dari saldo WIP item tersebut."
           rows={inputRows}
           errors={errors.input}
           opsi={opsiInput}
           wipSaldo={wipSaldo}
-          bolehTambah={inputRows.length === 0}
+          bolehTambah
           catatanTerbuka={catatanTerbuka}
           onTambah={() => tambahBaris("input")}
           onUbah={(key, patch) => ubahBaris("input", key, patch)}
@@ -568,7 +572,8 @@ export default function FormHasilProduksi({
               ))}
             </ul>
             <p className="mt-1 text-xs">
-              Sistem akan membuat Permintaan Barang otomatis saat disimpan. Setelah disetujui, ulangi input produksi ini.
+              Item SM perlu Transfer WIP; item non-SM akan membuat Permintaan Barang otomatis saat disimpan.
+              Lengkapi transfer atau approval lalu ulangi input produksi.
             </p>
           </div>
         )}
@@ -596,13 +601,10 @@ export default function FormHasilProduksi({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="rounded-full bg-sky-50 px-3 py-1.5 font-semibold text-sky-700 ring-1 ring-sky-200">
-              Input {ringkasan.input.toLocaleString("id-ID")}
+              {inputRows.filter((row) => !barisKosong(row)).length} item input
             </span>
             <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 ring-1 ring-emerald-200">
-              Hasil {ringkasan.hasil.toLocaleString("id-ID")}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
-              Selisih {ringkasan.selisih.toLocaleString("id-ID")}
+              {hasilRows.filter((row) => !barisKosong(row)).length} item hasil
             </span>
           </div>
           <button
@@ -688,11 +690,16 @@ export default function FormHasilProduksi({
               Tersimpan: <strong>{success.nomor}</strong>.
             </p>
             <p className="mt-1">
-              {success.itemInput ? `${success.itemInput}: WIP akhir ` : "WIP akhir: "}
-              {success.wipAkhir === null
-                ? "tidak tersedia"
-                : formatWip(success.wipAkhir, success.unitInput ?? "")}
+              Input tersimpan:
             </p>
+            <ul className="mt-1 space-y-0.5">
+              {success.inputs.map((input) => (
+                <li key={`${input.nama}-${input.unit}`}>
+                  {input.nama}: dipakai {formatWip(input.jumlah, input.unit)} · WIP akhir{" "}
+                  {input.wipAkhir === null ? "tidak tersedia" : formatWip(input.wipAkhir, input.unit)}
+                </li>
+              ))}
+            </ul>
             {success.hasil.length > 0 && (
               <p className="mt-1">
                 Hasil:{" "}
@@ -741,16 +748,11 @@ export default function FormHasilProduksi({
                 <dd className="font-semibold text-[#1F2937]">{tanggal || "Hari ini"}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-[#6B7280]">Total input</dt>
-                <dd className="font-semibold text-sky-700">{ringkasan.input.toLocaleString("id-ID")}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-[#6B7280]">Total hasil</dt>
-                <dd className="font-semibold text-emerald-700">{ringkasan.hasil.toLocaleString("id-ID")}</dd>
-              </div>
-              <div className="flex justify-between gap-3 border-t border-slate-200 pt-2">
-                <dt className="text-[#6B7280]">Selisih (hasil − input)</dt>
-                <dd className="font-bold text-[#1E3A5F]">{ringkasan.selisih.toLocaleString("id-ID")}</dd>
+                <dt className="text-[#6B7280]">Baris item</dt>
+                <dd className="font-semibold text-[#1F2937]">
+                  {inputRows.filter((row) => !barisKosong(row)).length} input ·{" "}
+                  {hasilRows.filter((row) => !barisKosong(row)).length} hasil
+                </dd>
               </div>
             </dl>
 
@@ -781,7 +783,7 @@ export default function FormHasilProduksi({
               <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 <p className="font-semibold">WIP kurang.</p>
                 <p className="mt-1 text-xs">
-                  Material SM memakai Transfer WIP; material non-SM membuat Permintaan Barang otomatis sebesar
+                  Material SM memakai Transfer WIP; material non-SM membuat Permintaan Barang otomatis untuk item yang
                   kekurangan. Setelah WIP tersedia, ulangi input produksi ini.
                 </p>
                 <ul className="mt-1 list-inside list-disc text-xs">

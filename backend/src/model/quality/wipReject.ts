@@ -32,6 +32,16 @@ const rejectInclude = {
   item: { select: { id: true, nama: true, kode: true, unit: true } },
   reason: { select: { id: true, name: true } },
   repairDivision: { select: { id: true, nama: true } },
+  repairStage: {
+    select: {
+      id: true,
+      stage: true,
+      sequence: true,
+      outputItems: {
+        include: { item: { select: { id: true, nama: true, kode: true, unit: true } } },
+      },
+    },
+  },
   recordedBy: { select: { id: true, name: true } },
   claimedBy: { select: { id: true, name: true } },
   attempts: {
@@ -39,6 +49,7 @@ const rejectInclude = {
     include: {
       performedBy: { select: { id: true, name: true } },
       reviewedBy: { select: { id: true, name: true } },
+      outputItem: { select: { id: true, kode: true, nama: true, unit: true } },
     },
   },
 };
@@ -74,24 +85,168 @@ async function getLotBalance(
 }
 
 export async function listRejectOptions() {
-  const [reasons, divisions, items] = await Promise.all([
+  const [reasons, divisions, routings] = await Promise.all([
     prisma.qualityRejectReason.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     prisma.divisi.findMany({ select: { id: true, nama: true }, orderBy: { nama: "asc" } }),
-    prisma.item.findMany({
-      where: { isActive: true, jenis: "SM", divisi: { nama: { contains: "coat" } } },
-      select: { id: true, nama: true, kode: true, unit: true, divisi: { select: { nama: true } } },
-      orderBy: { nama: "asc" },
+    prisma.productionRouting.findMany({
+      where: { isActive: true },
+      select: {
+        stages: {
+          orderBy: { sequence: "asc" },
+          select: {
+            divisiId: true,
+            inputItems: { select: { itemId: true } },
+            outputItems: {
+              select: {
+                item: {
+                  select: {
+                    id: true,
+                    divisiId: true,
+                    nama: true,
+                    kode: true,
+                    unit: true,
+                    jenis: true,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+            id: true,
+            sequence: true,
+            stage: true,
+            divisi: { select: { id: true, nama: true } },
+          },
+        },
+      },
     }),
   ]);
+  const finalItems = new Map<number, {
+    id: number;
+    nama: string;
+    kode: string;
+    unit: string;
+    divisionId: number;
+    repairStages: Array<{
+      id: number;
+      stage: string;
+      sequence: number;
+      divisiId: number;
+      divisionName: string;
+      outputItems: Array<{ id: number; kode: string; nama: string; unit: string | null }>;
+    }>;
+  }>();
+  for (const routing of routings) {
+    const finalStage = routing.stages[routing.stages.length - 1];
+    for (const { item } of finalStage?.outputItems ?? []) {
+      if (item.isActive && item.jenis === "SM" && item.divisiId === finalStage?.divisiId) {
+        finalItems.set(item.id, {
+          id: item.id,
+          nama: item.nama,
+          kode: item.kode,
+          unit: item.unit ?? "pcs",
+          divisionId: finalStage.divisiId,
+          repairStages: routing.stages.slice(0, -1).flatMap((stage, index) => {
+            const nextStage = routing.stages[index + 1];
+            const nextStageInputs = new Set(nextStage?.inputItems.map((input) => input.itemId) ?? []);
+            const outputItems = stage.outputItems
+              .filter((output) =>
+                output.item.isActive &&
+                output.item.jenis === "SM" &&
+                nextStageInputs.has(output.item.id),
+              )
+              .map((output) => ({
+                id: output.item.id,
+                kode: output.item.kode,
+                nama: output.item.nama,
+                unit: output.item.unit,
+              }));
+            return outputItems.length > 0
+              ? [{
+                  id: stage.id,
+                  stage: stage.stage,
+                  sequence: stage.sequence,
+                  divisiId: stage.divisiId,
+                  divisionName: stage.divisi.nama,
+                  outputItems,
+                }]
+              : [];
+          }),
+        });
+      }
+    }
+  }
+  const finalItemValues = [...finalItems.values()];
+  const divisionIds = [...new Set(finalItemValues.map((item) => item.divisionId))];
+  const [locations, lots] = await Promise.all([
+    prisma.inventoryLocation.findMany({
+      where: { type: "DIVISION", isActive: true, divisiId: { in: divisionIds } },
+      select: { id: true, divisiId: true },
+    }),
+    prisma.pemakaianMaterialItem.findMany({
+      where: {
+        itemId: { in: finalItemValues.map((item) => item.id) },
+        jumlahSisa: { gt: 0 },
+        pemakaian: { divisiId: { in: divisionIds } },
+      },
+      select: { id: true, itemId: true, jumlahSisa: true, pemakaian: { select: { divisiId: true } } },
+    }),
+  ]);
+  const locationByDivision = new Map(locations.flatMap((location) =>
+    location.divisiId === null ? [] : [[location.divisiId, location.id] as const],
+  ));
+  const lotIds = lots.map((lot) => lot.id);
+  const locationIds = locations.map((location) => location.id);
+  const movements = lotIds.length && locationIds.length
+    ? await prisma.inventoryMovement.findMany({
+      where: {
+        pemakaianMaterialItemId: { in: lotIds },
+        OR: [
+          { fromLocationId: { in: locationIds } },
+          { toLocationId: { in: locationIds } },
+        ],
+      },
+      select: { pemakaianMaterialItemId: true, fromLocationId: true, toLocationId: true, quantity: true },
+    })
+    : [];
+  const balances = new Map<string, number>();
+  for (const movement of movements) {
+    if (movement.pemakaianMaterialItemId === null) continue;
+    const quantity = Number(movement.quantity);
+    if (movement.fromLocationId !== null) {
+      const key = `${movement.pemakaianMaterialItemId}:${movement.fromLocationId}`;
+      balances.set(key, (balances.get(key) ?? 0) - quantity);
+    }
+    if (movement.toLocationId !== null) {
+      const key = `${movement.pemakaianMaterialItemId}:${movement.toLocationId}`;
+      balances.set(key, (balances.get(key) ?? 0) + quantity);
+    }
+  }
+  const availableByItem = new Map<number, number>();
+  for (const lot of lots) {
+    const locationId = locationByDivision.get(lot.pemakaian.divisiId);
+    if (locationId === undefined) continue;
+    const balance = balances.get(`${lot.id}:${locationId}`) ?? 0;
+    if (balance <= 0) continue;
+    availableByItem.set(
+      lot.itemId!,
+      rounded((availableByItem.get(lot.itemId!) ?? 0) + Math.min(Number(lot.jumlahSisa), balance)),
+    );
+  }
   return {
     reasons,
     divisions: divisions.filter((division) => divisionKey(division.nama) !== "qc"),
-    items: items.filter((item) => divisionKey(item.divisi?.nama ?? "").includes("topcoat"))
-      .map(({ divisi: _division, ...item }) => item),
+    items: finalItemValues
+      .map(({ divisionId, ...item }) => ({
+        ...item,
+        divisionId,
+        availableQuantity: availableByItem.get(item.id) ?? 0,
+      }))
+      .filter((item) => item.availableQuantity > 0)
+      .sort((a, b) => a.nama.localeCompare(b.nama)),
   };
 }
 
@@ -126,7 +281,7 @@ export async function createRejectReason(name: string, createdById: number) {
   });
 }
 
-export async function createWipReject(input: {
+function validateWipRejectInput(input: {
   itemId: number;
   quantity: number;
   reasonId: number;
@@ -139,14 +294,229 @@ export async function createWipReject(input: {
       !Number.isSafeInteger(input.quantity) || input.quantity <= 0) {
     throw new WipRejectError("INVALID_INPUT", "Item, jumlah pcs, alasan, dan divisi repair wajib diisi dengan benar");
   }
+}
+
+export async function inspectFinalWip(input: {
+    itemId: number;
+    passedQuantity: number;
+    rejectedQuantity: number;
+    reasonId?: number;
+    repairStageId?: number;
+    inspectedById: number;
+  }) {
+    if (!Number.isSafeInteger(input.itemId) || input.itemId <= 0 ||
+        !Number.isSafeInteger(input.passedQuantity) || input.passedQuantity < 0 ||
+        !Number.isSafeInteger(input.rejectedQuantity) || input.rejectedQuantity < 0 ||
+        input.passedQuantity + input.rejectedQuantity <= 0) {
+      throw new WipRejectError("INVALID_INPUT", "Jumlah lolos dan reject harus berupa bilangan bulat positif");
+    }
+    if (input.rejectedQuantity > 0 &&
+        (!input.reasonId || !input.repairStageId ||
+         !Number.isSafeInteger(input.reasonId) || !Number.isSafeInteger(input.repairStageId))) {
+      throw new WipRejectError("INVALID_INPUT", "Reject wajib memiliki alasan dan tahap repair");
+    }
+
+    return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+      const item = await tx.item.findUnique({
+        where: { id: input.itemId },
+        include: { divisi: { select: { id: true, nama: true } } },
+      });
+      if (!item || !item.isActive || !item.divisi) {
+        throw new WipRejectError("ITEM_NOT_FOUND", "Item hasil akhir routing tidak ditemukan atau tidak aktif");
+      }
+      const routings = await tx.productionRouting.findMany({
+        where: {
+          isActive: true,
+          stages: { some: { outputItems: { some: { itemId: item.id } } } },
+        },
+        select: {
+          stages: {
+            orderBy: { sequence: "asc" },
+            select: {
+              id: true,
+              sequence: true,
+              divisiId: true,
+              outputItems: { select: { itemId: true } },
+            },
+          },
+        },
+      });
+      const matchingRouting = routings.find((routing) => {
+        const candidate = routing.stages[routing.stages.length - 1];
+        return candidate?.divisiId === item.divisiId &&
+          candidate.outputItems.some((output) => output.itemId === item.id);
+      });
+      const finalStage = matchingRouting?.stages[matchingRouting.stages.length - 1];
+      if (item.jenis !== "SM" || !finalStage) {
+        throw new WipRejectError("TOPCOAT_ITEM_REQUIRED", "Item harus merupakan output tahap terakhir routing aktif");
+      }
+
+      const repairStage = input.rejectedQuantity > 0
+        ? matchingRouting?.stages.find((stage) => stage.id === input.repairStageId)
+        : null;
+      if (input.rejectedQuantity > 0 &&
+          (!repairStage || repairStage.sequence >= finalStage.sequence)) {
+        throw new WipRejectError("INVALID_INPUT", "Pilih tahap repair sebelum tahap akhir pada routing aktif");
+      }
+      const reason = input.rejectedQuantity > 0
+        ? await tx.qualityRejectReason.findFirst({ where: { id: input.reasonId!, isActive: true } })
+        : null;
+      if (input.rejectedQuantity > 0 && !reason) {
+        throw new WipRejectError("REASON_NOT_FOUND", "Alasan reject tidak aktif atau tidak ditemukan");
+      }
+      const repairDivision = input.rejectedQuantity > 0
+        ? await tx.divisi.findUnique({ where: { id: repairStage!.divisiId } })
+        : null;
+      if (input.rejectedQuantity > 0 && !repairDivision) {
+        throw new WipRejectError("DIVISION_NOT_FOUND", "Divisi repair tidak ditemukan");
+      }
+      if (repairDivision && divisionKey(repairDivision.nama) === "qc") {
+        throw new WipRejectError("INVALID_INPUT", "Pilih divisi produksi untuk melakukan repair");
+      }
+      const sourceLocation = await ensureDivisionInventoryLocation(tx, finalStage.divisiId);
+      const qcDivision = await tx.divisi.findFirst({
+        where: { nama: { equals: "QC" } },
+        select: { id: true },
+      });
+      if (!qcDivision) throw new WipRejectError("DIVISION_NOT_FOUND", "Divisi QC belum tersedia");
+      const qcLocation = await ensureDivisionInventoryLocation(tx, qcDivision.id);
+      const repairLocation = repairDivision
+        ? await ensureDivisionInventoryLocation(tx, repairDivision.id)
+        : null;
+      const requested = input.passedQuantity + input.rejectedQuantity;
+      const lots = await tx.pemakaianMaterialItem.findMany({
+        where: {
+          itemId: item.id,
+          jumlahSisa: { gt: 0 },
+          pemakaian: { divisiId: finalStage.divisiId },
+        },
+        select: { id: true, jumlahSisa: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+      const allocations: Array<{ lotId: number; passed: number; rejected: number }> = [];
+      let remaining = requested;
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        await tx.$queryRaw`SELECT id FROM PemakaianMaterialItem WHERE id = ${lot.id} FOR UPDATE`;
+        const lockedLot = await tx.pemakaianMaterialItem.findUnique({ where: { id: lot.id } });
+        if (!lockedLot || Number(lockedLot.jumlahSisa) <= 0) continue;
+        const stock = await getLotBalance(tx, lot.id, item.id, sourceLocation.id);
+        const available = Math.min(Number(lockedLot.jumlahSisa), stock);
+        const allocated = rounded(Math.min(remaining, available));
+        if (allocated <= 0) continue;
+        const passed = rounded(Math.min(allocated, input.passedQuantity - allocations.reduce((sum, value) => sum + value.passed, 0)));
+        const rejected = rounded(allocated - passed);
+        allocations.push({ lotId: lot.id, passed, rejected });
+        remaining = rounded(remaining - allocated);
+      }
+      if (remaining > 0) {
+        throw new WipRejectError(
+          "INSUFFICIENT_STOCK",
+          `Jumlah yang diperiksa melebihi stok tersedia di tahap akhir. Kekurangan ${remaining} ${item.unit}.`,
+        );
+      }
+
+      const inspectionNumber = `QC-FINAL-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
+      const reject = input.rejectedQuantity > 0
+        ? await tx.wipReject.create({
+          data: {
+            number: `QC-REJ-${inspectionNumber}`,
+            itemId: item.id,
+            quantity: input.rejectedQuantity,
+            reasonId: reason!.id,
+            repairDivisionId: repairDivision!.id,
+            repairStageId: repairStage!.id,
+            recordedById: input.inspectedById,
+            lots: {
+              create: allocations.filter((allocation) => allocation.rejected > 0).map((allocation) => ({
+                pemakaianMaterialItemId: allocation.lotId,
+                quantity: allocation.rejected,
+              })),
+            },
+          },
+        })
+        : null;
+
+      for (const allocation of allocations) {
+        const allocated = allocation.passed + allocation.rejected;
+        await tx.pemakaianMaterialItem.update({
+          where: { id: allocation.lotId },
+          data: { jumlahSisa: { decrement: allocated } },
+        });
+        if (allocation.passed > 0 && sourceLocation.id !== qcLocation.id) {
+          await postInventoryMovementInTransaction(tx, {
+            itemId: item.id,
+            pemakaianMaterialItemId: allocation.lotId,
+            fromLocationId: sourceLocation.id,
+            toLocationId: qcLocation.id,
+            type: "QC",
+            quantity: allocation.passed,
+            idempotencyKey: `${inspectionNumber}:pass:${allocation.lotId}`,
+            sourceType: "FINAL_QC_PASS",
+            sourceId: inspectionNumber,
+            reason: `Lolos QC akhir ${inspectionNumber}`,
+            userId: input.inspectedById,
+          });
+        }
+        if (allocation.rejected > 0) {
+          await postInventoryMovementInTransaction(tx, {
+            itemId: item.id,
+            pemakaianMaterialItemId: allocation.lotId,
+            fromLocationId: sourceLocation.id,
+            toLocationId: repairLocation!.id,
+            type: "QC",
+            quantity: allocation.rejected,
+            idempotencyKey: `${inspectionNumber}:reject:${allocation.lotId}`,
+            sourceType: "WIP_REJECT",
+            sourceId: String(reject!.id),
+            reason: `Reject QC ${reject!.number}: ${reason!.name}`,
+            userId: input.inspectedById,
+          });
+        }
+      }
+      return {
+        inspectionNumber,
+        item: { id: item.id, kode: item.kode, nama: item.nama },
+        passedQuantity: input.passedQuantity,
+        rejectedQuantity: input.rejectedQuantity,
+        reject,
+      };
+    });
+}
+
+export async function createWipReject(input: {
+  itemId: number;
+  quantity: number;
+  reasonId: number;
+  repairDivisionId: number;
+  recordedById: number;
+}) {
+  validateWipRejectInput(input);
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const item = await tx.item.findUnique({
       where: { id: input.itemId },
       include: { divisi: { select: { id: true, nama: true } } },
     });
-    if (!item || !item.isActive) throw new WipRejectError("ITEM_NOT_FOUND", "Item Top Coat tidak ditemukan");
-    if (!item.divisi || !divisionKey(item.divisi.nama).includes("topcoat")) {
-      throw new WipRejectError("TOPCOAT_ITEM_REQUIRED", "QC Akhir hanya menerima item dari divisi Top Coat");
+    if (!item || !item.isActive) throw new WipRejectError("ITEM_NOT_FOUND", "Item output tahap akhir tidak ditemukan");
+    const routings = await tx.productionRouting.findMany({
+      where: {
+        isActive: true,
+        stages: { some: { outputItems: { some: { itemId: item.id } } } },
+      },
+      select: {
+        stages: {
+          orderBy: { sequence: "asc" },
+          select: { outputItems: { select: { itemId: true } }, divisiId: true },
+        },
+      },
+    });
+    const isFinalRoutingOutput = routings.some((routing) => {
+      const finalStage = routing.stages[routing.stages.length - 1];
+      return finalStage?.outputItems.some((output) => output.itemId === item.id) &&
+        finalStage.divisiId === item.divisiId;
+    });
+    if (!item.divisi || item.jenis !== "SM" || !isFinalRoutingOutput) {
+      throw new WipRejectError("TOPCOAT_ITEM_REQUIRED", "QC Akhir hanya menerima item output tahap terakhir dari routing aktif");
     }
     const reason = await tx.qualityRejectReason.findFirst({
       where: { id: input.reasonId, isActive: true },
@@ -186,7 +556,7 @@ export async function createWipReject(input: {
     if (remaining > 0) {
       throw new WipRejectError(
         "INSUFFICIENT_STOCK",
-        `Stok item di lokasi Top Coat tidak cukup. Kekurangan ${remaining} ${item.unit}.`,
+        `Stok item di lokasi divisi produksi tidak cukup. Kekurangan ${remaining} ${item.unit}.`,
       );
     }
 
@@ -252,7 +622,9 @@ export async function listWipRejects(filters: {
   });
   return rows.map((reject) => {
     const repaired = reject.attempts.reduce(
-      (sum, attempt) => sum + (attempt.reviewApproved === true ? Number(attempt.quantityRepaired) : 0),
+      (sum, attempt) => sum + (attempt.reviewApproved === true || attempt.outputItemId !== null
+        ? Number(attempt.quantityRepaired)
+        : 0),
       0,
     );
     return {
@@ -290,6 +662,7 @@ export async function createWipRejectRepairAttempt(input: {
   divisionId: number;
   quantityAttempted: number;
   quantityRepaired: number;
+  outputItemId?: number;
   notes?: string | null;
 }) {
   if (!Number.isSafeInteger(input.quantityAttempted) || input.quantityAttempted <= 0 ||
@@ -301,7 +674,30 @@ export async function createWipRejectRepairAttempt(input: {
     await tx.$queryRaw`SELECT id FROM WipReject WHERE id = ${input.rejectId} FOR UPDATE`;
     const reject = await tx.wipReject.findUnique({
       where: { id: input.rejectId },
-      include: { lots: { include: { pemakaianMaterialItem: true } } },
+      include: {
+        lots: { include: { pemakaianMaterialItem: true } },
+        repairStage: {
+          include: {
+            outputItems: { select: { itemId: true } },
+            routing: {
+              select: {
+                stages: {
+                  select: {
+                    id: true,
+                    sequence: true,
+                    divisiId: true,
+                    inputItems: { select: { itemId: true } },
+                  },
+                  orderBy: { sequence: "asc" },
+                },
+              },
+            },
+          },
+        },
+        attempts: {
+          select: { quantityRepaired: true, reviewApproved: true, outputItemId: true },
+        },
+      },
     });
     if (!reject) throw new WipRejectError("REJECT_NOT_FOUND", "Reject WIP tidak ditemukan");
     if (reject.repairDivisionId !== input.divisionId) {
@@ -310,13 +706,21 @@ export async function createWipRejectRepairAttempt(input: {
     if (reject.status !== "IN_PROGRESS" || reject.claimedById !== input.userId) {
       throw new WipRejectError("INVALID_STATUS", "Ambil pekerjaan ini terlebih dahulu sebelum mencatat hasil");
     }
+    if (input.quantityRepaired > 0 && reject.repairStageId &&
+        (!input.outputItemId || !reject.repairStage?.outputItems.some((item) => item.itemId === input.outputItemId))) {
+      throw new WipRejectError("INVALID_INPUT", "Pilih output yang dikonfigurasi pada tahap routing repair");
+    }
+    if (input.outputItemId !== undefined &&
+        (!Number.isSafeInteger(input.outputItemId) || input.outputItemId <= 0)) {
+      throw new WipRejectError("INVALID_INPUT", "Item output repair tidak valid");
+    }
     const repairLocation = await ensureDivisionInventoryLocation(tx, input.divisionId);
-    const qcDivision = await tx.divisi.findFirst({
-      where: { nama: { equals: "QC" } },
-      select: { id: true },
-    });
-    if (!qcDivision) throw new WipRejectError("DIVISION_NOT_FOUND", "Divisi QC belum tersedia");
-    const qcLocation = await ensureDivisionInventoryLocation(tx, qcDivision.id);
+    const routedRepair = reject.repairStageId !== null && reject.repairStage !== null;
+    const qcDivision = routedRepair
+      ? null
+      : await tx.divisi.findFirst({ where: { nama: { equals: "QC" } }, select: { id: true } });
+    if (!routedRepair && !qcDivision) throw new WipRejectError("DIVISION_NOT_FOUND", "Divisi QC belum tersedia");
+    const qcLocation = qcDivision ? await ensureDivisionInventoryLocation(tx, qcDivision.id) : null;
     const lotBalances: Array<{ rejectLotId: number; lotId: number; available: number }> = [];
     for (const rejectLot of reject.lots) {
       const lotId = rejectLot.pemakaianMaterialItemId;
@@ -347,6 +751,7 @@ export async function createWipRejectRepairAttempt(input: {
         performedById: input.userId,
         quantityAttempted: rounded(input.quantityAttempted),
         quantityRepaired: rounded(input.quantityRepaired),
+        ...(input.quantityRepaired > 0 && routedRepair ? { outputItemId: input.outputItemId } : {}),
         notes: input.notes?.trim() || null,
         ...(input.quantityRepaired === 0 ? {
           reviewedAt: new Date(),
@@ -360,26 +765,102 @@ export async function createWipRejectRepairAttempt(input: {
         },
       },
     });
-    for (const allocation of allocations) {
+    if (input.quantityRepaired > 0 && routedRepair) {
+      const outputItem = await tx.item.findUnique({
+        where: { id: input.outputItemId! },
+        select: { id: true, unit: true, divisiId: true },
+      });
+      if (!outputItem || outputItem.divisiId !== input.divisionId) {
+        throw new WipRejectError("INVALID_INPUT", "Output repair harus merupakan item milik divisi tahap routing");
+      }
+      const nextStage = reject.repairStage!.routing.stages.find(
+        (stage) => stage.sequence > reject.repairStage!.sequence,
+      );
+      if (!nextStage || !nextStage.inputItems.some((item) => item.itemId === outputItem.id)) {
+        throw new WipRejectError("INVALID_INPUT", "Output repair tidak dapat dilanjutkan ke tahap routing berikutnya");
+      }
+      const repairedLot = await tx.pemakaianMaterial.create({
+        data: {
+          nomor: `RPR-${reject.id}-${attempt.id}-${randomUUID().slice(0, 8).toUpperCase()}`,
+          divisiId: input.divisionId,
+          tanggal: new Date(),
+          userId: input.userId,
+          sumber: "REPAIR",
+          keterangan: `Output repair ${reject.number}; lanjut ke ${nextStage ? "tahap routing berikutnya" : "QC akhir"}`,
+          items: {
+            create: {
+              itemId: outputItem.id,
+              jumlahDiterima: input.quantityRepaired,
+              jumlahDipakai: 0,
+              jumlahSisa: input.quantityRepaired,
+              satuan: outputItem.unit,
+              keteranganSisa: "Output repair untuk melanjutkan routing produksi",
+            },
+          },
+        },
+        select: { items: { select: { id: true } } },
+      });
+      const outputLotId = repairedLot.items[0]?.id;
+      if (!outputLotId) throw new WipRejectError("LOT_NOT_FOUND", "Lot output repair tidak berhasil dibuat");
+      for (const allocation of allocations) {
+        await postInventoryMovementInTransaction(tx, {
+          itemId: reject.itemId,
+          pemakaianMaterialItemId: allocation.lotId,
+          fromLocationId: repairLocation.id,
+          type: "REPAIR",
+          quantity: allocation.quantity,
+          idempotencyKey: `wip-reject-repair:${attempt.id}:consume:${allocation.lotId}`,
+          sourceType: "WIP_REJECT_REPAIR",
+          sourceId: String(attempt.id),
+          reason: `Input reject ${reject.number} diperbaiki pada tahap ${reject.repairStage!.stage}`,
+          userId: input.userId,
+        });
+      }
       await postInventoryMovementInTransaction(tx, {
-        itemId: reject.itemId,
-        pemakaianMaterialItemId: allocation.lotId,
-        fromLocationId: repairLocation.id,
-        toLocationId: qcLocation.id,
+        itemId: outputItem.id,
+        pemakaianMaterialItemId: outputLotId,
+        toLocationId: repairLocation.id,
         type: "REPAIR",
-        quantity: allocation.quantity,
-        idempotencyKey: `wip-reject-repair:${attempt.id}:lot:${allocation.lotId}`,
-        sourceType: "WIP_REJECT_REPAIR",
+        quantity: input.quantityRepaired,
+        idempotencyKey: `wip-reject-repair:${attempt.id}:output:${outputLotId}`,
+        sourceType: "WIP_REJECT_REPAIR_OUTPUT",
         sourceId: String(attempt.id),
-        reason: `Hasil repair ${reject.number} menunggu pemeriksaan QC`,
+        reason: `Output repair ${reject.number} untuk routing produksi`,
         userId: input.userId,
       });
+    } else {
+      for (const allocation of allocations) {
+        await postInventoryMovementInTransaction(tx, {
+          itemId: reject.itemId,
+          pemakaianMaterialItemId: allocation.lotId,
+          fromLocationId: repairLocation.id,
+          toLocationId: qcLocation!.id,
+          type: "REPAIR",
+          quantity: allocation.quantity,
+          idempotencyKey: `wip-reject-repair:${attempt.id}:lot:${allocation.lotId}`,
+          sourceType: "WIP_REJECT_REPAIR",
+          sourceId: String(attempt.id),
+          reason: `Hasil repair ${reject.number} menunggu pemeriksaan QC`,
+          userId: input.userId,
+        });
+      }
     }
+    const previousAccepted = reject.attempts.reduce(
+      (sum, previous) => sum + (previous.reviewApproved === true || previous.outputItemId !== null
+        ? Number(previous.quantityRepaired)
+        : 0),
+      0,
+    );
+    const completeRoutedRepair = routedRepair && input.quantityRepaired > 0 &&
+      rounded(previousAccepted + input.quantityRepaired) >= Number(reject.quantity);
     await tx.wipReject.update({
       where: { id: reject.id },
       data: {
-        status: input.quantityRepaired > 0 ? "WAITING_QC" : "OPEN",
-        ...(input.quantityRepaired === 0 ? { claimedById: null } : {}),
+        status: input.quantityRepaired > 0 && !routedRepair
+          ? "WAITING_QC"
+          : completeRoutedRepair ? "COMPLETED" : "OPEN",
+        ...((input.quantityRepaired === 0 || routedRepair) ? { claimedById: null } : {}),
+        ...(completeRoutedRepair ? { completedAt: new Date() } : {}),
       },
     });
     return tx.wipRejectRepairAttempt.findUniqueOrThrow({
@@ -492,11 +973,14 @@ export async function getQualityDailyReport(date: string) {
     }),
     prisma.wipRejectRepairAttempt.findMany({
       where: {
-        reviewApproved: true,
-        reviewedAt: { gte: from, lt: to },
+        OR: [
+          { reviewApproved: true, reviewedAt: { gte: from, lt: to } },
+          { outputItemId: { not: null }, performedAt: { gte: from, lt: to } },
+        ],
       },
       select: {
         quantityRepaired: true,
+        outputItem: { select: { id: true, nama: true, kode: true } },
         reject: {
           select: {
             item: { select: { id: true, nama: true, kode: true } },
@@ -529,7 +1013,7 @@ export async function getQualityDailyReport(date: string) {
   }>();
   for (const row of repairs) {
     const division = row.reject.repairDivision;
-    const item = row.reject.item;
+    const item = row.outputItem ?? row.reject.item;
     const key = `${division.id}:${item.id}`;
     const aggregate = repairOutput.get(key) ?? {
       divisionId: division.id,

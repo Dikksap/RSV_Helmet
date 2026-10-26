@@ -10,7 +10,7 @@ export const GUDANG_BARANG: NavGroup = {
   label: "Barang",
   icon: faBoxesStacked,
   children: [
-    { to: "/gudang/barang", label: "Daftar Barang", icon: faBoxesStacked, end: true },
+    { to: "/gudang/barang", label: "Daftar Barang", icon: faBoxesStacked },
     { to: "/gudang/stok-produksi", label: "Stok Produksi", icon: faArchive, end: true },
     { to: "/gudang/mutasi", label: "Riwayat Mutasi", icon: faClipboardList, end: true },
   ],

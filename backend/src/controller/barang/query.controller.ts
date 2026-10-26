@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import {
+  getBarangRekapVariant,
   getBarangById,
   getBarangStats,
   getBatchRentangTanggal,
@@ -320,6 +321,51 @@ export async function getStatsHandler(req: Request, res: Response) {
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil statistik barang", error });
+  }
+}
+
+export async function getRekapVariantHandler(req: Request, res: Response) {
+  try {
+    const { tanggalAwal, tanggalAkhir } = req.query;
+    const filter: { tanggalAwal?: Date; tanggalAkhir?: Date } = {};
+
+    if (tanggalAwal) {
+      const parsed = parseTanggalAwal(tanggalAwal as string);
+      if (!parsed) {
+        return res.status(400).json({
+          message: "Parameter 'tanggalAwal' harus tanggal valid (YYYY-MM-DD)",
+        });
+      }
+      filter.tanggalAwal = parsed;
+    }
+
+    if (tanggalAkhir) {
+      const parsed = parseTanggalAkhir(tanggalAkhir as string);
+      if (!parsed) {
+        return res.status(400).json({
+          message: "Parameter 'tanggalAkhir' harus tanggal valid (YYYY-MM-DD)",
+        });
+      }
+      filter.tanggalAkhir = parsed;
+    }
+
+    if (
+      filter.tanggalAwal &&
+      filter.tanggalAkhir &&
+      filter.tanggalAwal.getTime() > filter.tanggalAkhir.getTime()
+    ) {
+      return res.status(400).json({
+        message: "Parameter 'tanggalAwal' tidak boleh lebih besar dari 'tanggalAkhir'",
+      });
+    }
+
+    const result = await getBarangRekapVariant(filter, barangScope(req));
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({
+      message: "Gagal mengambil rekap barang per varian",
+      error,
+    });
   }
 }
 

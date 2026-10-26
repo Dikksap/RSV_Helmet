@@ -77,26 +77,20 @@ async function getWipLocations(divisionId?: number) {
 }
 
 async function getRoutedStageLabels(itemIds: number[]) {
-  const now = new Date();
   const routings = await prisma.productionRouting.findMany({
-    where: {
-      isActive: true,
-      bom: {
-        isActive: true,
-        AND: [
-          { OR: [{ berlakuMulai: null }, { berlakuMulai: { lte: now } }] },
-          { OR: [{ berlakuSelesai: null }, { berlakuSelesai: { gte: now } }] },
-        ],
-      },
-    },
+    where: { isActive: true },
     select: {
       stages: {
         select: {
           stage: true,
           divisiId: true,
-          outputItemId: true,
           divisi: { select: { nama: true } },
-          outputItem: { select: { kode: true, nama: true, unit: true } },
+          outputItems: {
+            select: {
+              itemId: true,
+              item: { select: { kode: true, nama: true, unit: true } },
+            },
+          },
         },
       },
     },
@@ -110,14 +104,16 @@ async function getRoutedStageLabels(itemIds: number[]) {
   }>();
   for (const routing of routings) {
     for (const stage of routing.stages) {
-      if (!itemIds.includes(stage.outputItemId)) continue;
-      labels.set(keyOf(stage.divisiId, stage.outputItemId), {
-        stage: stage.stage,
-        divisionName: stage.divisi.nama,
-        code: stage.outputItem.kode,
-        name: stage.outputItem.nama,
-        unit: stage.outputItem.unit,
-      });
+      for (const output of stage.outputItems) {
+        if (!itemIds.includes(output.itemId)) continue;
+        labels.set(keyOf(stage.divisiId, output.itemId), {
+          stage: stage.stage,
+          divisionName: stage.divisi.nama,
+          code: output.item.kode,
+          name: output.item.nama,
+          unit: output.item.unit,
+        });
+      }
     }
   }
   return labels;
@@ -131,8 +127,8 @@ export async function listWipStocktakeOptions() {
         jenis: "SM",
         isActive: true,
         OR: [
-          { productionRoutingOutputs: { some: {} } },
-          { productionRoutingInputs: { some: {} } },
+          { productionRoutingOutputs: { some: { routingStage: { routing: { isActive: true } } } } },
+          { productionRoutingInputs: { some: { routingStage: { routing: { isActive: true } } } } },
         ],
       },
       select: {
@@ -214,8 +210,8 @@ export async function getWipFlowReport(filters: WipFlowFilters) {
       jenis: "SM",
       isActive: true,
       OR: [
-        { productionRoutingOutputs: { some: {} } },
-        { productionRoutingInputs: { some: {} } },
+        { productionRoutingOutputs: { some: { routingStage: { routing: { isActive: true } } } } },
+        { productionRoutingInputs: { some: { routingStage: { routing: { isActive: true } } } } },
       ],
       ...(filters.itemId ? { id: filters.itemId } : {}),
     },
@@ -304,7 +300,7 @@ export async function getWipFlowReport(filters: WipFlowFilters) {
           ...(filters.itemId ? { lot: { itemId: filters.itemId } } : {}),
           ...(filters.divisionId ? {
             productionRouting: {
-              stages: { some: { stage: "TOP_COAT", divisiId: filters.divisionId } },
+              stages: { some: { divisiId: filters.divisionId } },
             },
           } : {}),
         },
@@ -318,6 +314,7 @@ export async function getWipFlowReport(filters: WipFlowFilters) {
               stages: {
                 select: {
                   stage: true,
+                  sequence: true,
                   divisi: { select: { id: true, nama: true } },
                 },
               },
@@ -394,8 +391,10 @@ export async function getWipFlowReport(filters: WipFlowFilters) {
   }
   const stageStats = new Map<string, { stage: string; divisionName: string; inspected: number; passed: number; repair: number; rejected: number }>();
   for (const line of qualityLines) {
-    const stage = line.productionRouting?.stages.find((candidate) => candidate.stage === "TOP_COAT");
-    const label = stage?.stage ?? "TOP_COAT";
+    const stages = [...(line.productionRouting?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
+    const stage = stages[stages.length - 1];
+    if (filters.divisionId && stage?.divisi.id !== filters.divisionId) continue;
+    const label = stage?.stage ?? "Tahap akhir";
     const divisionName = stage?.divisi.nama ?? "QC Akhir";
     const key = `${label}:${divisionName}`;
     const row = stageStats.get(key) ?? { stage: label, divisionName, inspected: 0, passed: 0, repair: 0, rejected: 0 };
@@ -580,7 +579,11 @@ export async function createWipStocktake(input: WipStocktakeInput, userId: numbe
         throw new QualityError("STOCKTAKE_CONFLICT", "Saldo ledger WIP negatif; rekonsiliasi ledger sebelum opname");
       }
       const hasStageAtLocation = await tx.productionRoutingStage.findFirst({
-        where: { divisiId: location.divisiId, outputItemId: item.id },
+        where: {
+          divisiId: location.divisiId,
+          outputItems: { some: { itemId: item.id } },
+          routing: { isActive: true },
+        },
         select: { id: true },
       });
       if (systemQuantity <= 0 && !hasStageAtLocation) {
@@ -605,16 +608,9 @@ export async function createWipStocktake(input: WipStocktakeInput, userId: numbe
         const isRoutedOutput = await tx.productionRoutingStage.findFirst({
           where: {
             divisiId: location.divisiId,
-            outputItemId: item.id,
+            outputItems: { some: { itemId: item.id } },
             routing: {
               isActive: true,
-              bom: {
-                isActive: true,
-                AND: [
-                  { OR: [{ berlakuMulai: null }, { berlakuMulai: { lte: session.countedAt } }] },
-                  { OR: [{ berlakuSelesai: null }, { berlakuSelesai: { gte: session.countedAt } }] },
-                ],
-              },
             },
           },
           select: { id: true },

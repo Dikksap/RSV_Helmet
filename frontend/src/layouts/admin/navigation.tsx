@@ -58,7 +58,6 @@ export const BARANG_PRODUKSI: NavGroup = {
       to: "/admin/barang",
       label: "Daftar Produksi Helm",
       icon: faBoxesStacked,
-      end: true,
       description: "Data master produksi helm",
     },
     {
@@ -124,6 +123,13 @@ export const MANAJEMEN: NavGroup = {
       icon: faLayerGroup,
       end: true,
       description: "Bill of Materials produk",
+    },
+    {
+      to: "/admin/routing-produksi",
+      label: "Routing Produksi",
+      icon: faSitemap,
+      end: true,
+      description: "Atur urutan tahap dan divisi per varian produk",
     },
     {
       to: "/admin/realisasi-produksi",

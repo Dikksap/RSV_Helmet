@@ -232,59 +232,41 @@ function isNomorUniqueViolation(error: unknown): boolean {
   return String(e.meta.target).includes("nomor");
 }
 
-const processStageByDivision = new Map<string, "BUFFING" | "BASE_COAT" | "DECAL_SOLID" | "DECAL_MOTIF" | "TOP_COAT">([
-  ["Buffing", "BUFFING"],
-  ["Base Coat", "BASE_COAT"],
-  ["Decal Solid", "DECAL_SOLID"],
-  ["Decal Motif", "DECAL_MOTIF"],
-  ["Top Coat", "TOP_COAT"],
-] as const);
-
 async function validateConfiguredProcessRoute(
   tx: PrismaTransactionClient,
   divisi: { id: number; nama: string },
-  inputItemId: number,
+  inputItemIds: number[],
   outputItemIds: number[],
 ) {
-  const stage = processStageByDivision.get(divisi.nama);
-  if (!stage) return;
-  if (outputItemIds.length === 0) {
-    throw new HasilProduksiError(
-      INPUT_TIDAK_VALID,
-      `Produksi ${divisi.nama} harus menghasilkan Item WIP yang terhubung routing aktif`,
-    );
-  }
   const rows = await tx.productionRoutingStage.findMany({
     where: {
-      stage,
       divisiId: divisi.id,
-      inputItemId,
-      outputItemId: { in: outputItemIds },
       routing: {
         isActive: true,
-        bom: { isActive: true },
       },
     },
     include: {
-      routing: {
-        select: {
-          bom: { select: { berlakuMulai: true, berlakuSelesai: true } },
-        },
-      },
+      inputItems: { select: { itemId: true } },
+      outputItems: { select: { itemId: true } },
     },
   });
-  const now = new Date();
-  const allowedOutputs = new Set(rows
-    .filter(({ routing }) =>
-      (routing.bom.berlakuMulai === null || routing.bom.berlakuMulai <= now) &&
-      (routing.bom.berlakuSelesai === null || routing.bom.berlakuSelesai >= now),
-    )
-    .map((row) => row.outputItemId));
-  const invalid = outputItemIds.filter((itemId) => !allowedOutputs.has(itemId));
-  if (invalid.length > 0) {
+  if (rows.length === 0) return;
+  if (outputItemIds.length === 0) {
     throw new HasilProduksiError(
       INPUT_TIDAK_VALID,
-      `Input/output ${divisi.nama} tidak sesuai routing varian dan BOM aktif`,
+      `Produksi ${divisi.nama} harus menghasilkan Item WIP sesuai routing aktif`,
+    );
+  }
+  const routeMatches = rows.some((row) => {
+    const allowedInputs = new Set(row.inputItems.map((item) => item.itemId));
+    const allowedOutputs = new Set(row.outputItems.map((item) => item.itemId));
+    return inputItemIds.every((itemId) => allowedInputs.has(itemId)) &&
+      outputItemIds.every((itemId) => allowedOutputs.has(itemId));
+  });
+  if (!routeMatches) {
+    throw new HasilProduksiError(
+      INPUT_TIDAK_VALID,
+      `Input/output ${divisi.nama} tidak sesuai routing produksi aktif`,
     );
   }
 }
@@ -322,19 +304,22 @@ function validasiInput(input: HasilProduksiInput): void {
   });
 
   const barisMasuk = input.items.filter((item) => item.tipe === TipeHasilProduksiItem.MASUK);
-  if (barisMasuk.length !== 1) {
-    throw new HasilProduksiError(INPUT_TIDAK_VALID, "Wajib ada tepat satu baris MASUK");
+  if (barisMasuk.length === 0) {
+    throw new HasilProduksiError(INPUT_TIDAK_VALID, "Wajib ada minimal satu baris MASUK");
   }
   const barisHasil = input.items.filter((item) => item.tipe === TipeHasilProduksiItem.HASIL);
   if (barisHasil.length === 0) {
     throw new HasilProduksiError(INPUT_TIDAK_VALID, "Wajib ada minimal satu baris HASIL");
   }
-  const totalMasuk = barisMasuk.reduce((total, item) => total + item.jumlah, 0);
-  const totalHasil = barisHasil.reduce((total, item) => total + item.jumlah, 0);
-  if (totalHasil > totalMasuk) {
-    throw new HasilProduksiError(INPUT_TIDAK_VALID, "Total HASIL tidak boleh melebihi total MASUK");
+  for (const [rows, label] of [[barisMasuk, "MASUK"], [barisHasil, "HASIL"]] as const) {
+    const seen = new Set<number>();
+    for (const row of rows) {
+      if (seen.has(row.itemId)) {
+        throw new HasilProduksiError(INPUT_TIDAK_VALID, `Item ${label} yang sama tidak boleh dicatat lebih dari sekali`);
+      }
+      seen.add(row.itemId);
+    }
   }
-
   if (input.items.some((item) => item.tipe === TipeHasilProduksiItem.KELUAR)) {
     const tipePerItem = new Map<number, Set<TipeHasilProduksiItem>>();
     for (const item of input.items) {
@@ -511,16 +496,13 @@ async function createInTx(
     throw new HasilProduksiError(ITEM_TIDAK_DITEMUKAN, `Item tidak ditemukan: ${hilang.join(", ")}`);
   }
 
-  const barisMasuk = input.items.find((item) => item.tipe === TipeHasilProduksiItem.MASUK)!;
-  const itemMasuk = items.find((item) => item.id === barisMasuk.itemId)!;
+  const barisMasuk = input.items.filter((item) => item.tipe === TipeHasilProduksiItem.MASUK);
+  const inputItemIds = barisMasuk.map((item) => item.itemId);
   const hasilWipItemIds = input.items
     .filter((row) => row.tipe === TipeHasilProduksiItem.HASIL)
     .filter((row) => items.find((item) => item.id === row.itemId)?.jenis === "SM")
     .map((row) => row.itemId);
-  await validateConfiguredProcessRoute(tx, divisi, itemMasuk.id, hasilWipItemIds);
-  const totalHasil = input.items
-    .filter((item) => item.tipe === TipeHasilProduksiItem.HASIL)
-    .reduce((total, item) => total + item.jumlah, 0);
+  await validateConfiguredProcessRoute(tx, divisi, inputItemIds, hasilWipItemIds);
 
   const keluarPerItem = new Map<number, number>();
   for (const item of input.items) {
@@ -529,42 +511,51 @@ async function createInTx(
   }
 
   // Kunci semua item dengan urutan tetap supaya produksi dan approval tidak deadlock.
-  const lockIds = [...new Set([barisMasuk.itemId, ...keluarPerItem.keys()])].sort((a, b) => a - b);
+  const lockIds = [...new Set([...inputItemIds, ...keluarPerItem.keys()])].sort((a, b) => a - b);
   for (const itemId of lockIds) await lockItem(tx, itemId);
 
-  const wipRows = await lockWipRows(tx, input.divisiId, barisMasuk.itemId);
-  const alokasi = wipRows.map((row) => {
-    const sisa = Number(row.jumlahSisa);
-    const dipakai = Number(row.jumlahDipakai);
-    if (!Number.isFinite(sisa) || sisa < 0 || !Number.isFinite(dipakai) || dipakai < 0) {
-      throw new Error(`Saldo WIP tidak valid untuk PemakaianMaterialItem ${row.id}`);
+  const konsumsiPerInput: Array<{
+    itemId: number;
+    jumlah: number;
+    rows: Array<{ id: number; sisa: number }>;
+  }> = [];
+  for (const inputLine of barisMasuk) {
+    const itemMasuk = items.find((item) => item.id === inputLine.itemId)!;
+    const wipRows = await lockWipRows(tx, input.divisiId, inputLine.itemId);
+    const alokasi = wipRows.map((row) => {
+      const sisa = Number(row.jumlahSisa);
+      const dipakai = Number(row.jumlahDipakai);
+      if (!Number.isFinite(sisa) || sisa < 0 || !Number.isFinite(dipakai) || dipakai < 0) {
+        throw new Error(`Saldo WIP tidak valid untuk PemakaianMaterialItem ${row.id}`);
+      }
+      return { id: row.id, sisa };
+    });
+    const totalWip = alokasi.reduce((total, row) => total + row.sisa, 0);
+    if (totalWip < inputLine.jumlah) {
+      const peminta =
+        userId === null
+          ? null
+          : await tx.user.findUnique({ where: { id: userId }, select: { name: true } });
+      throw new WipKurangError(
+        {
+          divisiId: divisi.id,
+          divisiNama: divisi.nama,
+          itemId: itemMasuk.id,
+          itemKode: itemMasuk.kode,
+          itemNama: itemMasuk.nama,
+          unit: itemMasuk.unit,
+          jumlahMasuk: inputLine.jumlah,
+          wipTersedia: totalWip,
+          kekurangan: Math.ceil(inputLine.jumlah - totalWip),
+        },
+        tanggal,
+        peminta?.name ?? "Sistem",
+        itemMasuk.divisiId,
+        itemMasuk.jenis,
+        itemMasuk.divisi?.nama ?? null,
+      );
     }
-    return { id: row.id, sisa, dipakai };
-  });
-  const totalWip = alokasi.reduce((total, row) => total + row.sisa, 0);
-  if (totalWip < barisMasuk.jumlah) {
-    const peminta =
-      userId === null
-        ? null
-        : await tx.user.findUnique({ where: { id: userId }, select: { name: true } });
-    throw new WipKurangError(
-      {
-        divisiId: divisi.id,
-        divisiNama: divisi.nama,
-        itemId: itemMasuk.id,
-        itemKode: itemMasuk.kode,
-        itemNama: itemMasuk.nama,
-        unit: itemMasuk.unit,
-        jumlahMasuk: barisMasuk.jumlah,
-        wipTersedia: totalWip,
-        kekurangan: Math.ceil(barisMasuk.jumlah - totalWip),
-      },
-      tanggal,
-      peminta?.name ?? "Sistem",
-      itemMasuk.divisiId,
-      itemMasuk.jenis,
-      itemMasuk.divisi?.nama ?? null,
-    );
+    konsumsiPerInput.push({ itemId: inputLine.itemId, jumlah: inputLine.jumlah, rows: alokasi });
   }
 
   // KELUAR = pengurangan stok. Total kebutuhan dicek sekali per item setelah
@@ -595,49 +586,53 @@ async function createInTx(
     include: detailInclude,
   });
 
-  const detailMasuk = header.items.find((item) => item.tipe === TipeHasilProduksiItem.MASUK);
-  if (!detailMasuk) throw new Error("Baris MASUK hasil produksi tidak terbentuk");
-
-  let sisaKonsumsi = totalHasil;
-  for (const row of alokasi) {
-    if (sisaKonsumsi <= 0) break;
-    if (row.sisa <= 0) continue;
-    const pakai = Math.min(row.sisa, sisaKonsumsi);
-    const terpakai = await tx.pemakaianMaterialItem.updateMany({
-      where: { id: row.id, jumlahSisa: { gte: pakai } },
-      data: {
-        jumlahSisa: { decrement: pakai },
-        jumlahDipakai: { increment: pakai },
-      },
-    });
-    if (terpakai.count !== 1) {
-      throw new Error(`Saldo WIP PemakaianMaterialItem ${row.id} berubah saat produksi disimpan`);
-    }
-    await tx.hasilProduksiPemakaian.create({
-      data: {
-        hasilProduksiHarianItemId: detailMasuk.id,
+  for (const input of konsumsiPerInput) {
+    const detailMasuk = header.items.find((detail) =>
+      detail.tipe === TipeHasilProduksiItem.MASUK && detail.itemId === input.itemId,
+    );
+    if (!detailMasuk) throw new Error(`Baris MASUK item ${input.itemId} tidak terbentuk`);
+    const itemMasuk = items.find((item) => item.id === input.itemId)!;
+    let sisaKonsumsi = input.jumlah;
+    for (const row of input.rows) {
+      if (sisaKonsumsi <= 0) break;
+      if (row.sisa <= 0) continue;
+      const pakai = Math.min(row.sisa, sisaKonsumsi);
+      const terpakai = await tx.pemakaianMaterialItem.updateMany({
+        where: { id: row.id, jumlahSisa: { gte: pakai } },
+        data: {
+          jumlahSisa: { decrement: pakai },
+          jumlahDipakai: { increment: pakai },
+        },
+      });
+      if (terpakai.count !== 1) {
+        throw new Error(`Saldo WIP PemakaianMaterialItem ${row.id} berubah saat produksi disimpan`);
+      }
+      await tx.hasilProduksiPemakaian.create({
+        data: {
+          hasilProduksiHarianItemId: detailMasuk.id,
+          pemakaianMaterialItemId: row.id,
+          jumlah: pakai,
+        },
+      });
+      await postInventoryMovementInTransaction(tx, {
+        itemId: itemMasuk.id,
         pemakaianMaterialItemId: row.id,
-        jumlah: pakai,
-      },
-    });
-    await postInventoryMovementInTransaction(tx, {
-      itemId: itemMasuk.id,
-      pemakaianMaterialItemId: row.id,
-      hasilProduksiHarianId: header.id,
-      fromLocationId: divisionLocation.id,
-      type: "PRODUCTION",
-      quantity: pakai,
-      idempotencyKey: `production-consume:${header.id}:${row.id}`,
-      sourceType: "PRODUCTION_CONSUMPTION",
-      sourceId: `${header.id}:${detailMasuk.id}:${row.id}`,
-      reason: `Konsumsi WIP produksi ${nomor}`,
-      userId,
-      occurredAt: tanggal,
-    });
-    sisaKonsumsi -= pakai;
-  }
-  if (sisaKonsumsi !== 0) {
-    throw new Error("Konsumsi WIP tidak sama dengan total HASIL produksi");
+        hasilProduksiHarianId: header.id,
+        fromLocationId: divisionLocation.id,
+        type: "PRODUCTION",
+        quantity: pakai,
+        idempotencyKey: `production-consume:${header.id}:${row.id}`,
+        sourceType: "PRODUCTION_CONSUMPTION",
+        sourceId: `${header.id}:${detailMasuk.id}:${row.id}`,
+        reason: `Konsumsi WIP produksi ${nomor}`,
+        userId,
+        occurredAt: tanggal,
+      });
+      sisaKonsumsi -= pakai;
+    }
+    if (sisaKonsumsi !== 0) {
+      throw new Error(`Konsumsi WIP tidak sama dengan jumlah input item ${itemMasuk.kode}`);
+    }
   }
 
   // Hasil SM menjadi WIP divisi, bukan stok gudang. Satu dokumen WIP per

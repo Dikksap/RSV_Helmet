@@ -36,6 +36,7 @@ model WipReject {
   quantity         Decimal        @db.Decimal(18, 6)
   reasonId         Int
   repairDivisionId Int
+  repairStageId    Int?
   recordedById     Int
   claimedById      Int?
   status           WipRejectStatus @default(OPEN)
@@ -46,12 +47,14 @@ model WipReject {
   item           Item        @relation(fields: [itemId], references: [id], onDelete: Restrict)
   reason         QualityRejectReason @relation(fields: [reasonId], references: [id], onDelete: Restrict)
   repairDivision Divisi      @relation(fields: [repairDivisionId], references: [id], onDelete: Restrict)
+  repairStage    ProductionRoutingStage? @relation("WipRejectRepairStage", fields: [repairStageId], references: [id], onDelete: Restrict)
   recordedBy     User        @relation("WipRejectRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
   claimedBy      User?       @relation("WipRejectClaimedBy", fields: [claimedById], references: [id], onDelete: Restrict)
   lots           WipRejectLot[]
   attempts       WipRejectRepairAttempt[]
 
   @@index([repairDivisionId, status, createdAt])
+  @@index([repairStageId])
   @@index([itemId, createdAt])
   @@index([reasonId])
   @@index([recordedById])
@@ -84,15 +87,18 @@ model WipRejectRepairAttempt {
   reviewedAt        DateTime?
   reviewApproved    Boolean?
   reviewNotes       String?  @db.Text
+  outputItemId      Int?
 
   reject       WipReject         @relation(fields: [rejectId], references: [id], onDelete: Restrict)
   performedBy User              @relation("WipRejectRepairPerformedBy", fields: [performedById], references: [id], onDelete: Restrict)
   reviewedBy  User?             @relation("WipRejectRepairReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  outputItem  Item?             @relation("WipRejectRepairOutput", fields: [outputItemId], references: [id], onDelete: Restrict)
   lots        WipRejectRepairLot[]
 
   @@index([rejectId, performedAt])
   @@index([performedById])
   @@index([reviewedById])
+  @@index([outputItemId])
 }
 
 model WipRejectRepairLot {
@@ -298,10 +304,11 @@ model Item {
   hasilProduksiHarianItems HasilProduksiHarianItem[]
   wipTransferItems         WipTransferItem[]
   inventoryMovements       InventoryMovement[]
-  productionRoutingInputs  ProductionRoutingStage[] @relation("ProductionRoutingStageInput")
-  productionRoutingOutputs ProductionRoutingStage[] @relation("ProductionRoutingStageOutput")
+  productionRoutingInputs  ProductionRoutingStageInput[]
+  productionRoutingOutputs ProductionRoutingStageOutput[]
   wipStocktakeLines        WipStocktakeLine[]
   wipRejects               WipReject[]
+  wipRejectRepairOutputs WipRejectRepairAttempt[] @relation("WipRejectRepairOutput")
 
   @@index([divisiId], map: "Item_divisiId_fkey")
 }
@@ -386,7 +393,6 @@ model ProductVariant {
   scheduleAllocEdits ProductionScheduleAllocEdit[]
   boms               Bom[]
   subassemblies      Subassembly[]
-  productionRoutings ProductionRouting[]
 
   @@unique([productId, styleId, colorId, sizeId])
   @@index([productId])
@@ -900,7 +906,6 @@ model Bom {
   productVariant ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
   subassembly    Subassembly?    @relation("BomOutput", fields: [subassemblyId], references: [id], onDelete: Restrict)
   items          BomItem[]
-  productionRoutings ProductionRouting[]
 
   @@unique([productVariantId, version])
   @@unique([subassemblyId, version])
@@ -1144,14 +1149,6 @@ enum QualityInspectionStatus {
   COMPLETED
 }
 
-enum ProductionProcessStage {
-  BUFFING
-  BASE_COAT
-  DECAL_SOLID
-  DECAL_MOTIF
-  TOP_COAT
-}
-
 enum RepairAssignmentStatus {
   ASSIGNED
   IN_PROGRESS
@@ -1161,43 +1158,59 @@ enum RepairAssignmentStatus {
 }
 
 model ProductionRouting {
-  id               Int      @id @default(autoincrement())
-  productVariantId Int
-  bomId            Int
-  version          Int      @default(1)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  version   Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  productVariant ProductVariant         @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
-  bom            Bom                   @relation(fields: [bomId], references: [id], onDelete: Restrict)
-  stages         ProductionRoutingStage[]
-  qualityLines   QualityInspectionLine[]
+  stages       ProductionRoutingStage[]
+  qualityLines QualityInspectionLine[]
 
-  @@unique([productVariantId, version])
-  @@index([bomId, isActive])
+  @@index([isActive])
 }
 
 model ProductionRoutingStage {
   id          Int                    @id @default(autoincrement())
   routingId   Int
-  stage       ProductionProcessStage
+  stage       String                 @db.VarChar(80)
   sequence    Int
   divisiId    Int
-  inputItemId Int
-  outputItemId Int
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
 
-  routing   ProductionRouting @relation(fields: [routingId], references: [id], onDelete: Cascade)
-  divisi    Divisi            @relation(fields: [divisiId], references: [id], onDelete: Restrict)
-  inputItem Item              @relation("ProductionRoutingStageInput", fields: [inputItemId], references: [id], onDelete: Restrict)
-  outputItem Item             @relation("ProductionRoutingStageOutput", fields: [outputItemId], references: [id], onDelete: Restrict)
+  routing    ProductionRouting            @relation(fields: [routingId], references: [id], onDelete: Cascade)
+  divisi     Divisi                       @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  inputItems ProductionRoutingStageInput[]
+  outputItems ProductionRoutingStageOutput[]
+  repairRejects WipReject[] @relation("WipRejectRepairStage")
 
-  @@unique([routingId, stage])
   @@unique([routingId, sequence])
-  @@index([divisiId, inputItemId])
-  @@index([outputItemId])
+  @@index([divisiId])
+}
+
+model ProductionRoutingStageInput {
+  id               Int @id @default(autoincrement())
+  routingStageId   Int
+  itemId           Int
+
+  routingStage ProductionRoutingStage @relation(fields: [routingStageId], references: [id], onDelete: Cascade)
+  item         Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([routingStageId, itemId])
+  @@index([itemId])
+}
+
+model ProductionRoutingStageOutput {
+  id               Int @id @default(autoincrement())
+  routingStageId   Int
+  itemId           Int
+
+  routingStage ProductionRoutingStage @relation(fields: [routingStageId], references: [id], onDelete: Cascade)
+  item         Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([routingStageId, itemId])
+  @@index([itemId])
 }
 
 enum RepairAttemptOutcome {

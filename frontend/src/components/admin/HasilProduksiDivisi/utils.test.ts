@@ -53,22 +53,23 @@ describe("validasiInputProduksi", () => {
   it("menolak form tanpa divisi dan tanpa input", () => {
     const errors = validasiInputProduksi(null, [], []);
     expect(errors.divisi).toBeTruthy();
-    expect(errors.umum).toContain("satu baris item input");
+    expect(errors.umum).toContain("minimal satu item input");
     expect(adaError(errors)).toBe(true);
   });
 
-  it("menerima satu input dan banyak output", () => {
+  it("menerima banyak input dan banyak output", () => {
     const errors = validasiInputProduksi(
       3,
-      [baris({ jumlah: "25" })],
       [baris({ jumlah: "10" }), baris({ itemId: "2", jumlah: "15" })],
+      [baris({ jumlah: "20" }), baris({ itemId: "2", jumlah: "15" })],
     );
     expect(adaError(errors)).toBe(false);
   });
 
-  it("menolak lebih dari satu baris input", () => {
-    const errors = validasiInputProduksi(3, [baris(), baris({ itemId: "2" })], [baris()]);
-    expect(errors.umum).toContain("Hanya boleh satu");
+  it("menolak item yang sama dipilih berulang", () => {
+    const rows = [baris(), baris({ itemId: "1" })];
+    const errors = validasiInputProduksi(3, rows, [baris()]);
+    expect(errors.input[rows[1]!.key]?.itemId).toContain("tidak boleh dipilih lebih dari sekali");
   });
 
   it("menolak form tanpa output", () => {
@@ -76,9 +77,9 @@ describe("validasiInputProduksi", () => {
     expect(errors.umum).toContain("hasil produksi");
   });
 
-  it("menolak total output lebih besar dari input", () => {
-    const errors = validasiInputProduksi(3, [baris({ jumlah: "10" })], [baris({ jumlah: "11" })]);
-    expect(errors.umum).toBe("Total hasil tidak boleh melebihi total input.");
+  it("memvalidasi jumlah tiap item tanpa membandingkan jumlah item berbeda", () => {
+    const errors = validasiInputProduksi(3, [baris({ jumlah: "2" })], [baris({ jumlah: "20" })]);
+    expect(adaError(errors)).toBe(false);
   });
 
   it("menolak jumlah nol, negatif, dan desimal", () => {

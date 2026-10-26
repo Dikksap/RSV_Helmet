@@ -15,6 +15,7 @@ import {
   updateBarang,
 } from "./barang.crud.js";
 import {
+  getBarangRekapVariant,
   getBarangStats,
   getBatchRentangTanggal,
   getFinishgoodPerBulan,
@@ -31,6 +32,7 @@ export {
   bulkUpdateBarangStatus,
   updateBarangStatus,
   updateBarang,
+  getBarangRekapVariant,
   getBarangStats,
   getBatchRentangTanggal,
   getFinishgoodPerBulan,

@@ -21,6 +21,7 @@ import DivisiTransferWip from "./pages/divisi/DivisiTransferWip.tsx";
 import AnggotaDivisi from "./pages/divisi/AnggotaDivisi.tsx";
 import CetakLabel from "./pages/public/CetakLabel.tsx";
 import DaftarBarang from "./pages/admin/DaftarBarang.tsx";
+import RekapBarangVariant from "./pages/admin/RekapBarangVariant.tsx";
 import { LiveSocketProvider } from "./lib/LiveSocketContext.tsx";
 import LandingPage from "./pages/public/LandingPage.tsx";
 import LiveView from "./pages/public/LiveView.tsx";
@@ -47,6 +48,7 @@ import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
 import PemakaianMaterial from "./pages/admin/PemakaianMaterial.tsx";
 import InventoryLedger from "./pages/admin/InventoryLedger.tsx";
 import QualityControl from "./pages/admin/QualityControl.tsx";
+import RoutingProduksi from "./pages/admin/RoutingProduksi.tsx";
 import Shipments from "./pages/admin/Shipments.tsx";
 import WipFlowReport from "./pages/admin/WipFlowReport.tsx";
 import HomepageGudang from "./pages/gudang/HomepageGudang.tsx";
@@ -79,6 +81,7 @@ const routes = (
       <Route path="/admin/dashboard" element={<Navigate to="/admin/home" replace />} />
       <Route path="/admin/home" element={<Homepage />} />
       <Route path="/admin/barang" element={<DaftarBarang />} />
+      <Route path="/admin/barang/rekap-variant" element={<RekapBarangVariant />} />
       <Route path="/admin/stok-produksi" element={<StokProduksi />} />
       <Route path="/admin/hasil-produksi-divisi" element={<HasilProduksiDivisi />} />
       <Route path="/admin/karyawan" element={<KelolaKaryawan />} />
@@ -90,6 +93,7 @@ const routes = (
 <Route path="/admin/pemakaian-material" element={<PemakaianMaterial />} />
 <Route path="/admin/inventory" element={<InventoryLedger />} />
 <Route path="/admin/quality" element={<QualityControl />} />
+<Route path="/admin/routing-produksi" element={<RoutingProduksi />} />
 <Route path="/admin/shipments" element={<Shipments />} />
 <Route path="/admin/wip-flow" element={<WipFlowReport />} />
       <Route path="/admin/item" element={<KelolaItem />} />
@@ -133,6 +137,7 @@ const routes = (
       <Route path="/gudang" element={<Navigate to="/gudang/home" replace />} />
       <Route path="/gudang/home" element={<HomepageGudang />} />
       <Route path="/gudang/barang" element={<DaftarBarang />} />
+      <Route path="/gudang/barang/rekap-variant" element={<RekapBarangVariant />} />
       <Route path="/gudang/stok-produksi" element={<StokProduksi />} />
       <Route path="/gudang/mutasi" element={<RiwayatMutasi />} />
       <Route path="/gudang/item" element={<KelolaItem />} />

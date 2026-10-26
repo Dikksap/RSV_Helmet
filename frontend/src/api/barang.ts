@@ -289,6 +289,45 @@ export async function getBarangStats(
   return response.json() as Promise<BarangStats>;
 }
 
+export interface BarangRekapVariantRow {
+  variantId: number;
+  kodeVariant: string;
+  product: string;
+  style: string;
+  color: string;
+  size: string;
+  sizeUrutan: number;
+  perStatus: Record<string, number>;
+  total: number;
+}
+
+export interface BarangRekapVariantResponse {
+  data: BarangRekapVariantRow[];
+  statuses: string[];
+  total: number;
+}
+
+export async function getBarangRekapVariant(
+  params: { tanggalAwal?: string; tanggalAkhir?: string } = {},
+): Promise<BarangRekapVariantResponse> {
+  const query = new URLSearchParams();
+  if (params.tanggalAwal) query.set("tanggalAwal", params.tanggalAwal);
+  if (params.tanggalAkhir) query.set("tanggalAkhir", params.tanggalAkhir);
+  const queryString = query.toString();
+  const response = await apiFetch(
+    `${apiUrl}/barang/rekap-variant${queryString ? `?${queryString}` : ""}`,
+  );
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(
+      payload?.message || `Gagal mengambil rekap varian: ${response.status}`,
+    );
+  }
+  return response.json() as Promise<BarangRekapVariantResponse>;
+}
+
 export interface StatusSummary {
   REGISTER: number;
   FINISHGOOD: number;

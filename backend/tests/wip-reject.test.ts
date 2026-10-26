@@ -8,6 +8,7 @@ import {
   claimWipReject,
   createWipReject,
   createWipRejectRepairAttempt,
+  inspectFinalWip,
   WipRejectError,
 } from "../src/model/quality/wipReject.js";
 
@@ -40,6 +41,54 @@ describe("QC Akhir reject validation", () => {
       divisionId: 3,
       quantityAttempted: 2,
       quantityRepaired: 3,
+    })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("requires a routed repair output configured for the selected stage", async () => {
+    const tx = {
+      $queryRaw: vi.fn(),
+      wipReject: {
+        findUnique: vi.fn(async () => ({
+          id: 1,
+          repairDivisionId: 3,
+          repairStageId: 10,
+          repairStage: { outputItems: [{ itemId: 15 }] },
+          status: "IN_PROGRESS",
+          claimedById: 4,
+          lots: [],
+          attempts: [],
+        })),
+      },
+    };
+    Object.assign(prismaMock, {
+      $transaction: vi.fn(async (operation: (transaction: typeof tx) => Promise<unknown>) => operation(tx)),
+    });
+
+    await expect(createWipRejectRepairAttempt({
+      rejectId: 1,
+      userId: 4,
+      divisionId: 3,
+      quantityAttempted: 1,
+      quantityRepaired: 1,
+      outputItemId: 77,
+    })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+  });
+
+  it("does not allow an empty final QC result", async () => {
+    const transaction = vi.fn();
+    Object.assign(prismaMock, { $transaction: transaction });
+
+    await expect(inspectFinalWip({
+      itemId: 1,
+      passedQuantity: 0,
+      rejectedQuantity: 0,
+      inspectedById: 4,
     })).rejects.toMatchObject({
       code: "INVALID_INPUT",
     });

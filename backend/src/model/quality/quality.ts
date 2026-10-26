@@ -74,7 +74,6 @@ const inspectionInclude = {
         select: {
           id: true,
           version: true,
-          bom: { select: { id: true, kode: true, nama: true, version: true } },
           stages: {
             select: {
               stage: true,
@@ -158,34 +157,26 @@ export async function listQualityInspections(filters: {
 
 export async function listQualityLots(take = 500) {
   const activeRoutings = await prisma.productionRouting.findMany({
-    where: { isActive: true, bom: { isActive: true } },
+    where: { isActive: true },
     include: {
-      bom: { select: { isActive: true, berlakuMulai: true, berlakuSelesai: true } },
-      productVariant: { select: { id: true, kodeVariant: true } },
       stages: {
         select: {
           stage: true,
+          sequence: true,
           divisiId: true,
-          outputItemId: true,
+          outputItems: { select: { itemId: true } },
           divisi: { select: { id: true, nama: true } },
         },
       },
     },
   });
-  const current = new Date();
   const routeRows = activeRoutings.flatMap((routing) => {
-    const validBom = routing.bom.isActive &&
-      (routing.bom.berlakuMulai === null || routing.bom.berlakuMulai <= current) &&
-      (routing.bom.berlakuSelesai === null || routing.bom.berlakuSelesai >= current);
-    return validBom
-      ? routing.stages
-        .filter((stage) => stage.stage === "TOP_COAT")
-        .map((stage) => ({ ...stage, routing, variant: routing.productVariant }))
-      : [];
+    const finalStage = [...routing.stages].sort((a, b) => a.sequence - b.sequence).at(-1);
+    return finalStage ? [{ ...finalStage, routing }] : [];
   });
   if (routeRows.length === 0) return [];
 
-  const outputItemIds = [...new Set(routeRows.map((stage) => stage.outputItemId))];
+  const outputItemIds = [...new Set(routeRows.flatMap((stage) => stage.outputItems.map((item) => item.itemId)))];
   const divisionIds = [...new Set(routeRows.map((stage) => stage.divisiId))];
   const locations = await prisma.inventoryLocation.findMany({
     where: {
@@ -247,22 +238,20 @@ export async function listQualityLots(take = 500) {
       : balances.get(`${lot.id}:${locationId}`) ?? 0;
     const available = Math.min(ledgerBalance, Number(lot.jumlahSisa));
     if (available <= 0) return [];
-    const routingVariants = routeRows
+    const routingOptions = routeRows
       .filter((stage) =>
         stage.divisiId === lot.pemakaian.divisi.id &&
-        stage.outputItemId === lot.item?.id,
+        stage.outputItems.some((item) => item.itemId === lot.item?.id),
       )
-      .map(({ routing, variant }) => ({
+      .map(({ routing }) => ({
         routingId: routing.id,
         version: routing.version,
-        productVariantId: variant.id,
-        kodeVariant: variant.kodeVariant,
         originDivisions: routing.stages.map((stage) => ({
           id: stage.divisi.id,
           nama: stage.divisi.nama,
         })),
       }));
-    return routingVariants.length === 0 ? [] : [{ ...lot, available, routingVariants }];
+    return routingOptions.length === 0 ? [] : [{ ...lot, available, routingOptions }];
   });
 }
 
@@ -451,10 +440,15 @@ export async function reviewRepairAttempt(
       if (!routingId) throw new QualityError("ROUTING_INVALID", "Inspeksi sumber belum terhubung dengan routing produksi");
       const routing = await tx.productionRouting.findUnique({
         where: { id: routingId },
-        include: { stages: { orderBy: { sequence: "asc" } } },
+        include: {
+          stages: {
+            orderBy: { sequence: "asc" },
+            include: { outputItems: true },
+          },
+        },
       });
       if (!routing) throw new QualityError("ROUTING_INVALID", "Routing sumber repair tidak ditemukan");
-      const repairStage = routing.stages.find((stage) => stage.divisiId === defect.originDivisionId);
+      const repairStage = [...routing.stages].reverse().find((stage) => stage.divisiId === defect.originDivisionId);
       if (!repairStage) throw new QualityError("ROUTING_INVALID", "Divisi asal defect tidak termasuk routing varian ini");
       const qcDivision = await tx.divisi.findFirst({
         where: { nama: { equals: "QC" } },
@@ -463,7 +457,7 @@ export async function reviewRepairAttempt(
       if (!qcDivision) throw new QualityError("LOCATION_NOT_FOUND", "Divisi QC belum tersedia");
       const repairLocation = await ensureDivisionInventoryLocation(tx, attempt.assignment.repairDivisionId);
       const quantity = Number(attempt.quantityRepaired);
-      if (repairStage.stage === "TOP_COAT") {
+      if (repairStage.sequence === routing.stages[routing.stages.length - 1]?.sequence) {
         const qcLocation = await ensureDivisionInventoryLocation(tx, qcDivision.id);
         await postInventoryMovementInTransaction(tx, {
           itemId: sourceLot.itemId,
@@ -475,7 +469,7 @@ export async function reviewRepairAttempt(
           idempotencyKey: `repair:${attempt.id}:to-qc`,
           sourceType: "REPAIR_REVIEW",
           sourceId: String(attempt.id),
-          reason: `Repair Top Coat attempt ${attempt.id} disetujui untuk QC Akhir`,
+          reason: `Repair tahap akhir attempt ${attempt.id} disetujui untuk QC Akhir`,
           userId: reviewedById,
         });
         const now = new Date();
@@ -483,7 +477,7 @@ export async function reviewRepairAttempt(
           data: {
             number: `QC-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
             inspectorId: reviewedById,
-            notes: `QC Akhir ulang setelah repair Top Coat attempt ${attempt.id}`,
+            notes: `QC Akhir ulang setelah repair tahap akhir attempt ${attempt.id}`,
             lines: {
               create: {
                 repairAttemptId: attempt.id,
@@ -497,10 +491,11 @@ export async function reviewRepairAttempt(
           include: inspectionInclude,
         });
       } else {
-        const targetItem = await tx.item.findUnique({
-          where: { id: repairStage.outputItemId },
-          select: { id: true, unit: true },
-        });
+        const targetItemId = repairStage.outputItems.find((output) => output.itemId === sourceLot.itemId)?.itemId;
+        const targetItem = targetItemId === undefined ? null : await tx.item.findUnique({
+            where: { id: targetItemId },
+            select: { id: true, unit: true },
+          });
         if (!targetItem) throw new QualityError("ROUTING_INVALID", "Item hasil tahap repair tidak ditemukan");
         const number = `RPR-${attempt.id}-${randomUUID().slice(0, 8).toUpperCase()}`;
         const rework = await tx.pemakaianMaterial.create({
@@ -535,7 +530,7 @@ export async function reviewRepairAttempt(
           idempotencyKey: `repair:${attempt.id}:consume-final-item`,
           sourceType: "REPAIR_REVIEW",
           sourceId: String(attempt.id),
-          reason: `Konversi hasil repair ${repairStage.stage} dari item Top Coat`,
+          reason: `Konversi hasil repair ${repairStage.stage} dari item tahap akhir`,
           userId: reviewedById,
         });
         await postInventoryMovementInTransaction(tx, {
@@ -617,7 +612,7 @@ export async function updateQualityInspectionLine(
   validateDefects(validationLine);
   const variantId = input.productVariantId ?? null;
   if (variantId === null) {
-    throw new QualityError("VARIANT_REQUIRED", "Pilih varian Top Coat yang sesuai dengan lot");
+    throw new QualityError("VARIANT_REQUIRED", "Pilih varian produk yang sesuai dengan lot tahap akhir");
   }
 
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
@@ -639,10 +634,10 @@ export async function updateQualityInspectionLine(
     };
     validateOutcome(finalInput);
     if (!line.lot?.itemId) throw new QualityError("LOT_NOT_FOUND", "Baris inspeksi tidak memiliki lot WIP");
-    const routing = await getActiveRoutingForOutput(tx, variantId, line.lot.itemId);
-    const topcoat = routing?.stages.find((stage) => stage.stage === "TOP_COAT");
-    if (!routing || !topcoat || topcoat.divisiId !== line.lot.pemakaian.divisiId) {
-      throw new QualityError("ROUTING_INVALID", "Varian harus memiliki routing Top Coat aktif yang sesuai dengan lot");
+    const routing = await getActiveRoutingForOutput(tx, line.lot.itemId);
+    const finalStage = routing?.stages[routing.stages.length - 1];
+    if (!routing || !finalStage || finalStage.divisiId !== line.lot.pemakaian.divisiId) {
+      throw new QualityError("ROUTING_INVALID", "Lot tidak sesuai dengan output tahap akhir routing produksi aktif");
     }
     await tx.qualityDefect.deleteMany({ where: { inspectionLineId: lineId } });
     await tx.qualityInspectionLine.update({
@@ -693,7 +688,7 @@ export async function createQualityInspection(
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const lineData = await Promise.all(input.lines.map(async (line) => {
       if (!line.productVariantId) {
-        throw new QualityError("VARIANT_REQUIRED", "Pilih varian hasil Top Coat untuk setiap inspeksi");
+        throw new QualityError("VARIANT_REQUIRED", "Pilih varian produk untuk setiap inspeksi tahap akhir");
       }
       const lot = await tx.pemakaianMaterialItem.findUnique({
         where: { id: line.pemakaianMaterialItemId },
@@ -708,10 +703,10 @@ export async function createQualityInspection(
       if (Number(lot.jumlahSisa) < line.inspectedQuantity) {
         throw new QualityError("WIP_SHORT", "Jumlah inspeksi melebihi saldo lot yang tersedia");
       }
-      const routing = await getActiveRoutingForOutput(tx, line.productVariantId, lot.itemId);
-      const topcoat = routing?.stages.find((stage) => stage.stage === "TOP_COAT");
-      if (!routing || !topcoat || topcoat.divisiId !== lot.pemakaian.divisiId) {
-        throw new QualityError("ROUTING_INVALID", "QC Akhir hanya dapat menerima output Top Coat dari routing/BOM aktif");
+      const routing = await getActiveRoutingForOutput(tx, lot.itemId);
+      const finalStage = routing?.stages[routing.stages.length - 1];
+      if (!routing || !finalStage || finalStage.divisiId !== lot.pemakaian.divisiId) {
+        throw new QualityError("ROUTING_INVALID", "QC Akhir hanya dapat menerima output tahap terakhir routing produksi aktif");
       }
       return {
         pemakaianMaterialItemId: line.pemakaianMaterialItemId,
@@ -901,22 +896,24 @@ export async function finalizeQualityInspection(id: number, inspectorId: number)
       });
       if (!line.lot) throw new QualityError("LOT_NOT_FOUND", "Baris inspeksi tidak memiliki lot WIP");
       if (!line.productionRoutingId || !line.productVariantId) {
-        throw new QualityError("ROUTING_INVALID", "Inspeksi QC wajib terhubung ke routing Top Coat dan varian");
+        throw new QualityError("ROUTING_INVALID", "Inspeksi QC wajib terhubung ke routing produksi dan varian");
       }
-      const topcoatStage = await tx.productionRoutingStage.findUnique({
-        where: {
-          routingId_stage: {
-            routingId: line.productionRoutingId,
-            stage: "TOP_COAT",
+      const routing = await tx.productionRouting.findUnique({
+        where: { id: line.productionRoutingId },
+        include: {
+          stages: {
+            orderBy: { sequence: "asc" },
+            include: { outputItems: true },
           },
         },
       });
+      const finalStage = routing?.stages[routing.stages.length - 1];
       if (
-        !topcoatStage ||
-        topcoatStage.outputItemId !== line.lot.itemId ||
-        topcoatStage.divisiId !== line.lot.pemakaian.divisiId
+        !finalStage ||
+        !finalStage.outputItems.some((item) => item.itemId === line.lot!.itemId) ||
+        finalStage.divisiId !== line.lot.pemakaian.divisiId
       ) {
-        throw new QualityError("ROUTING_INVALID", "Lot inspeksi bukan output Top Coat dari routing yang dipilih");
+        throw new QualityError("ROUTING_INVALID", "Lot inspeksi bukan output tahap terakhir dari routing yang dipilih");
       }
       validateDefects({
         pemakaianMaterialItemId: line.lot.id,

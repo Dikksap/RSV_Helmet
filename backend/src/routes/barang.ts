@@ -15,6 +15,7 @@ import {
   listBarangHandler,
   getBarangHariIniHandler,
   getBarangDetail,
+  getRekapVariantHandler,
   getRiwayatHandler,
   getStatusSummaryHandler,
   getStatsHandler,
@@ -77,6 +78,9 @@ router.get("/export", lihat, exportBarangHandler);
 
 // GET /api/barang/hari-ini - Barang dengan tanggal hari ini
 router.get("/hari-ini", lihat, getBarangHariIniHandler);
+
+// GET /api/barang/rekap-variant - Agregat barang per variant
+router.get("/rekap-variant", lihat, getRekapVariantHandler);
 
 // GET /api/barang/scan/:kodeBarang
 router.get("/scan/:kodeBarang", scan, scanBarangHandler);

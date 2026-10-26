@@ -1,202 +1,119 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { QualityError } from "./qualityError.js";
 
-export const productionStages = [
-  "BUFFING",
-  "BASE_COAT",
-  "DECAL_SOLID",
-  "DECAL_MOTIF",
-  "TOP_COAT",
-] as const;
-
-export type ProductionStage = (typeof productionStages)[number];
-
 export type ProductionRoutingStageInput = {
-  stage: ProductionStage;
-  inputItemId: number;
-  outputItemId: number;
-};
-
-const expectedDivision: Record<ProductionStage, string> = {
-  BUFFING: "Buffing",
-  BASE_COAT: "Base Coat",
-  DECAL_SOLID: "Decal Solid",
-  DECAL_MOTIF: "Decal Motif",
-  TOP_COAT: "Top Coat",
+  stage: string;
+  divisiId: number;
+  inputItemIds: number[];
+  outputItemIds: number[];
 };
 
 const routingInclude = {
-  productVariant: {
-    select: {
-      id: true,
-      kodeVariant: true,
-      product: { select: { nama: true } },
-      style: { select: { nama: true } },
-      color: { select: { nama: true } },
-      size: { select: { nama: true } },
-    },
-  },
-  bom: {
-    select: {
-      id: true,
-      kode: true,
-      nama: true,
-      version: true,
-      isActive: true,
-      berlakuMulai: true,
-      berlakuSelesai: true,
-    },
-  },
   stages: {
     orderBy: { sequence: "asc" as const },
     include: {
       divisi: { select: { id: true, nama: true } },
-      inputItem: { select: { id: true, kode: true, nama: true, unit: true } },
-      outputItem: { select: { id: true, kode: true, nama: true, unit: true } },
+      inputItems: { include: { item: { select: { id: true, kode: true, nama: true, unit: true } } } },
+      outputItems: { include: { item: { select: { id: true, kode: true, nama: true, unit: true } } } },
     },
   },
 } as const;
 
-function requiredStageOrder(stages: ProductionRoutingStageInput[]) {
-  const decalStage = stages.find((stage) =>
-    stage.stage === "DECAL_SOLID" || stage.stage === "DECAL_MOTIF",
-  )?.stage;
-  if (!decalStage || stages.length !== 4) {
-    throw new QualityError("ROUTING_INVALID", "Routing wajib berisi Buffing, Base Coat, satu jalur Decal, dan Top Coat");
-  }
-  const expected = ["BUFFING", "BASE_COAT", decalStage, "TOP_COAT"];
-  if (stages.some((stage, index) => stage.stage !== expected[index])) {
-    throw new QualityError("ROUTING_INVALID", "Urutan tahap harus Buffing → Base Coat → Decal → Top Coat");
-  }
-  if (new Set(stages.map((stage) => stage.stage)).size !== stages.length) {
-    throw new QualityError("ROUTING_INVALID", "Tahap routing tidak boleh duplikat");
-  }
-  return stages;
-}
-
-function bomIsEffective(bom: {
-  isActive: boolean;
-  berlakuMulai: Date | null;
-  berlakuSelesai: Date | null;
-}) {
-  const now = new Date();
-  return bom.isActive &&
-    (bom.berlakuMulai === null || bom.berlakuMulai <= now) &&
-    (bom.berlakuSelesai === null || bom.berlakuSelesai >= now);
-}
-
 async function validateRouting(
   tx: PrismaTransactionClient,
-  productVariantId: number,
-  bomId: number,
   stagesInput: ProductionRoutingStageInput[],
 ) {
-  const stages = requiredStageOrder(stagesInput);
-  const [variant, bom, items] = await Promise.all([
-    tx.productVariant.findUnique({ where: { id: productVariantId }, select: { id: true } }),
-    tx.bom.findUnique({
-      where: { id: bomId },
-      include: {
-        items: {
-          select: {
-            itemId: true,
-            subassembly: { select: { itemId: true } },
-          },
-        },
-      },
-    }),
+  const stages = stagesInput;
+  if (stages.length < 2) {
+    throw new QualityError("ROUTING_INVALID", "Routing harus memiliki minimal dua tahap produksi");
+  }
+  if (stages.some((stage) =>
+    stage.inputItemIds.length === 0 ||
+    stage.outputItemIds.length === 0 ||
+    new Set(stage.inputItemIds).size !== stage.inputItemIds.length ||
+    new Set(stage.outputItemIds).size !== stage.outputItemIds.length,
+  )) {
+    throw new QualityError("ROUTING_INVALID", "Setiap tahap harus memiliki Item input/output dan tidak boleh duplikat");
+  }
+  const itemIds = [...new Set(stages.flatMap((stage) => [...stage.inputItemIds, ...stage.outputItemIds]))];
+  const [items, routingDivisions] = await Promise.all([
     tx.item.findMany({
-      where: { id: { in: [...new Set(stages.flatMap((stage) => [stage.inputItemId, stage.outputItemId]))] } },
+      where: { id: { in: itemIds } },
       select: { id: true, kode: true, nama: true, divisiId: true, jenis: true },
     }),
+    tx.divisi.findMany({
+      where: { id: { in: [...new Set(stages.map((stage) => stage.divisiId))] } },
+      select: { id: true, nama: true },
+    }),
   ]);
-  if (!variant) throw new QualityError("ROUTING_INVALID", "Varian produk tidak ditemukan");
-  if (!bom || bom.productVariantId !== productVariantId || bom.subassemblyId !== null || !bomIsEffective(bom)) {
-    throw new QualityError("ROUTING_INVALID", "Pilih BOM produk varian yang aktif dan sedang berlaku");
-  }
-  if (items.length !== new Set(stages.flatMap((stage) => [stage.inputItemId, stage.outputItemId])).size) {
+  if (items.length !== itemIds.length) {
     throw new QualityError("ROUTING_INVALID", "Salah satu Item routing tidak ditemukan");
   }
 
-  const requiredDivisionNames = [...new Set(stages.map((stage) => expectedDivision[stage.stage]))];
-  const routingDivisions = await tx.divisi.findMany({
-    where: { nama: { in: requiredDivisionNames } },
-    select: { id: true, nama: true },
-  });
-  if (routingDivisions.length !== requiredDivisionNames.length) {
-    throw new QualityError("ROUTING_INVALID", "Divisi Buffing, Base Coat, Decal Solid/Motif, dan Top Coat harus tersedia");
+  const divisionById = new Set(routingDivisions.map((division) => division.id));
+  if (divisionById.size !== new Set(stages.map((stage) => stage.divisiId)).size) {
+    throw new QualityError("ROUTING_INVALID", "Salah satu divisi routing tidak ditemukan");
   }
-  const divisionByName = new Map(routingDivisions.map((division) => [division.nama, division.id]));
   const itemById = new Map(items.map((item) => [item.id, item]));
   for (const [index, stage] of stages.entries()) {
-    const divisionId = divisionByName.get(expectedDivision[stage.stage]);
-    const inputItem = itemById.get(stage.inputItemId);
-    const outputItem = itemById.get(stage.outputItemId);
-    if (!divisionId || !inputItem || !outputItem) {
+    const divisionId = stage.divisiId;
+    const inputItems = stage.inputItemIds.map((itemId) => itemById.get(itemId));
+    const outputItems = stage.outputItemIds.map((itemId) => itemById.get(itemId));
+    if (!stage.stage.trim() || stage.stage.trim().length > 80 || !divisionById.has(divisionId) || inputItems.includes(undefined) || outputItems.includes(undefined)) {
       throw new QualityError("ROUTING_INVALID", "Tahap routing belum memiliki divisi atau Item yang valid");
     }
-    if (outputItem.divisiId !== divisionId || outputItem.jenis !== "SM") {
-      throw new QualityError("ROUTING_INVALID", `Item hasil ${outputItem.kode} harus berupa SM milik divisi ${expectedDivision[stage.stage]}`);
+    const invalidOutput = outputItems.find((item) => item!.divisiId !== divisionId || item!.jenis !== "SM");
+    if (invalidOutput) {
+      throw new QualityError("ROUTING_INVALID", `Item hasil ${invalidOutput.kode} harus berupa SM milik divisi yang dipilih`);
     }
-    if (index === 0 && inputItem.divisiId !== divisionId) {
-      throw new QualityError("ROUTING_INVALID", `Item batok mentah ${inputItem.kode} harus tersedia di divisi Buffing`);
+    const invalidFirstInput = index === 0
+      ? inputItems.find((item) => item!.divisiId !== divisionId)
+      : undefined;
+    if (invalidFirstInput) {
+      throw new QualityError("ROUTING_INVALID", `Item input tahap pertama ${invalidFirstInput.kode} harus tersedia di divisi yang dipilih`);
     }
-    if (index > 0 && stages[index - 1]?.outputItemId !== stage.inputItemId) {
-      throw new QualityError("ROUTING_INVALID", "Item input setiap tahap harus sama dengan output tahap sebelumnya");
+    if (index > 0) {
+      const previousOutputs = new Set(stages[index - 1]!.outputItemIds);
+      if (stage.inputItemIds.some((itemId) => !previousOutputs.has(itemId))) {
+        throw new QualityError("ROUTING_INVALID", "Item input tahap harus berasal dari output tahap sebelumnya");
+      }
     }
   }
-  const topcoatStage = stages[stages.length - 1];
-  const topcoatIncludedInBom = bom.items.some((item) =>
-    item.itemId === topcoatStage.outputItemId ||
-    item.subassembly?.itemId === topcoatStage.outputItemId,
-  );
-  if (!topcoatIncludedInBom) {
-    throw new QualityError("ROUTING_INVALID", "BOM aktif harus mencantumkan Item hasil Top Coat sebagai komponen atau subassembly");
-  }
-  return { stages, divisionByName };
+  return { stages };
 }
 
 export async function listProductionRoutings() {
   return prisma.productionRouting.findMany({
     where: { isActive: true },
     include: routingInclude,
-    orderBy: [{ productVariant: { kodeVariant: "asc" } }, { version: "desc" }],
+    orderBy: { version: "desc" },
   });
 }
 
 export async function saveProductionRouting(
-  productVariantId: number,
-  input: { bomId: number; stages: ProductionRoutingStageInput[] },
+  input: { stages: ProductionRoutingStageInput[] },
 ) {
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
-    const { stages, divisionByName } = await validateRouting(
-      tx,
-      productVariantId,
-      input.bomId,
-      input.stages,
-    );
+    const { stages } = await validateRouting(tx, input.stages);
     const current = await tx.productionRouting.findFirst({
-      where: { productVariantId },
       orderBy: { version: "desc" },
       select: { version: true },
     });
     const version = (current?.version ?? 0) + 1;
     await tx.productionRouting.updateMany({
-      where: { productVariantId, isActive: true },
+      where: { isActive: true },
       data: { isActive: false },
     });
     return tx.productionRouting.create({
       data: {
-        productVariantId,
-        bomId: input.bomId,
         version,
         stages: {
           create: stages.map((stage, sequence) => ({
             stage: stage.stage,
             sequence,
-            divisiId: divisionByName.get(expectedDivision[stage.stage])!,
-            inputItemId: stage.inputItemId,
-            outputItemId: stage.outputItemId,
+            divisiId: stage.divisiId,
+            inputItems: { create: stage.inputItemIds.map((itemId) => ({ itemId })) },
+            outputItems: { create: stage.outputItemIds.map((itemId) => ({ itemId })) },
           })),
         },
       },
@@ -207,30 +124,28 @@ export async function saveProductionRouting(
 
 export async function getActiveRoutingForOutput(
   tx: PrismaTransactionClient,
-  productVariantId: number,
   outputItemId: number,
 ) {
   const routings = await tx.productionRouting.findMany({
     where: {
-      productVariantId,
       isActive: true,
-      bom: { isActive: true },
-      stages: { some: { stage: "TOP_COAT", outputItemId } },
+      stages: { some: { outputItems: { some: { itemId: outputItemId } } } },
     },
-    include: {
-      bom: { select: { isActive: true, berlakuMulai: true, berlakuSelesai: true } },
-      stages: { orderBy: { sequence: "asc" } },
-    },
+    include: { stages: { orderBy: { sequence: "asc" }, include: { outputItems: true } } },
   });
-  return routings.find((routing) => bomIsEffective(routing.bom)) ?? null;
+  return routings.find((routing) => {
+    const lastStage = routing.stages[routing.stages.length - 1];
+    return lastStage?.outputItems.some((item) => item.itemId === outputItemId);
+  }) ?? null;
 }
 
 export async function getRoutingStage(
   tx: PrismaTransactionClient,
   routingId: number,
-  stage: ProductionStage,
+  stage: string,
 ) {
-  return tx.productionRoutingStage.findUnique({
-    where: { routingId_stage: { routingId, stage } },
+  return tx.productionRoutingStage.findFirst({
+    where: { routingId, stage },
+    orderBy: { sequence: "asc" },
   });
 }

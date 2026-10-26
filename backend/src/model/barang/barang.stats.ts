@@ -168,6 +168,125 @@ export async function getBarangStats(filter: {
   return { total: totalCount, perStatus, perVariant, perBatch };
 }
 
+// =============================================
+// Rekap barang per variant
+// =============================================
+
+export type BarangRekapVariantFilter = {
+  tanggalAwal?: Date;
+  tanggalAkhir?: Date;
+};
+
+export type BarangRekapVariantRow = {
+  variantId: number;
+  kodeVariant: string;
+  product: string;
+  style: string;
+  color: string;
+  size: string;
+  sizeUrutan: number;
+  perStatus: Record<string, number>;
+  total: number;
+};
+
+type VariantStatusGroup = {
+  variantId: number;
+  status: string;
+  _count: { _all: number };
+};
+
+export async function getBarangRekapVariant(
+  filter: BarangRekapVariantFilter,
+  statusScope?: string[] | null,
+): Promise<{
+  data: BarangRekapVariantRow[];
+  statuses: string[];
+  total: number;
+}> {
+  const where: Prisma.BarangWhereInput = {};
+  const visibleStatus = statusScopeFilter(statusScope);
+  if (visibleStatus !== undefined) where.status = visibleStatus;
+  if (filter.tanggalAwal || filter.tanggalAkhir) {
+    where.tanggal = {};
+    if (filter.tanggalAwal) where.tanggal.gte = filter.tanggalAwal;
+    if (filter.tanggalAkhir) where.tanggal.lte = filter.tanggalAkhir;
+  }
+
+  const [groups, statusRows] = (await prisma.$transaction([
+    prisma.barang.groupBy({
+      by: ["variantId", "status"],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.statusBarang.findMany({
+      where: { isActive: true },
+      orderBy: { urutan: "asc" },
+      select: { kode: true },
+    }),
+  ])) as [VariantStatusGroup[], { kode: string }[]];
+
+  const statuses = statusRows
+    .map((row) => row.kode)
+    .filter(
+      (kode) =>
+        statusScope === null ||
+        statusScope === undefined ||
+        statusScope.includes(kode),
+    );
+
+  const variantIds = [...new Set(groups.map((group) => group.variantId))];
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: variantIds } },
+    select: {
+      id: true,
+      kodeVariant: true,
+      product: { select: { nama: true } },
+      style: { select: { nama: true } },
+      color: { select: { nama: true } },
+      size: { select: { nama: true, urutan: true } },
+    },
+  });
+  const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
+
+  const rows = new Map<number, BarangRekapVariantRow>();
+  for (const group of groups) {
+    const variant = variantMap.get(group.variantId);
+    let row = rows.get(group.variantId);
+    if (!row) {
+      row = {
+        variantId: group.variantId,
+        kodeVariant: variant?.kodeVariant ?? `V${group.variantId}`,
+        product: variant?.product.nama ?? "-",
+        style: variant?.style.nama ?? "-",
+        color: variant?.color.nama ?? "-",
+        size: variant?.size.nama ?? "-",
+        sizeUrutan: variant?.size.urutan ?? 0,
+        perStatus: Object.fromEntries(statuses.map((kode) => [kode, 0])),
+        total: 0,
+      };
+      rows.set(group.variantId, row);
+    }
+    const count = group._count._all ?? 0;
+    row.perStatus[group.status] = count;
+    row.total += count;
+  }
+
+  const data = [...rows.values()].sort(
+    (a, b) =>
+      b.total - a.total ||
+      a.product.localeCompare(b.product) ||
+      a.style.localeCompare(b.style) ||
+      a.color.localeCompare(b.color) ||
+      a.size.localeCompare(b.size),
+  );
+
+  return {
+    data,
+    statuses,
+    total: data.reduce((sum, row) => sum + row.total, 0),
+  };
+}
+
 /** Bangun WHERE clause parameterized dari filter query params */
 function buildFinishgoodWhere(filter: FinishgoodPerBulanFilter): Prisma.Sql {
   const conditions: Prisma.Sql[] = [Prisma.sql`1 = 1`];

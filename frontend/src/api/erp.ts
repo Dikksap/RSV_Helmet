@@ -33,47 +33,29 @@ export interface ErpMovement {
   quantity: number | string;
 }
 
-export type ProductionProcessStage = "BUFFING" | "BASE_COAT" | "DECAL_SOLID" | "DECAL_MOTIF" | "TOP_COAT";
+export type ProductionProcessStage = string;
 
 export interface ProductionRouting {
   id: number;
-  productVariantId: number;
   version: number;
-  bomId: number;
   isActive: boolean;
-  productVariant: {
-    id: number;
-    kodeVariant: string;
-    product: { nama: string };
-    style: { nama: string };
-    color: { nama: string };
-    size: { nama: string };
-  };
-  bom: {
-    id: number;
-    kode: string | null;
-    nama: string;
-    version: string;
-    isActive: boolean;
-    berlakuMulai: string | null;
-    berlakuSelesai: string | null;
-  };
   stages: Array<{
     id: number;
     stage: ProductionProcessStage;
     sequence: number;
+    divisiId: number;
+    inputItems: Array<{ itemId: number; item: { id: number; kode: string; nama: string; unit: string | null } }>;
+    outputItems: Array<{ itemId: number; item: { id: number; kode: string; nama: string; unit: string | null } }>;
     divisi: { id: number; nama: string };
-    inputItem: { id: number; kode: string; nama: string; unit: string | null };
-    outputItem: { id: number; kode: string; nama: string; unit: string | null };
   }>;
 }
 
 export interface ProductionRoutingInput {
-  bomId: number;
   stages: Array<{
     stage: ProductionProcessStage;
-    inputItemId: number;
-    outputItemId: number;
+    divisiId: number;
+    inputItemIds: number[];
+    outputItemIds: number[];
   }>;
 }
 
@@ -224,7 +206,30 @@ export interface WipRejectReason {
 export interface WipRejectOptions {
   reasons: Array<{ id: number; name: string }>;
   divisions: Array<{ id: number; nama: string }>;
-  items: Array<{ id: number; kode: string; nama: string; unit: string }>;
+  items: Array<{
+    id: number;
+    kode: string;
+    nama: string;
+    unit: string;
+    divisionId: number;
+    availableQuantity: number;
+    repairStages: Array<{
+      id: number;
+      stage: string;
+      sequence: number;
+      divisiId: number;
+      divisionName: string;
+      outputItems: Array<{ id: number; kode: string; nama: string; unit: string | null }>;
+    }>;
+  }>;
+}
+
+export interface FinalWipInspectionResult {
+  inspectionNumber: string;
+  item: { id: number; kode: string; nama: string };
+  passedQuantity: number;
+  rejectedQuantity: number;
+  reject: WipReject | null;
 }
 
 export interface WipRejectRepairAttempt {
@@ -238,6 +243,7 @@ export interface WipRejectRepairAttempt {
   reviewApproved: boolean | null;
   reviewNotes: string | null;
   reviewedBy: { id: number; name: string } | null;
+  outputItem: { id: number; kode: string; nama: string; unit: string | null } | null;
 }
 
 export interface WipReject {
@@ -252,6 +258,12 @@ export interface WipReject {
   item: { id: number; nama: string; kode: string; unit: string };
   reason: { id: number; name: string };
   repairDivision: { id: number; nama: string };
+  repairStage: {
+    id: number;
+    stage: string;
+    sequence: number;
+    outputItems: Array<{ itemId: number; item: { id: number; kode: string; nama: string; unit: string | null } }>;
+  } | null;
   recordedBy: { id: number; name: string };
   claimedBy: { id: number; name: string } | null;
   attempts: WipRejectRepairAttempt[];
@@ -314,11 +326,22 @@ export const createWipReject = (body: {
   reasonId: number;
   repairDivisionId: number;
 }) => request<WipReject>("/quality/wip-rejects", { method: "POST", body: JSON.stringify(body) });
+export const inspectFinalWip = (body: {
+  itemId: number;
+  passedQuantity: number;
+  rejectedQuantity: number;
+  reasonId?: number;
+  repairStageId?: number;
+}) => request<FinalWipInspectionResult>("/quality/final-inspections", {
+  method: "POST",
+  body: JSON.stringify(body),
+});
 export const claimWipReject = (id: number) =>
   request<WipReject>(`/quality/wip-rejects/${id}/claim`, { method: "POST" });
 export const createWipRejectRepairAttempt = (id: number, body: {
   quantityAttempted: number;
   quantityRepaired: number;
+  outputItemId?: number;
   notes?: string;
 }) => request<WipRejectRepairAttempt>(`/quality/wip-rejects/${id}/attempts`, {
   method: "POST",
@@ -349,8 +372,8 @@ export const postErpMovement = (body: {
 }) => request("/inventory/movements", { method: "POST", body: JSON.stringify(body) });
 
 export const listProductionRoutings = () => request<ProductionRouting[]>("/quality/routings");
-export const saveProductionRouting = (productVariantId: number, body: ProductionRoutingInput) =>
-  request<ProductionRouting>(`/quality/routings/${productVariantId}`, { method: "PUT", body: JSON.stringify(body) });
+export const saveProductionRouting = (body: ProductionRoutingInput) =>
+  request<ProductionRouting>("/quality/routings", { method: "PUT", body: JSON.stringify(body) });
 export const receiveErpFinishedGoods = (body: {
   qualityInspectionLineId: number;
   locationId: number;

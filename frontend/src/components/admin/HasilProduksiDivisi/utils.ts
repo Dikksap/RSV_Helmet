@@ -82,20 +82,22 @@ export function validasiInputProduksi(
   const inputAktif = inputRows.filter((row) => !barisKosong(row));
   const hasilAktif = hasilRows.filter((row) => !barisKosong(row));
 
-  if (inputAktif.length === 0) errors.umum = "Isi tepat satu baris item input.";
-  else if (inputAktif.length > 1) errors.umum = "Hanya boleh satu baris item input.";
-  else if (hasilAktif.length === 0) errors.umum = "Tambahkan minimal satu baris hasil produksi.";
+  if (inputAktif.length === 0) errors.umum = "Tambahkan minimal satu item input.";
+  else if (hasilAktif.length === 0) errors.umum = "Tambahkan minimal satu item hasil produksi.";
 
   validasiDaftar(inputAktif, errors.input);
   validasiDaftar(hasilAktif, errors.hasil);
-
-  const barisValid =
-    Object.keys(errors.input).length === 0 && Object.keys(errors.hasil).length === 0;
-  if (barisValid && inputAktif.length === 1 && hasilAktif.length > 0) {
-    const totalMasuk = totalJumlah(inputAktif);
-    const totalHasil = totalJumlah(hasilAktif);
-    if (totalHasil > totalMasuk) {
-      errors.umum = "Total hasil tidak boleh melebihi total input.";
+  for (const [rows, target, label] of [
+    [inputAktif, errors.input, "input"],
+    [hasilAktif, errors.hasil, "hasil"],
+  ] as const) {
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (!row.itemId) continue;
+      if (seen.has(row.itemId)) {
+        target[row.key] = { ...target[row.key], itemId: `Item ${label} tidak boleh dipilih lebih dari sekali.` };
+      }
+      seen.add(row.itemId);
     }
   }
 

@@ -25,6 +25,7 @@ import { Pagination } from "../../components/admin/DaftarBarang/Pagination";
 import { HangtagModal } from "../../components/admin/DaftarBarang/HangtagModal";
 import { RiwayatModal } from "../../components/admin/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../../components/admin/DaftarBarang/BarangImportModal";
+import { BarangTabs } from "../../components/admin/DaftarBarang/BarangTabs";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
 import { getUser, hasPermission } from "../../api/auth";
 import { downloadCsv } from "../../lib/csv";
@@ -709,6 +710,8 @@ function DaftarBarang() {
 
   return (
     <div className="w-full space-y-3">
+      <BarangTabs />
+
       <HeaderSection
         totalBarang={totalBarang}
         isExporting={isExporting}

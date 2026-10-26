@@ -15,6 +15,7 @@ vi.mock("../src/model/barang/barang.js", () => ({
   bulkScanBarang: vi.fn(),
   getStatusSummary: vi.fn(),
   getBarangStats: vi.fn(),
+  getBarangRekapVariant: vi.fn(),
   getBatchRentangTanggal: vi.fn(),
   getFinishgoodPerBulan: vi.fn(),
   searchBarangByKode: vi.fn(),
@@ -69,6 +70,7 @@ import {
   getRiwayatByBarangId,
   getStatusSummary,
   getBarangStats,
+  getBarangRekapVariant,
   getBatchRentangTanggal,
   getFinishgoodPerBulan,
   searchBarangByKode,
@@ -88,6 +90,7 @@ const mocked = {
   getRiwayatByBarangId: vi.mocked(getRiwayatByBarangId),
   getStatusSummary: vi.mocked(getStatusSummary),
   getBarangStats: vi.mocked(getBarangStats),
+  getBarangRekapVariant: vi.mocked(getBarangRekapVariant),
   getBatchRentangTanggal: vi.mocked(getBatchRentangTanggal),
   getFinishgoodPerBulan: vi.mocked(getFinishgoodPerBulan),
   searchBarangByKode: vi.mocked(searchBarangByKode),
@@ -592,6 +595,75 @@ describe("GET /api/barang/stats", () => {
 
     expect(res.status).toBe(200);
     expect(mocked.getBarangStats).toHaveBeenCalledWith({ variantId: 1, batchId: 2 }, null);
+  });
+});
+
+// =============================================
+// GET /rekap-variant
+// =============================================
+
+describe("GET /api/barang/rekap-variant", () => {
+  it("400 jika tanggalAwal tidak valid", async () => {
+    const res = await request(app).get(
+      "/api/barang/rekap-variant?tanggalAwal=not-a-date",
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocked.getBarangRekapVariant).not.toHaveBeenCalled();
+  });
+
+  it("400 jika tanggalAkhir tidak valid", async () => {
+    const res = await request(app).get(
+      "/api/barang/rekap-variant?tanggalAkhir=not-a-date",
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocked.getBarangRekapVariant).not.toHaveBeenCalled();
+  });
+
+  it("400 jika tanggalAwal setelah tanggalAkhir", async () => {
+    const res = await request(app).get(
+      "/api/barang/rekap-variant?tanggalAwal=2026-02-01&tanggalAkhir=2026-01-01",
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocked.getBarangRekapVariant).not.toHaveBeenCalled();
+  });
+
+  it("200 teruskan rentang tanggal + scope status ke model", async () => {
+    mocked.getBarangRekapVariant.mockResolvedValue({
+      data: [
+        {
+          variantId: 1,
+          kodeVariant: "W001",
+          product: "Helmet",
+          style: "Full",
+          color: "Hitam",
+          size: "L",
+          sizeUrutan: 4,
+          perStatus: { REGISTER: 2, FINISHGOOD: 3 },
+          total: 5,
+        },
+      ],
+      statuses: ["REGISTER", "FINISHGOOD", "RETUR", "OUT", "BAD"],
+      total: 5,
+    } as any);
+
+    const res = await request(app).get(
+      "/api/barang/rekap-variant?tanggalAwal=2026-01-01&tanggalAkhir=2026-01-31",
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].kodeVariant).toBe("W001");
+    expect(res.body.total).toBe(5);
+
+    const [filter, scope] = mocked.getBarangRekapVariant.mock.calls[0];
+    expect(filter.tanggalAwal?.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(filter.tanggalAwal?.getUTCHours()).toBe(0);
+    expect(filter.tanggalAkhir?.toISOString().slice(0, 10)).toBe("2026-01-31");
+    expect(filter.tanggalAkhir?.getUTCHours()).toBe(23);
+    expect(scope).toBeNull();
   });
 });
 

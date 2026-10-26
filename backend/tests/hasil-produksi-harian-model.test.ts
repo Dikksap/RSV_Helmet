@@ -54,6 +54,11 @@ const item = (id: number) => ({
 });
 
 let wipRows: Array<{ id: number; jumlahSisa: unknown; jumlahDipakai: unknown }> = [];
+let wipRowsByItem = new Map<number, Array<{ id: number; jumlahSisa: unknown; jumlahDipakai: unknown }>>();
+let routingStages: Array<{
+  inputItems: Array<{ itemId: number }>;
+  outputItems: Array<{ itemId: number }>;
+}> = [];
 let updateCount = 1;
 let tx: ReturnType<typeof buatTx>;
 
@@ -71,7 +76,7 @@ function buatTx() {
     user: {
       findUnique: vi.fn().mockResolvedValue({ name: "Budi" }),
     },
-    $queryRaw: vi.fn(async () => wipRows),
+    $queryRaw: vi.fn(async (...args: unknown[]) => wipRowsByItem.get(Number(args[2])) ?? wipRows),
     pemakaianMaterialItem: {
       updateMany: vi.fn(async () => ({ count: updateCount })),
     },
@@ -85,6 +90,9 @@ function buatTx() {
           hasilProduksiHarianItemId: row.hasilProduksiHarianItemId,
         })),
       })),
+    },
+    productionRoutingStage: {
+      findMany: vi.fn(async () => routingStages),
     },
     hasilProduksiPemakaian: {
       create: vi.fn().mockResolvedValue({}),
@@ -125,6 +133,8 @@ const permintaanOtomatis = {
 beforeEach(() => {
   vi.clearAllMocks();
   wipRows = [{ id: 10, jumlahSisa: 100, jumlahDipakai: 0 }];
+  wipRowsByItem = new Map();
+  routingStages = [];
   updateCount = 1;
   stokMock.getSaldo.mockResolvedValue(1_000);
   stokMock.catatMutasi.mockResolvedValue({});
@@ -139,7 +149,46 @@ beforeEach(() => {
 });
 
 describe("createHasilProduksi", () => {
-  it("WIP cukup: HASIL SM masuk WIP, KELUAR tetap mutasi, konsumsi FIFO sebesar HASIL", async () => {
+  it("mengonsumsi beberapa item input dari saldo WIP masing-masing dan mencatat beberapa hasil", async () => {
+    routingStages = [{
+      inputItems: [{ itemId: 1 }, { itemId: 3 }],
+      outputItems: [{ itemId: 2 }],
+    }];
+    wipRowsByItem = new Map([
+      [1, [{ id: 10, jumlahSisa: 10, jumlahDipakai: 0 }]],
+      [3, [{ id: 30, jumlahSisa: 10, jumlahDipakai: 0 }]],
+    ]);
+
+    await createHasilProduksi({
+      divisiId: 1,
+      items: [
+        { itemId: 1, tipe: "MASUK", jumlah: 5 },
+        { itemId: 3, tipe: "MASUK", jumlah: 4 },
+        { itemId: 2, tipe: "HASIL", jumlah: 4 },
+        { itemId: 4, tipe: "HASIL", jumlah: 4 },
+      ],
+    });
+
+    expect(tx.hasilProduksiHarian.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        items: {
+          create: expect.arrayContaining([
+            expect.objectContaining({ itemId: 1, tipe: "MASUK", jumlah: 5 }),
+            expect.objectContaining({ itemId: 3, tipe: "MASUK", jumlah: 4 }),
+            expect.objectContaining({ itemId: 2, tipe: "HASIL", jumlah: 4 }),
+            expect.objectContaining({ itemId: 4, tipe: "HASIL", jumlah: 4 }),
+          ]),
+        },
+      }),
+    }));
+    expect(tx.pemakaianMaterialItem.updateMany.mock.calls.map((call) => call[0].where.id)).toEqual([10, 30]);
+    expect(tx.hasilProduksiPemakaian.create.mock.calls.map((call) => call[0].data)).toEqual([
+      { hasilProduksiHarianItemId: 101, pemakaianMaterialItemId: 10, jumlah: 5 },
+      { hasilProduksiHarianItemId: 102, pemakaianMaterialItemId: 30, jumlah: 4 },
+    ]);
+  });
+
+  it("WIP cukup: HASIL SM masuk WIP, KELUAR tetap mutasi, konsumsi FIFO sesuai tiap MASUK", async () => {
     wipRows = [
       { id: 10, jumlahSisa: 30, jumlahDipakai: 5 },
       { id: 11, jumlahSisa: 20, jumlahDipakai: 0 },
@@ -207,16 +256,16 @@ describe("createHasilProduksi", () => {
         data: { jumlahSisa: { decrement: 30 }, jumlahDipakai: { increment: 30 } },
       },
       {
-        where: { id: 11, jumlahSisa: { gte: 15 } },
-        data: { jumlahSisa: { decrement: 15 }, jumlahDipakai: { increment: 15 } },
+        where: { id: 11, jumlahSisa: { gte: 20 } },
+        data: { jumlahSisa: { decrement: 20 }, jumlahDipakai: { increment: 20 } },
       },
     ]);
     const links = tx.hasilProduksiPemakaian.create.mock.calls.map((call) => call[0].data);
     expect(links).toEqual([
       { hasilProduksiHarianItemId: 101, pemakaianMaterialItemId: 10, jumlah: 30 },
-      { hasilProduksiHarianItemId: 101, pemakaianMaterialItemId: 11, jumlah: 15 },
+      { hasilProduksiHarianItemId: 101, pemakaianMaterialItemId: 11, jumlah: 20 },
     ]);
-    expect(links.reduce((total, row) => total + row.jumlah, 0)).toBe(45);
+    expect(links.reduce((total, row) => total + row.jumlah, 0)).toBe(50);
   });
 
   it("HASIL non-SM tetap mencatat mutasi stok gudang", async () => {
@@ -312,21 +361,23 @@ describe("createHasilProduksi", () => {
     expect(tx.hasilProduksiHarian.create).not.toHaveBeenCalled();
   });
 
-  it("menolak output lebih besar dari input", async () => {
-    await expect(
-      createHasilProduksi({
-        divisiId: 1,
-        items: [
-          { itemId: 1, tipe: "MASUK", jumlah: 4 },
-          { itemId: 2, tipe: "HASIL", jumlah: 5 },
-        ],
-      }),
-    ).rejects.toMatchObject({ code: INPUT_TIDAK_VALID });
+  it("menerima jumlah hasil yang tidak sebanding dengan jumlah input", async () => {
+    await createHasilProduksi({
+      divisiId: 1,
+      items: [
+        { itemId: 1, tipe: "MASUK", jumlah: 4 },
+        { itemId: 2, tipe: "HASIL", jumlah: 5 },
+      ],
+    });
 
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(tx.hasilProduksiHarian.create).toHaveBeenCalled();
+    expect(tx.pemakaianMaterialItem.updateMany).toHaveBeenCalledWith({
+      where: { id: 10, jumlahSisa: { gte: 4 } },
+      data: { jumlahSisa: { decrement: 4 }, jumlahDipakai: { increment: 4 } },
+    });
   });
 
-  it("menolak tanpa input, tanpa output, atau input lebih dari satu", async () => {
+  it("menolak tanpa input atau tanpa output", async () => {
     const tanpaInput = createHasilProduksi({
       divisiId: 1,
       items: [{ itemId: 2, tipe: "HASIL", jumlah: 5 }],
@@ -335,18 +386,8 @@ describe("createHasilProduksi", () => {
       divisiId: 1,
       items: [{ itemId: 1, tipe: "MASUK", jumlah: 5 }],
     });
-    const duaInput = createHasilProduksi({
-      divisiId: 1,
-      items: [
-        { itemId: 1, tipe: "MASUK", jumlah: 3 },
-        { itemId: 2, tipe: "MASUK", jumlah: 2 },
-        { itemId: 3, tipe: "HASIL", jumlah: 5 },
-      ],
-    });
-
     await expect(tanpaInput).rejects.toBeInstanceOf(HasilProduksiError);
     await expect(tanpaOutput).rejects.toBeInstanceOf(HasilProduksiError);
-    await expect(duaInput).rejects.toBeInstanceOf(HasilProduksiError);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 

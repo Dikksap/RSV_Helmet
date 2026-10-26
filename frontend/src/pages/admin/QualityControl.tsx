@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   claimWipReject,
-  createWipReject,
   createWipRejectReason,
   createWipRejectRepairAttempt,
   getQualityDailyReport,
   getWipRejectOptions,
+  inspectFinalWip,
   listWipRejects,
   reviewWipRejectRepair,
   type QualityDailyReport,
@@ -38,7 +38,7 @@ const statusLabel: Record<WipReject["status"], string> = {
   COMPLETED: "Selesai",
 };
 
-type RepairForm = { attempted: string; repaired: string; notes: string };
+type RepairForm = { attempted: string; repaired: string; outputItemId: string; notes: string };
 
 export default function QualityControl() {
   const user = getUser();
@@ -53,9 +53,10 @@ export default function QualityControl() {
   const [report, setReport] = useState<QualityDailyReport | null>(null);
   const [reportDate, setReportDate] = useState(today);
   const [itemId, setItemId] = useState("");
+  const [passedQuantity, setPassedQuantity] = useState("");
   const [rejectQuantity, setRejectQuantity] = useState("");
   const [reasonId, setReasonId] = useState("");
-  const [repairDivisionId, setRepairDivisionId] = useState("");
+  const [repairStageId, setRepairStageId] = useState("");
   const [newReason, setNewReason] = useState("");
   const [repairForms, setRepairForms] = useState<Record<number, RepairForm>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
@@ -90,6 +91,10 @@ export default function QualityControl() {
       : reject.status === "OPEN" || reject.status === "IN_PROGRESS" || reject.status === "WAITING_QC"),
     [canReview, rejects],
   );
+  const selectedFinalItem = options?.items.find((item) => item.id === Number(itemId));
+  const inspectionTotal = Number(passedQuantity || 0) + Number(rejectQuantity || 0);
+  const exceedsAvailable = selectedFinalItem !== undefined &&
+    inspectionTotal > selectedFinalItem.availableQuantity;
 
   async function runAction(key: string, action: () => Promise<unknown>, successMessage: string): Promise<boolean> {
     setBusyKey(key);
@@ -110,14 +115,31 @@ export default function QualityControl() {
 
   async function submitReject(event: FormEvent) {
     event.preventDefault();
-    if (!itemId || !reasonId || !repairDivisionId || !rejectQuantity) return;
-    const saved = await runAction("create-reject", () => createWipReject({
+    if (!itemId || (!passedQuantity && !rejectQuantity)) return;
+    if (exceedsAvailable) {
+      setError("Jumlah lolos dan reject melebihi stok hasil produksi yang tersedia.");
+      return;
+    }
+    const rejected = Number(rejectQuantity || 0);
+    if (rejected > 0 && (!reasonId || !repairStageId)) return;
+    const saved = await runAction("final-inspection", () => inspectFinalWip({
       itemId: Number(itemId),
-      quantity: Number(rejectQuantity),
-      reasonId: Number(reasonId),
-      repairDivisionId: Number(repairDivisionId),
-    }), "Reject dicatat dan sudah dikirim ke antrean divisi repair.");
-    if (saved) setRejectQuantity("");
+      passedQuantity: Number(passedQuantity || 0),
+      rejectedQuantity: rejected,
+      ...(rejected > 0 ? {
+        reasonId: Number(reasonId),
+        repairStageId: Number(repairStageId),
+      } : {}),
+    }), rejected > 0
+      ? `Pemeriksaan tersimpan. ${passedQuantity || 0} lolos dipindahkan ke lokasi QC dan ${rejected} reject dikirim ke divisi repair.`
+      : `Pemeriksaan tersimpan. ${passedQuantity} lolos QC dan dipindahkan ke lokasi inventori divisi QC.`);
+    if (saved) {
+      setPassedQuantity("");
+      setRejectQuantity("");
+      setReasonId("");
+      setRepairStageId("");
+      setItemId("");
+    }
   }
 
   async function submitReason(event: FormEvent) {
@@ -130,20 +152,25 @@ export default function QualityControl() {
 
   async function submitRepair(event: FormEvent, reject: WipReject) {
     event.preventDefault();
-    const form = repairForms[reject.id] ?? { attempted: "", repaired: "", notes: "" };
+    const form = repairForms[reject.id] ?? { attempted: "", repaired: "", outputItemId: "", notes: "" };
     const saved = await runAction(`repair-${reject.id}`, () => createWipRejectRepairAttempt(reject.id, {
       quantityAttempted: Number(form.attempted),
       quantityRepaired: Number(form.repaired),
+      ...(Number(form.repaired) > 0 && reject.repairStage
+        ? { outputItemId: Number(form.outputItemId) }
+        : {}),
       ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
     }), Number(form.repaired) > 0
-      ? "Hasil repair dikirim ke QC untuk diperiksa."
+      ? reject.repairStage
+        ? "Hasil repair tercatat dan diteruskan ke tahap routing berikutnya."
+        : "Hasil repair dikirim ke QC untuk diperiksa."
       : "Hasil pekerjaan dicatat. Reject kembali ke antrean repair.");
-    if (saved) setRepairForms((current) => ({ ...current, [reject.id]: { attempted: "", repaired: "", notes: "" } }));
+    if (saved) setRepairForms((current) => ({ ...current, [reject.id]: { attempted: "", repaired: "", outputItemId: "", notes: "" } }));
   }
 
   const setRepairForm = (rejectId: number, update: Partial<RepairForm>) => {
     setRepairForms((current) => {
-      const previous = current[rejectId] ?? { attempted: "", repaired: "", notes: "" };
+      const previous = current[rejectId] ?? { attempted: "", repaired: "", outputItemId: "", notes: "" };
       return { ...current, [rejectId]: { ...previous, ...update } };
     });
   };
@@ -157,7 +184,7 @@ export default function QualityControl() {
         <p className="text-sm font-semibold uppercase tracking-wide text-[#00A8E8]">Kualitas & WIP</p>
         <h1 className="mt-1 text-2xl font-bold text-[#1E3A5F]">QC Akhir & Repair</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Catat item Top Coat yang reject, teruskan ke divisi repair, lalu periksa kembali hasil perbaikannya.
+          Periksa output tahap terakhir routing. Catat jumlah yang lolos dan reject; reject akan dikirim ke divisi repair pilihan Anda.
           {isQcRole && user?.name ? ` Petugas QC: ${user.name}.` : ""}
         </p>
       </header>
@@ -170,44 +197,80 @@ export default function QualityControl() {
           <section className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
             <form onSubmit={submitReject} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Tambah reject QC</h2>
-                <p className="mt-1 text-sm text-slate-500">Petugas dicatat otomatis dari akun yang sedang masuk.</p>
+                <h2 className="text-lg font-semibold text-slate-900">1. Periksa hasil produksi</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Pilih item dari tahap terakhir routing dan bagi jumlahnya menjadi lolos atau reject.
+                  Barang yang lolos masuk ke lokasi inventori divisi QC.
+                </p>
               </div>
               <label className="block text-sm font-medium text-slate-700">
-                Item Top Coat
+                Item output tahap terakhir yang tersedia
                 <select className={field} value={itemId} onChange={(event) => setItemId(event.target.value)} required>
-                  <option value="">Pilih item Top Coat</option>
+                  <option value="">Pilih item untuk diperiksa</option>
                   {options?.items.map((item) => (
-                    <option key={item.id} value={item.id}>{item.nama} ({item.kode})</option>
+                    <option key={item.id} value={item.id}>
+                      {item.nama} ({item.kode}) — tersedia {quantity(item.availableQuantity)} {item.unit}
+                    </option>
                   ))}
                 </select>
+                {options?.items.length === 0 && (
+                  <span className="mt-1 block text-xs text-amber-700">
+                    Belum ada stok output tahap terakhir routing aktif yang menunggu QC.
+                  </span>
+                )}
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
-                  Jumlah reject
-                  <input className={field} type="number" min="1" step="1" value={rejectQuantity}
-                    onChange={(event) => setRejectQuantity(event.target.value)} placeholder="Contoh: 2" required />
+                  Jumlah lolos QC
+                  <input className={field} type="number" min="0" max={selectedFinalItem?.availableQuantity} step="1" value={passedQuantity}
+                    onChange={(event) => setPassedQuantity(event.target.value)} placeholder="Contoh: 8" />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
-                  Alasan reject
-                  <select className={field} value={reasonId} onChange={(event) => setReasonId(event.target.value)} required>
-                    <option value="">Pilih alasan</option>
-                    {options?.reasons.map((reason) => (
-                      <option key={reason.id} value={reason.id}>{reason.name}</option>
-                    ))}
-                  </select>
+                  Jumlah reject
+                  <input className={field} type="number" min="0" max={selectedFinalItem?.availableQuantity} step="1" value={rejectQuantity}
+                    onChange={(event) => setRejectQuantity(event.target.value)} placeholder="Contoh: 2" />
                 </label>
               </div>
-              <label className="block text-sm font-medium text-slate-700">
-                Divisi yang melakukan repair
-                <select className={field} value={repairDivisionId} onChange={(event) => setRepairDivisionId(event.target.value)} required>
-                  <option value="">Pilih divisi repair</option>
-                  {options?.divisions.map((division) => (
-                    <option key={division.id} value={division.id}>{division.nama}</option>
-                  ))}
-                </select>
-              </label>
-              <button className={primaryButton} type="submit" disabled={busyKey !== null}>Simpan dan kirim ke antrean repair</button>
+              {selectedFinalItem && (
+                <p className={`text-xs ${exceedsAvailable ? "text-red-700" : "text-slate-500"}`}>
+                  Diperiksa: {quantity(inspectionTotal)} / tersedia: {quantity(selectedFinalItem.availableQuantity)} {selectedFinalItem.unit}
+                  {exceedsAvailable ? " — jumlah melebihi stok." : ""}
+                </p>
+              )}
+              {Number(rejectQuantity) > 0 && (
+                <div className="grid gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Alasan reject
+                    <select className={field} value={reasonId} onChange={(event) => setReasonId(event.target.value)} required>
+                      <option value="">Pilih alasan reject</option>
+                      {options?.reasons.map((reason) => (
+                        <option key={reason.id} value={reason.id}>{reason.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Ulangi proses mulai tahap
+                    <select className={field} value={repairStageId} onChange={(event) => setRepairStageId(event.target.value)} required>
+                      <option value="">Pilih tahap dan divisi</option>
+                      {selectedFinalItem?.repairStages.filter((stage) => stage.outputItems.length > 0).map((stage) => (
+                        <option key={stage.id} value={stage.id}>{stage.stage} — {stage.divisionName}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="text-xs text-amber-900 sm:col-span-2">
+                    Reject masuk ke antrean divisi tahap terpilih. Setelah repair, hasilnya dicatat sebagai output tahap tersebut
+                    dan diteruskan melalui divisi routing berikutnya. QC memeriksa kembali setelah tahap terakhir.
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-slate-500">
+                Alur: produksi menyelesaikan tahap terakhir → QC mencatat lolos/reject → repair mengulang dari tahap terpilih
+                → routing berlanjut → QC akhir memeriksa kembali.
+                Lolos + reject tidak boleh melebihi jumlah tersedia. Petugas QC dicatat otomatis.
+              </p>
+              <button className={primaryButton} type="submit" disabled={busyKey !== null || !itemId || (!passedQuantity && !rejectQuantity) || exceedsAvailable}>
+                Simpan hasil pemeriksaan
+              </button>
             </form>
 
             <form onSubmit={submitReason} className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -232,8 +295,10 @@ export default function QualityControl() {
           <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Antrean reject & pemeriksaan repair</h2>
-                <p className="mt-1 text-sm text-slate-500">QC memeriksa hasil repair sebelum jumlah dinyatakan selesai.</p>
+                <h2 className="text-lg font-semibold text-slate-900">2. Periksa hasil repair</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Setujui hasil yang sudah sesuai. Jika belum sesuai, kembalikan ke antrean divisi repair untuk dikerjakan ulang.
+                </p>
               </div>
               <button type="button" className={secondaryButton} onClick={() => void load()} disabled={busyKey !== null}>Muat ulang</button>
             </div>
@@ -287,7 +352,7 @@ export default function QualityControl() {
           {queue.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Belum ada reject untuk divisi Anda.</p> : (
             <div className="space-y-3">
               {queue.map((reject) => {
-                const form = repairForms[reject.id] ?? { attempted: "", repaired: "", notes: "" };
+                const form = repairForms[reject.id] ?? { attempted: "", repaired: "", outputItemId: "", notes: "" };
                 const ownsTask = reject.claimedBy?.id === user?.id;
                 return (
                   <RejectCard key={reject.id} reject={reject} canReview={false} canRepair
@@ -353,6 +418,7 @@ function RejectCard({
           <p className="mt-1 text-sm text-slate-600">
             Reject {quantity(reject.quantity)} {reject.item.unit} · sisa belum selesai {quantity(reject.quantityRemaining)} {reject.item.unit}
             · {reject.reason.name} · Repair: {reject.repairDivision.nama}
+          {reject.repairStage ? ` — ulang dari ${reject.repairStage.stage}` : ""}
           </p>
           <p className="mt-1 text-xs text-slate-500">
             Dicatat {dateTime(reject.createdAt)} oleh {reject.recordedBy.name} · {statusLabel[reject.status]}
@@ -393,6 +459,25 @@ function RejectCard({
             <input className={field} type="number" min="0" step="1" required value={repairForm.repaired}
               onChange={(event) => onRepairFormChange({ repaired: event.target.value })} />
           </label>
+          {reject.repairStage && (
+            <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+              Output repair untuk tahap ini
+              <select
+                className={field}
+                value={repairForm.outputItemId}
+                onChange={(event) => onRepairFormChange({ outputItemId: event.target.value })}
+                required={Number(repairForm.repaired) > 0}
+              >
+                <option value="">Pilih item output</option>
+                {reject.repairStage.outputItems.map(({ item }) => (
+                  <option key={item.id} value={item.id}>{item.nama} ({item.kode})</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Item ini akan tersedia di {reject.repairDivision.nama}; transfer ke divisi berikutnya sesuai routing.
+              </span>
+            </label>
+          )}
           <label className="text-sm font-medium text-slate-700 sm:col-span-2">
             Catatan (opsional)
             <input className={field} value={repairForm.notes} onChange={(event) => onRepairFormChange({ notes: event.target.value })} />
@@ -408,7 +493,12 @@ function RejectCard({
             {reject.attempts.map((attempt) => (
               <li key={attempt.id}>
                 {dateTime(attempt.performedAt)} — {quantity(attempt.quantityRepaired)} {reject.item.unit} berhasil
-                {attempt.reviewedAt ? `; ${attempt.reviewApproved ? "disetujui QC" : "perlu repair ulang"}` : "; menunggu QC"}
+                {attempt.outputItem ? `; output ${attempt.outputItem.nama}` : ""}
+                {attempt.outputItem
+                  ? "; diteruskan ke routing"
+                  : attempt.reviewedAt
+                    ? `; ${attempt.reviewApproved ? "disetujui QC" : "perlu repair ulang"}`
+                    : "; menunggu QC"}
               </li>
             ))}
           </ul>

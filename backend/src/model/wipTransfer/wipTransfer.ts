@@ -105,8 +105,8 @@ export class WipTransferKurangError extends WipTransferError {
 
 type RoutingStageTransferCheck = {
   divisiId: number;
-  inputItemId: number;
-  outputItemId: number;
+  inputItemIds: number[];
+  outputItemIds: number[];
 };
 
 export function isAllowedProductionStageTransfer(
@@ -117,12 +117,12 @@ export function isAllowedProductionStageTransfer(
 ) {
   let isRoutingOutput = false;
   for (const [index, stage] of stages.entries()) {
-    if (stage.divisiId !== divisiAsalId || stage.outputItemId !== itemId) continue;
+    if (stage.divisiId !== divisiAsalId || !stage.outputItemIds.includes(itemId)) continue;
     isRoutingOutput = true;
     const nextStage = stages[index + 1];
     if (
       nextStage?.divisiId === divisiTujuanId &&
-      nextStage.inputItemId === itemId
+      nextStage.inputItemIds.includes(itemId)
     ) {
       return true;
     }
@@ -1007,41 +1007,41 @@ async function approveInTx(
   const activeRoutings = await tx.productionRouting.findMany({
     where: {
       isActive: true,
-      bom: { isActive: true },
       stages: {
         some: {
           divisiId: transfer.divisiAsalId,
-          outputItemId: { in: routedItems },
+          outputItems: { some: { itemId: { in: routedItems } } },
         },
       },
     },
-    select: {
-      bom: { select: { berlakuMulai: true, berlakuSelesai: true } },
+    include: {
       stages: {
         orderBy: { sequence: "asc" },
-        select: { divisiId: true, inputItemId: true, outputItemId: true },
+        include: {
+          inputItems: { select: { itemId: true } },
+          outputItems: { select: { itemId: true } },
+        },
       },
     },
   });
-  const now = new Date();
-  const currentRoutings = activeRoutings.filter(({ bom }) =>
-    (bom.berlakuMulai === null || bom.berlakuMulai <= now) &&
-    (bom.berlakuSelesai === null || bom.berlakuSelesai >= now),
-  );
   for (const itemId of routedItems) {
-    const itemHasRouting = currentRoutings.some((routing) =>
+    const itemHasRouting = activeRoutings.some((routing) =>
       routing.stages.some((stage) =>
         stage.divisiId === transfer.divisiAsalId &&
-        stage.outputItemId === itemId,
+        stage.outputItems.some((output) => output.itemId === itemId),
       ),
     );
-    const allowed = currentRoutings.some((routing) =>
+    const allowed = activeRoutings.some((routing) =>
       routing.stages.some((stage) =>
         stage.divisiId === transfer.divisiAsalId &&
-        stage.outputItemId === itemId,
+        stage.outputItems.some((output) => output.itemId === itemId),
       ) &&
       isAllowedProductionStageTransfer(
-        routing.stages,
+        routing.stages.map((stage) => ({
+          divisiId: stage.divisiId,
+          inputItemIds: stage.inputItems.map((item) => item.itemId),
+          outputItemIds: stage.outputItems.map((item) => item.itemId),
+        })),
         transfer.divisiAsalId,
         transfer.divisiTujuanId,
         itemId,

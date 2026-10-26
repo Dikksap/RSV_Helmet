@@ -20,7 +20,6 @@ import { parseTanggalBisnis, tanggalBisnis } from "../../lib/tanggalBisnis.js";
 import {
   listProductionRoutings,
   saveProductionRouting,
-  productionStages,
   type ProductionRoutingStageInput,
 } from "../../model/quality/routing.js";
 import {
@@ -35,6 +34,7 @@ import {
   createWipReject,
   createWipRejectRepairAttempt,
   getQualityDailyReport,
+  inspectFinalWip,
   listRejectOptions,
   listRejectReasons,
   listWipRejects,
@@ -129,6 +129,38 @@ export async function createWipRejectHandler(req: Request, res: Response) {
   }
 }
 
+export async function inspectFinalWipHandler(req: Request, res: Response) {
+  if (!isQcUser(req)) return res.status(403).json({ message: "Menu ini khusus petugas QC" });
+  const itemId = positiveInt(req.body?.itemId);
+  const passedQuantity = decimal(req.body?.passedQuantity);
+  const rejectedQuantity = decimal(req.body?.rejectedQuantity);
+  const reasonId = req.body?.reasonId == null ? undefined : positiveInt(req.body.reasonId) ?? undefined;
+  const repairStageId = req.body?.repairStageId == null ? undefined : positiveInt(req.body.repairStageId) ?? undefined;
+  if (
+    !itemId ||
+    !Number.isSafeInteger(passedQuantity) ||
+    passedQuantity < 0 ||
+    !Number.isSafeInteger(rejectedQuantity) ||
+    rejectedQuantity < 0 ||
+    passedQuantity + rejectedQuantity <= 0 ||
+    (rejectedQuantity > 0 && (!reasonId || !repairStageId))
+  ) {
+    return res.status(400).json({ message: "Item, jumlah lolos/reject, serta alasan dan tahap repair jika ada reject wajib valid" });
+  }
+  try {
+    return res.status(201).json(await inspectFinalWip({
+      itemId,
+      passedQuantity,
+      rejectedQuantity,
+      reasonId,
+      repairStageId,
+      inspectedById: req.user!.id,
+    }));
+  } catch (error) {
+    return respondError(res, error);
+  }
+}
+
 export async function listWipRejectsHandler(req: Request, res: Response) {
   const isAdmin = req.access?.role === "admin";
   const isRepairWorker = req.access?.permissions.includes("REPAIR_WORK") ?? false;
@@ -179,6 +211,7 @@ export async function claimWipRejectHandler(req: Request, res: Response) {
 export async function createWipRejectRepairAttemptHandler(req: Request, res: Response) {
   const id = rejectId(req.params.id);
   const divisionId = req.access?.divisiId;
+  const outputItemId = req.body?.outputItemId == null ? undefined : positiveInt(req.body.outputItemId) ?? undefined;
   const quantityAttempted = decimal(req.body?.quantityAttempted);
   const quantityRepaired = decimal(req.body?.quantityRepaired);
   if (!id || !divisionId) return res.status(400).json({ message: "Reject atau divisi repair tidak valid" });
@@ -192,6 +225,7 @@ export async function createWipRejectRepairAttemptHandler(req: Request, res: Res
       divisionId,
       quantityAttempted,
       quantityRepaired,
+      outputItemId,
       notes: req.body?.notes,
     }));
   } catch (error) {
@@ -252,11 +286,9 @@ export async function listProductionRoutingsHandler(_req: Request, res: Response
 }
 
 export async function saveProductionRoutingHandler(req: Request, res: Response) {
-  const productVariantId = positiveInt(req.params.variantId);
-  const bomId = positiveInt(req.body?.bomId);
   const rawStages = req.body?.stages;
-  if (!productVariantId || !bomId || !Array.isArray(rawStages)) {
-    return res.status(400).json({ message: "Varian, BOM aktif, dan tahap routing wajib dipilih" });
+  if (!Array.isArray(rawStages)) {
+    return res.status(400).json({ message: "Tahap routing wajib diisi" });
   }
   const stages: ProductionRoutingStageInput[] = [];
   for (const raw of rawStages) {
@@ -264,24 +296,33 @@ export async function saveProductionRoutingHandler(req: Request, res: Response) 
       return res.status(400).json({ message: "Tahap routing tidak valid" });
     }
     const stage = raw as Record<string, unknown>;
-    const inputItemId = positiveInt(stage.inputItemId);
-    const outputItemId = positiveInt(stage.outputItemId);
+    const divisiId = positiveInt(stage.divisiId);
+    const parseItemIds = (value: unknown) => Array.isArray(value)
+      ? value.map(positiveInt)
+      : [];
+    const inputItemIds = parseItemIds(stage.inputItemIds);
+    const outputItemIds = parseItemIds(stage.outputItemIds);
     if (
       typeof stage.stage !== "string" ||
-      !productionStages.includes(stage.stage as (typeof productionStages)[number]) ||
-      !inputItemId ||
-      !outputItemId
+      !stage.stage.trim() ||
+      stage.stage.trim().length > 80 ||
+      !divisiId ||
+      inputItemIds.length === 0 ||
+      outputItemIds.length === 0 ||
+      inputItemIds.some((itemId) => itemId === null) ||
+      outputItemIds.some((itemId) => itemId === null)
     ) {
-      return res.status(400).json({ message: "Tahap dan Item input/output routing tidak valid" });
+      return res.status(400).json({ message: "Nama tahap, divisi, dan Item input/output routing wajib valid" });
     }
     stages.push({
-      stage: stage.stage as ProductionRoutingStageInput["stage"],
-      inputItemId,
-      outputItemId,
+      stage: stage.stage.trim(),
+      divisiId,
+      inputItemIds: inputItemIds as number[],
+      outputItemIds: outputItemIds as number[],
     });
   }
   try {
-    return res.status(201).json(await saveProductionRouting(productVariantId, { bomId, stages }));
+    return res.status(201).json(await saveProductionRouting({ stages }));
   } catch (error) {
     return respondError(res, error);
   }
