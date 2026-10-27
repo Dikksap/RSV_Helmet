@@ -65,6 +65,20 @@ export function findNode(root: BomNode[], id: string): { list: BomNode[]; index:
   return null;
 }
 
+export function replaceNodeItem(
+  node: BomNode,
+  item: { id: number; kode: string; nama: string; unit?: string | null },
+): BomNode {
+  return {
+    ...node,
+    itemId: item.id,
+    kode: item.kode,
+    nama: item.nama,
+    unit: item.unit || "pcs",
+    cost: 0,
+  };
+}
+
 export function normalizeNodes(value: unknown): BomNode[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((raw) => {

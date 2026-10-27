@@ -41,6 +41,7 @@ import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
 import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
 import KelolaItem from "./pages/admin/KelolaItem.tsx";
 import BOM from "./pages/admin/BOM.tsx";import StokItem from "./pages/admin/StokItem.tsx";
+import DaftarBOM from "./pages/admin/DaftarBOM.tsx";
 import StokOpname from "./pages/admin/StokOpname.tsx";
 import KelolaGudang from "./pages/admin/KelolaGudang.tsx";
 import RiwayatMutasi from "./pages/admin/RiwayatMutasi.tsx";
@@ -98,6 +99,7 @@ const routes = (
 <Route path="/admin/wip-flow" element={<WipFlowReport />} />
       <Route path="/admin/item" element={<KelolaItem />} />
       <Route path="/admin/item/stok/:id" element={<StokItem />} />
+<Route path="/admin/bom/daftar" element={<DaftarBOM />} />
 <Route path="/admin/bom" element={<BOM />} />      <Route path="/admin/stok-opname" element={<StokOpname />} />
       <Route path="/admin/gudang" element={<KelolaGudang />} />
       <Route path="/admin/mutasi-gudang" element={<RiwayatMutasi />} />

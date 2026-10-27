@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countRows, flatten, normalizeNodes, sumTree, unitCost, type BomNode, type FlatRow } from "./bomTree";
+import { countRows, flatten, normalizeNodes, replaceNodeItem, sumTree, unitCost, type BomNode, type FlatRow } from "./bomTree";
 
 const node = (partial: Partial<BomNode>): BomNode => ({
   id: "n1",
@@ -40,5 +40,27 @@ describe("bomTree", () => {
   it("mempertahankan referensi item master saat draft dinormalisasi", () => {
     const [n] = normalizeNodes([{ id: "x", itemId: 42, kode: "A", nama: "B", kids: [] }]);
     expect(n.itemId).toBe(42);
+  });
+
+  it("mengganti komponen tanpa mengubah anak, jumlah, atau identitas baris", () => {
+    const child = node({ id: "child", itemId: 4, kode: "CHILD", nama: "Anak" });
+    const parent = node({ id: "parent", qty: 3, kids: [child] });
+
+    const replaced = replaceNodeItem(parent, {
+      id: 8,
+      kode: "NEW",
+      nama: "Komponen baru",
+      unit: "set",
+    });
+
+    expect(replaced).toMatchObject({
+      id: "parent",
+      itemId: 8,
+      kode: "NEW",
+      nama: "Komponen baru",
+      unit: "set",
+      qty: 3,
+    });
+    expect(replaced.kids).toBe(parent.kids);
   });
 });

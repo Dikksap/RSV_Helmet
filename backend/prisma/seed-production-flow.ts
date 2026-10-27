@@ -46,44 +46,94 @@ async function loadItems(codes: string[]) {
 }
 
 async function configureProductionRoutings(
-  variantByStyleColor: Map<string, Array<{ id: number }>>,
   itemIds: Map<string, number>,
   divisionIds: Map<string, number>,
+) {
+  const activeRouting = await prisma.productionRouting.findFirst({
+    where: { isActive: true },
+    select: { id: true },
+  });
+  if (activeRouting) {
+    console.log("~ Routing produksi aktif sudah ada, lewati seed routing.");
+    return;
+  }
+
+  const itemId = (code: string) => requiredId(itemIds.get(code), `Item ${code}`);
+  const divisionId = (name: string) => requiredId(divisionIds.get(name), `Divisi ${name}`);
+  const baseCoatCodes = ["SM0026", "SM0027", "SM0028"];
+  const routeBranches = [
+    { style: "Solid", decalStage: "DECAL_SOLID", decalDivision: "Decal Solid" },
+    { style: "Motif", decalStage: "DECAL_MOTIF", decalDivision: "Decal Motif" },
+  ];
+
+  await prisma.$transaction(async (tx) => {
+    const latestRouting = await tx.productionRouting.findFirst({
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
+    let version = (latestRouting?.version ?? 0) + 1;
+
+    for (const branch of routeBranches) {
+      const definitions = sampleRoutes.filter((definition) => definition.style === branch.style);
+      const decalCodes = [...new Set(definitions.map((definition) => definition.decal))];
+      const topCoatCodes = [...new Set(definitions.map((definition) => definition.topCoat))];
+      const stages = [
+        {
+          stage: "BUFFING",
+          divisiId: divisionId("Buffing"),
+          inputItemIds: [itemId("RAW020")],
+          outputItemIds: [itemId("SM0025")],
+        },
+        {
+          stage: "BASE_COAT",
+          divisiId: divisionId("Base Coat"),
+          inputItemIds: [itemId("SM0025")],
+          outputItemIds: baseCoatCodes.map(itemId),
+        },
+        {
+          stage: branch.decalStage,
+          divisiId: divisionId(branch.decalDivision),
+          inputItemIds: baseCoatCodes.map(itemId),
+          outputItemIds: decalCodes.map(itemId),
+        },
+        {
+          stage: "TOP_COAT",
+          divisiId: divisionId("Top Coat"),
+          inputItemIds: decalCodes.map(itemId),
+          outputItemIds: topCoatCodes.map(itemId),
+        },
+      ];
+
+      await tx.productionRouting.create({
+        data: {
+          version: version++,
+          isActive: true,
+          stages: {
+            create: stages.map((stage, sequence) => ({
+              stage: stage.stage,
+              sequence,
+              divisiId: stage.divisiId,
+              inputItems: { create: stage.inputItemIds.map((id) => ({ itemId: id })) },
+              outputItems: { create: stage.outputItemIds.map((id) => ({ itemId: id })) },
+            })),
+          },
+        },
+      });
+    }
+  });
+  console.log("✓ Routing global Solid dan Motif selesai");
+}
+
+async function configureVariantBoms(
+  variantByStyleColor: Map<string, Array<{ id: number }>>,
+  itemIds: Map<string, number>,
 ) {
   for (const definition of sampleRoutes) {
     const variants = variantByStyleColor.get(`${definition.style}:${definition.color}`) ?? [];
     if (variants.length === 0) {
       throw new Error(`Varian ${definition.style} ${definition.color} belum tersedia`);
     }
-    const stages = [
-      {
-        stage: "BUFFING" as const,
-        divisiId: requiredId(divisionIds.get("Buffing"), "Divisi Buffing"),
-        inputItemId: requiredId(itemIds.get("RAW020"), "Item RAW020"),
-        outputItemId: requiredId(itemIds.get("SM0025"), "Item SM0025"),
-      },
-      {
-        stage: "BASE_COAT" as const,
-        divisiId: requiredId(divisionIds.get("Base Coat"), "Divisi Base Coat"),
-        inputItemId: requiredId(itemIds.get("SM0025"), "Item SM0025"),
-        outputItemId: requiredId(itemIds.get(definition.baseCoat), `Item ${definition.baseCoat}`),
-      },
-      {
-        stage: definition.style === "Solid" ? "DECAL_SOLID" as const : "DECAL_MOTIF" as const,
-        divisiId: requiredId(
-          divisionIds.get(definition.style === "Solid" ? "Decal Solid" : "Decal Motif"),
-          `Divisi Decal ${definition.style}`,
-        ),
-        inputItemId: requiredId(itemIds.get(definition.baseCoat), `Item ${definition.baseCoat}`),
-        outputItemId: requiredId(itemIds.get(definition.decal), `Item ${definition.decal}`),
-      },
-      {
-        stage: "TOP_COAT" as const,
-        divisiId: requiredId(divisionIds.get("Top Coat"), "Divisi Top Coat"),
-        inputItemId: requiredId(itemIds.get(definition.decal), `Item ${definition.decal}`),
-        outputItemId: requiredId(itemIds.get(definition.topCoat), `Item ${definition.topCoat}`),
-      },
-    ];
+    const topCoatItemId = requiredId(itemIds.get(definition.topCoat), `Item ${definition.topCoat}`);
 
     for (const variant of variants) {
       const bomCode = `${seedPrefix}-BOM-${variant.id}`;
@@ -111,46 +161,9 @@ async function configureProductionRoutings(
       await prisma.bomItem.create({
         data: {
           bomId: bom.id,
-          itemId: stages[3].outputItemId,
+          itemId: topCoatItemId,
           quantity: 1,
           unit: "Pcs",
-        },
-      });
-
-      await prisma.productionRouting.updateMany({
-        where: { productVariantId: variant.id, isActive: true, version: { not: 1 } },
-        data: { isActive: false },
-      });
-      await prisma.productionRouting.upsert({
-        where: { productVariantId_version: { productVariantId: variant.id, version: 1 } },
-        update: {
-          bomId: bom.id,
-          isActive: true,
-          stages: {
-            deleteMany: {},
-            create: stages.map(({ stage, divisiId, inputItemId, outputItemId }, sequence) => ({
-              stage,
-              sequence,
-              divisiId,
-              inputItemId,
-              outputItemId,
-            })),
-          },
-        },
-        create: {
-          productVariantId: variant.id,
-          bomId: bom.id,
-          version: 1,
-          isActive: true,
-          stages: {
-            create: stages.map(({ stage, divisiId, inputItemId, outputItemId }, sequence) => ({
-              stage,
-              sequence,
-              divisiId,
-              inputItemId,
-              outputItemId,
-            })),
-          },
         },
       });
     }
@@ -260,7 +273,8 @@ export async function seedProductionFlow() {
     const key = `${variant.style.nama}:${variant.color.nama}`;
     variantsByStyleColor.set(key, [...(variantsByStyleColor.get(key) ?? []), { id: variant.id }]);
   }
-  await configureProductionRoutings(variantsByStyleColor, itemIdByCode, divisionIdByName);
+  await configureVariantBoms(variantsByStyleColor, itemIdByCode);
+  await configureProductionRoutings(itemIdByCode, divisionIdByName);
 
   const divisionId = (name: string) => requiredId(divisionIdByName.get(name), `Divisi ${name}`);
   const itemByCode = new Map([...itemRows].map(([code, item]) => [code, item]));

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faCopy, faFolderOpen, faGripVertical, faMagnifyingGlass, faPlus, faRotateLeft, faSave, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faArrowsRotate, faChevronDown, faCopy, faFolderOpen, faGripVertical, faMagnifyingGlass, faPlus, faRotateLeft, faSave, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { getItems, type Item } from "../../../api/item";
 import { createBom, deleteBom, getBoms, updateBom, type Bom, type BomItemInput } from "../../../api/bom";
 import { createSubassembly, getSubassemblies } from "../../../api/subassembly";
 import { getProducts, type ProductVariant } from "../../../api/products";
-import { cloneNodes, countRows, depthOf, findNode, flatten, nid, normalizeNodes, rp, sumTree, unitCost, type BomNode, type FlatRow } from "./bomTree";
+import { cloneNodes, countRows, depthOf, findNode, flatten, nid, normalizeNodes, replaceNodeItem, rp, sumTree, unitCost, type BomNode, type FlatRow } from "./bomTree";
 
 const inputCls = "h-10 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-[14px] text-[#1F2937] outline-none transition placeholder:text-[#6B7280]/60 focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20";
 const primaryBtn = "inline-flex items-center justify-center gap-2 rounded-lg bg-[#00A8E8] px-4 py-2.5 text-[14px] font-medium text-white transition hover:bg-[#0088C0] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none";
@@ -58,8 +58,13 @@ function nodesFromBom(bom: Bom, boms: Bom[], ancestors = new Set<number>()): Bom
   const nextAncestors = new Set(ancestors);
   nextAncestors.add(bom.id);
 
-  return bom.items.map((entry) => {
-    const nestedBom = entry.subassemblyId == null
+  return nodesFromBomItems(bom.items, bom, boms, nextAncestors);
+}
+
+function nodesFromBomItems(items: Bom["items"], bom: Bom, boms: Bom[], ancestors: Set<number>): BomNode[] {
+  return items.map((entry) => {
+    const children = entry.children ?? [];
+    const nestedBom = children.length || entry.subassemblyId == null
       ? undefined
       : boms.find((candidate) => candidate.subassemblyId === entry.subassemblyId && candidate.version === bom.version)
         ?? boms.find((candidate) => candidate.subassemblyId === entry.subassemblyId);
@@ -73,14 +78,16 @@ function nodesFromBom(bom: Bom, boms: Bom[], ancestors = new Set<number>()): Bom
       unit: entry.unit ?? entry.item?.unit ?? "pcs",
       qty: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
       cost: 0,
-      kids: nestedBom ? nodesFromBom(nestedBom, boms, nextAncestors) : [],
+      kids: children.length
+        ? nodesFromBomItems(children, bom, boms, ancestors)
+        : nestedBom ? nodesFromBom(nestedBom, boms, ancestors) : [],
     };
   });
 }
 
 function blueprintFromBom(bom: Bom, boms: Bom[]): SavedBlueprint {
   const output = bom.productVariant
-    ? [bom.productVariant.product.nama, bom.productVariant.kodeVariant].filter(Boolean).join(" · ")
+    ? [bom.productVariant.product?.nama, bom.productVariant.kodeVariant].filter(Boolean).join(" · ")
     : bom.subassembly
       ? `${bom.subassembly.kode} · ${bom.subassembly.nama}`
       : "Output tidak diketahui";
@@ -148,6 +155,8 @@ export function BomBuilder() {
   const [variantSearch, setVariantSearch] = useState("");
   const [variantSelectOpen, setVariantSelectOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [replacingNodeId, setReplacingNodeId] = useState<string | null>(null);
+  const [replacementSearch, setReplacementSearch] = useState("");
   const [tab, setTab] = useState<"tree" | "flat">("tree");
   const [maxLevel, setMaxLevel] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
@@ -230,6 +239,16 @@ export function BomBuilder() {
     if (f) f.list.splice(f.index, 1);
   });
 
+  const replaceComponent = (nodeId: string, item: Item) => {
+    patch((d) => {
+      const found = findNode(d.nodes, nodeId);
+      if (found) Object.assign(found.node, replaceNodeItem(found.node, item));
+    });
+    setReplacingNodeId(null);
+    setReplacementSearch("");
+    flash(`Komponen diganti menjadi ${item.nama}; anak komponennya tetap`);
+  };
+
   const nodeFromItem = (it: Item): BomNode => ({
     id: nid(),
     itemId: it.id,
@@ -244,39 +263,6 @@ export function BomBuilder() {
   const addFromItem = (item: Item) => patch((d) => {
     d.nodes.push(nodeFromItem(item));
   });
-
-  const place = (source: DragPayload, targetId: string | null, dropZone: DropZone | null) => {
-    patch((d) => {
-      const node = (() => {
-        if (source.kind === "item") {
-          const it = items.find((i) => String(i.id) === source.id);
-          return it ? nodeFromItem(it) : null;
-        }
-        if (source.kind === "bp") {
-          const bp = d.blueprints.find((b) => b.id === source.id);
-          return bp ? { id: nid(), kode: bp.code, nama: bp.name, unit: "set", qty: 1, cost: 0, kids: cloneNodes(bp.nodes) } : null;
-        }
-        const f = findNode(d.nodes, source.id);
-        if (!f) return null;
-        if (targetId && (targetId === source.id || findNode(f.node.kids, targetId))) return null;
-        f.list.splice(f.index, 1);
-        return f.node;
-      })();
-
-      if (!node) return;
-      if (!targetId) {
-        d.nodes.push(node);
-        return;
-      }
-      const t = findNode(d.nodes, targetId);
-      if (!t) {
-        d.nodes.push(node);
-        return;
-      }
-      if (dropZone === "in") t.node.kids.push(node);
-      else t.list.splice(t.index + (dropZone === "after" ? 1 : 0), 0, node);
-    });
-  };
 
   const zoneAt = (e: DragEvent<HTMLDivElement>): DropZone => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -308,6 +294,13 @@ export function BomBuilder() {
   const shownItems = useMemo(() => filteredGroups.reduce((s, [, list]) => s + list.length, 0), [filteredGroups]);
 
   const selectedVariant = variants.find(({ variant }) => variant.id === draft.productVariantId);
+  const replacingNode = replacingNodeId ? findNode(draft.nodes, replacingNodeId)?.node : undefined;
+  const matchingReplacementItems = useMemo(() => {
+    const term = replacementSearch.trim().toLocaleLowerCase();
+    return items
+      .filter((item) => !term || `${item.kode} ${item.nama}`.toLocaleLowerCase().includes(term))
+      .slice(0, 100);
+  }, [items, replacementSearch]);
   const matchingVariants = useMemo(() => {
     const term = variantSearch.trim().toLocaleLowerCase();
     return variants
@@ -336,6 +329,39 @@ export function BomBuilder() {
     })),
     ...draft.blueprints.map((blueprint) => ({ ...blueprint, origin: "local" as const })),
   ];
+
+  const place = (source: DragPayload, targetId: string | null, dropZone: DropZone | null) => {
+    patch((d) => {
+      const nodes = (() => {
+        if (source.kind === "item") {
+          const item = items.find((candidate) => String(candidate.id) === source.id);
+          return item ? [nodeFromItem(item)] : [];
+        }
+        if (source.kind === "bp") {
+          const blueprint = allBlueprints.find((candidate) => candidate.id === source.id);
+          return blueprint ? cloneNodes(blueprint.nodes) : [];
+        }
+        const found = findNode(d.nodes, source.id);
+        if (!found) return [];
+        if (targetId && (targetId === source.id || findNode(found.node.kids, targetId))) return [];
+        found.list.splice(found.index, 1);
+        return [found.node];
+      })();
+
+      if (!nodes.length) return;
+      if (!targetId) {
+        d.nodes.push(...nodes);
+        return;
+      }
+      const target = findNode(d.nodes, targetId);
+      if (!target) {
+        d.nodes.push(...nodes);
+        return;
+      }
+      if (dropZone === "in") target.node.kids.push(...nodes);
+      else target.list.splice(target.index + (dropZone === "after" ? 1 : 0), 0, ...nodes);
+    });
+  };
 
   const saveBlueprint = () => {
     if (!draft.nodes.length) { flash("BOM masih kosong"); return; }
@@ -379,15 +405,11 @@ export function BomBuilder() {
       const subassemblies = [...existingSubassemblies];
       const boms = [...existingBoms];
 
-      const persistOutput = async (
-        nodes: BomNode[],
-        output: { productVariantId?: number; subassemblyId?: number },
-        name: string,
-        code: string,
-      ) => {
-        const bomItems: BomItemInput[] = [];
+      const buildItems = async (nodes: BomNode[]): Promise<BomItemInput[]> => {
+        const items: BomItemInput[] = [];
         for (const [index, node] of nodes.entries()) {
-          if (node.kids.length > 0) {
+          const children = await buildItems(node.kids);
+          if (children.length > 0) {
             let subassembly = node.itemId
               ? subassemblies.find((candidate) => candidate.itemId === node.itemId)
               : undefined;
@@ -402,44 +424,45 @@ export function BomBuilder() {
               });
               subassemblies.push(subassembly);
             }
-
-            await persistOutput(node.kids, { subassemblyId: subassembly.id }, node.nama, node.kode);
-            bomItems.push({ urutan: index + 1, subassemblyId: subassembly.id, quantity: node.qty, unit: node.unit || null });
+            items.push({
+              urutan: index + 1,
+              subassemblyId: subassembly.id,
+              quantity: node.qty,
+              unit: node.unit || null,
+              children,
+            });
           } else {
-            bomItems.push({ urutan: index + 1, itemId: node.itemId, quantity: node.qty, unit: node.unit || null });
+            items.push({
+              urutan: index + 1,
+              itemId: node.itemId,
+              quantity: node.qty,
+              unit: node.unit || null,
+            });
           }
         }
-
-        const matchingBom = boms.find((bom) =>
-          bom.version === draft.version.trim()
-          && (output.productVariantId !== undefined
-            ? bom.productVariantId === output.productVariantId
-            : bom.subassemblyId === output.subassemblyId),
-        );
-        const body = {
-          nama: name.trim(),
-          version: draft.version.trim(),
-          isActive: true,
-          ...output,
-          items: bomItems,
-        };
-        if (matchingBom) {
-          await updateBom(matchingBom.id, body);
-        } else {
-          const created = await createBom({
-            ...body,
-            ...(output.productVariantId !== undefined && code.trim() ? { kode: code.trim() } : {}),
-          });
-          boms.push(created);
-        }
+        return items;
       };
 
-      await persistOutput(
-        draft.nodes,
-        { productVariantId: selectedVariant.variant.id },
-        variantLabel(selectedVariant),
-        selectedVariant.variant.kodeVariant ?? "",
+      const bomItems = await buildItems(draft.nodes);
+      const matchingBom = boms.find((bom) =>
+        bom.version === draft.version.trim()
+        && bom.productVariantId === selectedVariant.variant.id,
       );
+      const body = {
+        nama: variantLabel(selectedVariant),
+        version: draft.version.trim(),
+        isActive: true,
+        productVariantId: selectedVariant.variant.id,
+        items: bomItems,
+      };
+      if (matchingBom) {
+        await updateBom(matchingBom.id, body);
+      } else {
+        await createBom({
+          ...body,
+          ...(selectedVariant.variant.kodeVariant?.trim() ? { kode: selectedVariant.variant.kodeVariant.trim() } : {}),
+        });
+      }
       flash("BOM berhasil disimpan atau diperbarui di database");
       try {
         await refreshSavedBoms();
@@ -464,7 +487,7 @@ export function BomBuilder() {
   };
 
   const insertBlueprint = (bp: Blueprint) => patch((d) => {
-    d.nodes.push({ id: nid(), kode: bp.code, nama: bp.name, unit: "set", qty: 1, cost: 0, kids: cloneNodes(bp.nodes) });
+    d.nodes.push(...cloneNodes(bp.nodes));
   });
 
   const delBlueprint = (id: string) => patch((d) => { d.blueprints = d.blueprints.filter((b) => b.id !== id); });
@@ -493,10 +516,10 @@ export function BomBuilder() {
   const insertSelectedBlueprints = () => {
     patch((d) => {
       selectedBlueprints.forEach((bp) => {
-        d.nodes.push({ id: nid(), kode: bp.code, nama: bp.name, unit: "set", qty: 1, cost: 0, kids: cloneNodes(bp.nodes) });
+        d.nodes.push(...cloneNodes(bp.nodes));
       });
     });
-    flash(`${selectedBlueprints.length} blueprint disisipkan sebagai sub-rakitan`);
+    flash(`Isi ${selectedBlueprints.length} blueprint disisipkan tanpa baris output`);
   };
 
   const deleteSelectedBlueprints = async () => {
@@ -599,12 +622,26 @@ export function BomBuilder() {
           </span>
           <span className="text-[12px] text-[#6B7280]">{no}</span>
           <div className="min-w-0" style={{ paddingLeft: `${d * 20 + 6}px` }}>
-            <input
-              className={CELL_INPUT}
-              value={n.nama}
-              onChange={(e) => updateNode(n.id, { nama: e.target.value })}
-              aria-label="Nama komponen"
-            />
+            <div className="flex min-w-0 items-center gap-1">
+              <input
+                className={CELL_INPUT}
+                value={n.nama}
+                onChange={(e) => updateNode(n.id, { nama: e.target.value })}
+                aria-label="Nama komponen"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setReplacementSearch("");
+                  setReplacingNodeId(n.id);
+                }}
+                className="shrink-0 rounded px-1.5 py-1 text-[11px] text-[#006E99] hover:bg-[#E6F6FD]"
+                title="Ganti komponen, pertahankan anak"
+                aria-label={`Ganti komponen ${n.nama}`}
+              >
+                <FontAwesomeIcon icon={faArrowsRotate} />
+              </button>
+            </div>
             <span className="px-1.5 text-[11px] text-[#6B7280]">{n.kode}</span>
           </div>
           <input
@@ -712,7 +749,7 @@ export function BomBuilder() {
         <button
           type="button"
           onClick={() => insertBlueprint(b)}
-          title="Sisipkan sebagai sub-rakitan"
+          title="Sisipkan isi blueprint tanpa baris output"
           aria-label={`Sisipkan ${b.name}`}
           className="rounded px-1 py-0.5 text-[11px] text-[#6B7280] hover:text-[#006E99]"
         >
@@ -998,7 +1035,7 @@ export function BomBuilder() {
                 </div>
               </div>
 
-              <p className="text-[12px] text-[#6B7280]">Seret ⠿ untuk memindahkan. Lepas di tengah baris untuk menjadikannya sub-rakitan, atau di tepi atas/bawah untuk mengatur urutan. Klik nama, jumlah, atau harga untuk mengedit. Blueprint dari pustaka juga bisa diseret ke sini sebagai sub-rakitan.</p>
+              <p className="text-[12px] text-[#6B7280]">Seret ⠿ untuk memindahkan. Gunakan ikon putar pada komponen untuk menggantinya tanpa mengubah anak. Lepas di tengah baris untuk menambahkan anak, atau di tepi atas/bawah untuk mengatur urutan.</p>
             </>
           )}
 
@@ -1105,8 +1142,67 @@ export function BomBuilder() {
               )}
             </div>
             <p className="border-t border-[#EDF0F4] px-5 py-2 text-[11px] text-[#6B7280]">
-              Seret kartu ke struktur BOM untuk menyisipkan sebagai sub-rakitan, atau pakai tombol muat dan sisipkan.
+              Seret atau sisipkan kartu untuk memasukkan isi blueprint tanpa menambahkan baris output blueprint.
             </p>
+          </div>
+        </div>
+      )}
+      {replacingNode && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0F1C2E]/50 p-4 backdrop-blur-sm"
+          onClick={() => setReplacingNodeId(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="replace-component-title"
+            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl"
+          >
+            <div className="border-b border-[#EDF0F4] px-5 py-4">
+              <h2 id="replace-component-title" className="text-lg font-semibold text-[#1E3A5F]">Ganti komponen</h2>
+              <p className="mt-1 text-sm text-[#6B7280]">
+                Pilih pengganti untuk <strong>{replacingNode.nama}</strong>. Anak komponen, jumlah, dan posisi tetap dipertahankan.
+              </p>
+              <label className="relative mt-3 block">
+                <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+                <input
+                  type="search"
+                  autoFocus
+                  className={`${inputCls} pl-9`}
+                  value={replacementSearch}
+                  onChange={(event) => setReplacementSearch(event.target.value)}
+                  placeholder="Cari kode atau nama komponen"
+                  aria-label="Cari komponen pengganti"
+                />
+              </label>
+            </div>
+            <div className="overflow-y-auto p-3">
+              {matchingReplacementItems.length === 0 ? (
+                <p className="px-3 py-8 text-center text-sm text-[#6B7280]">Komponen tidak ditemukan.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {matchingReplacementItems.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => replaceComponent(replacingNode.id, item)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#E6F6FD]"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-[#1F2937]">{item.nama}</span>
+                          <span className="block truncate text-xs text-[#6B7280]">{item.kode} · {item.unit || "pcs"}</span>
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-[#006E99]">Pilih</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex justify-end border-t border-[#EDF0F4] px-5 py-3">
+              <button type="button" onClick={() => setReplacingNodeId(null)} className={secondaryBtn}>Batal</button>
+            </div>
           </div>
         </div>
       )}

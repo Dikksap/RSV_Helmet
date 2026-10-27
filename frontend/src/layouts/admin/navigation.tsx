@@ -12,6 +12,7 @@ import {
   faHouse,
   faKey,
   faLayerGroup,
+  faListUl,
   faPlug,
   faSitemap,
   faTags,
@@ -119,10 +120,17 @@ export const MANAJEMEN: NavGroup = {
     },
     {
       to: "/admin/bom",
-      label: "BOM & Subassembly",
+      label: "Penyusun BOM",
       icon: faLayerGroup,
       end: true,
-      description: "Bill of Materials produk",
+      description: "Susun komponen dan level BOM produk",
+    },
+    {
+      to: "/admin/bom/daftar",
+      label: "Daftar BOM",
+      icon: faListUl,
+      end: true,
+      description: "Lihat BOM produk dan komponen per level",
     },
     {
       to: "/admin/routing-produksi",

@@ -38,6 +38,7 @@ import CapacityTab from "../../components/admin/PlanProduction/CapacityTab";
 import ScheduleTab from "../../components/admin/PlanProduction/ScheduleTab";
 import SummaryTab from "../../components/admin/PlanProduction/SummaryTab";
 import ProductionDashboardTab from "../../components/admin/PlanProduction/ProductionDashboardTab";
+import MaterialRequirementsTab from "../../components/admin/PlanProduction/MaterialRequirementsTab";
 import CreateOrderModal from "../../components/admin/PlanProduction/CreateOrderModal";
 import {
   TABS,
@@ -360,7 +361,10 @@ export default function PlanProduction() {
   }, [loadingList, orders.length, selectedId, paramId, writeOrderParam]);
 
   const reloadDetail = useCallback(() => {
-    if ((tab !== "master" && tab !== "kapasitas") || selectedId === null)
+    if (
+      (tab !== "master" && tab !== "kapasitas" && tab !== "kebutuhan-material") ||
+      selectedId === null
+    )
       return;
     const id = selectedId;
     const req = ++detailReq.current;
@@ -567,6 +571,21 @@ export default function PlanProduction() {
         />
         <Route path="jadwal" element={<ScheduleTab orderId={selectedId} />} />
         <Route path="ringkasan" element={<SummaryTab orderId={selectedId} />} />
+        <Route
+          path="kebutuhan-material"
+          element={
+            selectedId === null ? (
+              needOrder(faBoxesStacked, "Kebutuhan Material")
+            ) : detail ? (
+              <MaterialRequirementsTab detail={detail} />
+            ) : (
+              <div
+                className={`${CARD} h-64 animate-pulse`}
+                aria-label="Memuat kebutuhan material"
+              />
+            )
+          }
+        />
         <Route
           path="manpower"
           element={

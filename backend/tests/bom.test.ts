@@ -93,6 +93,31 @@ describe("POST /api/bom", () => {
     }));
   });
 
+  it("menerima komponen bertingkat beserta anak-anaknya", async () => {
+    mocked.createBom.mockResolvedValue(sample as any);
+    const payload = {
+      nama: "X",
+      version: "1.0",
+      productVariantId: 1,
+      items: [{
+        subassemblyId: 2,
+        quantity: 1,
+        children: [{ itemId: 3, quantity: 2 }],
+      }],
+    };
+
+    const res = await request(app).post("/api/bom").send(payload);
+
+    expect(res.status).toBe(201);
+    expect(mocked.createBom).toHaveBeenCalledWith(expect.objectContaining({
+      items: [{
+        subassemblyId: 2,
+        quantity: 1,
+        children: [{ itemId: 3, quantity: 2 }],
+      }],
+    }));
+  });
+
   it("400 output tidak tepat satu", async () => {
     const res = await request(app).post("/api/bom").send({ nama: "X", version: "1", items: [{ itemId: 3, quantity: 1 }] });
     expect(res.status).toBe(400);

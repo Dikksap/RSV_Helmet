@@ -18,6 +18,8 @@ export interface ItemRef {
 export interface BomItem {
   id?: number;
   bomId?: number;
+  parentBomItemId?: number | null;
+  level: number;
   urutan?: number | null;
   itemId?: number | null;
   subassemblyId?: number | null;
@@ -26,12 +28,16 @@ export interface BomItem {
   scrapPercent?: number | null;
   item?: ItemRef | null;
   subassembly?: SubassemblyRef | null;
+  children?: BomItem[];
 }
 
 export interface BomProductVariant {
   id: number;
   kodeVariant: string;
-  product: { id: number; nama: string; prefix: string };
+  product?: { id: number; nama: string; prefix: string } | null;
+  style?: { nama: string } | null;
+  color?: { nama: string } | null;
+  size?: { nama: string } | null;
 }
 
 export interface Bom {
@@ -66,6 +72,7 @@ export interface BomItemInput {
   quantity: number;
   unit?: string | null;
   scrapPercent?: number | null;
+  children?: BomItemInput[];
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

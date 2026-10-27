@@ -7,6 +7,7 @@ import {
   getBomById,
   listBoms,
   updateBom,
+  type BomItemDraft,
 } from "../../model/bom/bom.js";
 
 function parseId(raw: string) {
@@ -42,9 +43,9 @@ function parseDate(value: unknown, field: string) {
   return { value: d };
 }
 
-function parseItem(raw: unknown): { item: Record<string, unknown> } | { error: string } {
+function parseItem(raw: unknown): { item: BomItemDraft } | { error: string } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "Item BOM harus objek" };
-  const { urutan, itemId, subassemblyId, quantity, unit, scrapPercent } = raw as Record<string, unknown>;
+  const { urutan, itemId, subassemblyId, quantity, unit, scrapPercent, children: rawChildren } = raw as Record<string, unknown>;
   const q = typeof quantity === "number" ? quantity : Number(quantity);
   if (!Number.isFinite(q) || q <= 0) return { error: "Field 'quantity' wajib angka lebih dari 0" };
 
@@ -81,14 +82,21 @@ function parseItem(raw: unknown): { item: Record<string, unknown> } | { error: s
     scrapPercentValue = n;
   }
 
-  const item: Record<string, unknown> = {
-    quantity: q,
-  };
+  const item: BomItemDraft = { quantity: q };
   if (urutanValue !== undefined) item.urutan = urutanValue;
   if (itemIdValue !== null) item.itemId = itemIdValue;
   if (subassemblyIdValue !== null) item.subassemblyId = subassemblyIdValue;
   if (unit !== undefined && unit !== null) item.unit = String(unit).trim();
   if (scrapPercentValue !== undefined) item.scrapPercent = scrapPercentValue;
+  if (rawChildren !== undefined) {
+    if (!Array.isArray(rawChildren)) return { error: "Field 'children' harus berupa array" };
+    item.children = [];
+    for (const rawChild of rawChildren) {
+      const parsed = parseItem(rawChild);
+      if ("error" in parsed) return parsed;
+      item.children.push(parsed.item);
+    }
+  }
   return { item };
 }
 
@@ -148,7 +156,7 @@ export async function createBomHandler(req: Request, res: Response) {
     if (isActive !== undefined && typeof isActive !== "boolean") return res.status(400).json({ message: "Field 'isActive' harus boolean" });
 
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Field 'items' wajib array non-kosong" });
-    const parsedItems: Record<string, unknown>[] = [];
+    const parsedItems: BomItemDraft[] = [];
     for (const raw of items) {
       const parsed = parseItem(raw);
       if ("error" in parsed) return res.status(400).json({ message: parsed.error });
@@ -177,14 +185,7 @@ export async function createBomHandler(req: Request, res: Response) {
       berlakuSelesai: endDate.value,
       productVariantId: pv.value,
       subassemblyId: sa.value,
-      items: parsedItems.map((item) => ({
-        urutan: item.urutan !== undefined ? Number(item.urutan) : null,
-        itemId: item.itemId !== undefined ? (item.itemId as number | null) : null,
-        subassemblyId: item.subassemblyId !== undefined ? (item.subassemblyId as number | null) : null,
-        quantity: item.quantity as number,
-        unit: item.unit !== undefined ? (item.unit as string | null) : null,
-        scrapPercent: item.scrapPercent !== undefined ? (item.scrapPercent as number | null) : null,
-      })),
+      items: parsedItems,
     });
     res.status(201).json(row);
   } catch (error: any) {
@@ -232,7 +233,7 @@ export async function updateBomHandler(req: Request, res: Response) {
     if ("error" in endDate) return res.status(400).json({ message: endDate.error });
     if (endDate.value !== undefined) data.berlakuSelesai = endDate.value;
 
-    let parsedItems: Record<string, unknown>[] | undefined;
+    let parsedItems: BomItemDraft[] | undefined;
     if (items !== undefined) {
       if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Field 'items' harus array non-kosong" });
       parsedItems = [];
@@ -241,14 +242,7 @@ export async function updateBomHandler(req: Request, res: Response) {
         if ("error" in parsed) return res.status(400).json({ message: parsed.error });
         parsedItems.push(parsed.item);
       }
-      data.items = parsedItems.map((item) => ({
-        urutan: item.urutan !== undefined ? (item.urutan as number | null) : null,
-        itemId: item.itemId !== undefined ? (item.itemId as number | null) : null,
-        subassemblyId: item.subassemblyId !== undefined ? (item.subassemblyId as number | null) : null,
-        quantity: item.quantity as number,
-        unit: item.unit !== undefined ? (item.unit as string | null) : null,
-        scrapPercent: item.scrapPercent !== undefined ? (item.scrapPercent as number | null) : null,
-      }));
+      data.items = parsedItems;
     }
 
     if (productVariantId !== undefined) {

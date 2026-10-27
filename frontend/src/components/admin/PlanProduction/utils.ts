@@ -4,7 +4,7 @@ import type {
   StatusProductionOrder,
 } from "../../../api/productionOrders";
 
-export type Tab = "orders" | "dashboard" | "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower";
+export type Tab = "orders" | "dashboard" | "master" | "jadwal" | "ringkasan" | "kapasitas" | "manpower" | "kebutuhan-material";
 
 export const TABS: { key: Tab; label: string }[] = [
   { key: "orders", label: "Daftar Orders" },
@@ -14,6 +14,7 @@ export const TABS: { key: Tab; label: string }[] = [
   { key: "ringkasan", label: "Ringkasan" },
   { key: "kapasitas", label: "Kapasitas Produksi" },
   { key: "manpower", label: "Man Power" },
+  { key: "kebutuhan-material", label: "Kebutuhan Material" },
 ];
 
 export const STATUS_STYLE: Record<StatusProductionOrder, string> = {
