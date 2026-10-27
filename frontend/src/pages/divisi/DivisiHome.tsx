@@ -4,13 +4,14 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRightArrowLeft,
   faChartColumn,
-  faClipboardCheck,
   faClipboardList,
   faClockRotateLeft,
   faRotate,
   faSitemap,
   faTable,
   faUsers,
+  faBell,
+  faPlus,
   type IconDefinition,
 } from "@fortawesome/free-solid-svg-icons";
 import { getUser } from "../../api/auth";
@@ -38,53 +39,19 @@ interface Ringkasan {
 type Modul = {
   to: string;
   label: string;
+  sublabel: string;
   icon: IconDefinition;
-  warna: string;
+  color: string;
 };
 
 const MODUL: Modul[] = [
-  {
-    to: "/divisi/produksi",
-    label: "Produksi",
-    icon: faChartColumn,
-    warna: "bg-teal-500 shadow-teal-500/20",
-  },
-  {
-    to: "/divisi/produksi?tab=riwayat",
-    label: "Riwayat",
-    icon: faClockRotateLeft,
-    warna: "bg-blue-500 shadow-blue-500/20",
-  },
-  {
-    to: "/divisi/produksi?tab=wip",
-    label: "WIP",
-    icon: faSitemap,
-    warna: "bg-rose-500 shadow-rose-500/20",
-  },
-  {
-    to: "/divisi/transfer-wip",
-    label: "Transfer WIP",
-    icon: faArrowRightArrowLeft,
-    warna: "bg-cyan-600 shadow-cyan-600/20",
-  },
-  {
-    to: "/divisi/produksi?tab=rekap",
-    label: "Rekap",
-    icon: faTable,
-    warna: "bg-fuchsia-500 shadow-fuchsia-500/20",
-  },
-  {
-    to: "/divisi/permintaan",
-    label: "Permintaan",
-    icon: faClipboardList,
-    warna: "bg-purple-600 shadow-purple-600/20",
-  },
-  {
-    to: "/divisi/anggota",
-    label: "Anggota",
-    icon: faUsers,
-    warna: "bg-orange-400 shadow-orange-400/20",
-  },
+  { to: "/divisi/produksi", label: "Produksi", sublabel: "Input baru", icon: faChartColumn, color: "text-sky-600 bg-sky-50" },
+  { to: "/divisi/produksi?tab=riwayat", label: "Riwayat", sublabel: "Log mutasi", icon: faClockRotateLeft, color: "text-indigo-600 bg-indigo-50" },
+  { to: "/divisi/produksi?tab=wip", label: "WIP", sublabel: "Saldo stok", icon: faSitemap, color: "text-amber-600 bg-amber-50" },
+  { to: "/divisi/transfer-wip", label: "Transfer", sublabel: "Antar divisi", icon: faArrowRightArrowLeft, color: "text-violet-600 bg-violet-50" },
+  { to: "/divisi/produksi?tab=rekap", label: "Rekap", sublabel: "Laporan harian", icon: faTable, color: "text-emerald-600 bg-emerald-50" },
+  { to: "/divisi/permintaan", label: "Permintaan", sublabel: "Material divisi", icon: faClipboardList, color: "text-teal-600 bg-teal-50" },
+  { to: "/divisi/anggota", label: "Anggota", sublabel: "Tim & item", icon: faUsers, color: "text-rose-600 bg-rose-50" },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -126,62 +93,35 @@ function tanggalSekarang() {
   }).format(new Date());
 }
 
-function Header({
-  nama,
-  peran,
-  divisi,
-  tanggal,
+function StatCard({
+  label,
+  value,
+  unit,
+  highlight = false,
 }: {
-  nama: string;
-  peran: string;
-  divisi: string;
-  tanggal: string;
+  label: string;
+  value: number;
+  unit?: string;
+  highlight?: boolean;
 }) {
   return (
-    <header className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#1E3A5F] text-sm font-bold text-white ring-2 ring-white shadow-sm">
-          {inisial(nama)}
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs text-slate-500">{salam()},</p>
-          <h1 className="truncate text-base font-bold text-[#1E3A5F] sm:text-lg">{nama}</h1>
-          <p className="mt-0.5 truncate text-[11px] text-slate-500">
-            {peran} · {divisi}
-          </p>
-        </div>
-      </div>
-      <span className="hidden shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm sm:inline-flex">
-        {tanggal}
-      </span>
-    </header>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl bg-white p-2.5 text-center shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums text-[#1E3A5F]">
-        {value.toLocaleString("id-ID")}
-      </p>
-    </div>
-  );
-}
-
-function ModulTile({ item }: { item: Modul }) {
-  return (
-    <Link
-      to={item.to}
-      className="group flex flex-col items-center gap-1.5 rounded-lg text-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
+    <div
+      className={`rounded-xl border p-3 transition ${
+        highlight
+          ? "border-sky-200 bg-sky-50/50"
+          : "border-slate-200 bg-white"
+      }`}
     >
-      <span
-        className={`grid h-12 w-12 place-items-center rounded-2xl text-white shadow-md transition group-active:scale-95 ${item.warna}`}
-      >
-        <FontAwesomeIcon icon={item.icon} className="h-5 w-5" />
-      </span>
-      <span className="text-[11px] font-medium leading-tight text-slate-600">{item.label}</span>
-    </Link>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="text-xl font-extrabold tabular-nums text-[#1E3A5F]">
+          {value.toLocaleString("id-ID")}
+        </span>
+        {unit && <span className="text-[11px] font-medium text-slate-400">{unit}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -229,7 +169,6 @@ function IsiRingkasan() {
   }, [activeDivisiId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat ringkasan divisi
     void load();
   }, [load]);
 
@@ -238,33 +177,34 @@ function IsiRingkasan() {
   const peran = ROLE_LABELS[user?.role ?? ""] ?? (user?.role ?? "Operator");
   const divisi = activeDivisiNama ?? "Divisi";
   const tanggal = tanggalSekarang();
-  const header = <Header nama={nama} peran={peran} divisi={divisi} tanggal={tanggal} />;
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-5">
-        {header}
-        <section className="rounded-xl bg-white p-6 text-center text-sm text-[#6B7280] shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-          Memuat ringkasan divisi...
-        </section>
+      <div className="mx-auto w-full max-w-4xl space-y-3 pb-8">
+        <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="h-4 w-32 rounded bg-slate-200" />
+          <div className="mt-2 h-6 w-48 rounded bg-slate-200" />
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-white" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-5">
-        {header}
-        <section className="rounded-xl border border-red-200 bg-white p-6 text-center shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-          <p role="alert" className="text-sm text-[#B91C1C]">
-            {error}
-          </p>
+      <div className="mx-auto w-full max-w-4xl space-y-4 pb-8">
+        <section className="rounded-2xl border border-rose-200 bg-white p-5 text-center shadow-sm">
+          <p role="alert" className="text-xs font-semibold text-rose-700">{error}</p>
           <button
             type="button"
             onClick={() => void load()}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#1E3A5F] px-4 py-2 text-sm font-semibold text-white hover:bg-[#162C48]"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm"
           >
-            <FontAwesomeIcon icon={faRotate} /> Coba lagi
+            <FontAwesomeIcon icon={faRotate} className="h-3 w-3" /> Coba lagi
           </button>
         </section>
       </div>
@@ -272,122 +212,160 @@ function IsiRingkasan() {
   }
 
   const transaksi = data?.transaksiHariIni ?? 0;
-  const jumlahWip = data?.wipItems.length ?? 0;
+  const wipItems = data?.wipItems ?? [];
   const approval = data?.approvalMenunggu ?? 0;
   const jumlahItem = data?.jumlahItem ?? 0;
   const jumlahKaryawan = data?.jumlahKaryawan ?? 0;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-5">
-      {header}
-
-      <section className="overflow-hidden rounded-2xl border-2 border-[#BAE6FD] bg-[#F0F9FF] shadow-sm transition-shadow hover:shadow-md">
-        <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#0077A8] to-[#00A8E8] px-4 py-2.5 text-xs font-semibold text-white">
-          <span className="flex min-w-0 items-center gap-2">
-            <FontAwesomeIcon icon={faChartColumn} className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Aktivitas Produksi · {tanggal}</span>
-          </span>
-          <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-            Hari ini
-          </span>
-        </div>
-
-        <div className="p-4">
-          <p className="text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
-            {divisi}
-          </p>
-
-          <div className="my-2.5 flex flex-wrap items-center justify-center gap-2">
-            <span className="text-3xl font-extrabold tracking-tight tabular-nums text-[#1E3A5F]">
-              {transaksi.toLocaleString("id-ID")}
+    <div className="mx-auto w-full max-w-4xl space-y-3 pb-10">
+      {/* Header Compact Mobile */}
+      <header className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#1E3A5F] text-xs font-bold text-white shadow-inner">
+              {inisial(nama)}
             </span>
-            <span className="text-xs font-semibold text-slate-500">transaksi</span>
-            {approval > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                <FontAwesomeIcon icon={faClipboardCheck} className="h-3 w-3" /> {approval} approval
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                Tidak ada approval
-              </span>
-            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-bold text-[#1E3A5F]">{divisi}</span>
+                <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.2 text-[10px] font-bold text-sky-800">
+                  {peran}
+                </span>
+              </div>
+              <p className="truncate text-[11px] text-slate-500">
+                {salam()}, <span className="font-medium text-slate-700">{nama}</span>
+              </p>
+            </div>
           </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <Stat label="WIP aktif" value={jumlahWip} />
-            <Stat label="Item" value={jumlahItem} />
-            <Stat label="Karyawan" value={jumlahKaryawan} />
-          </div>
-
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Link
-              to="/divisi/produksi"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#00A8E8] px-3 py-2.5 text-xs font-bold text-white shadow-sm shadow-sky-500/20 transition hover:bg-[#0088C0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
-            >
-              <FontAwesomeIcon icon={faChartColumn} /> Input Produksi
-            </Link>
-            <Link
-              to="/divisi/produksi?tab=wip"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-[#1E3A5F] ring-1 ring-sky-200 transition hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8]"
-            >
-              <FontAwesomeIcon icon={faSitemap} /> Lihat WIP
-            </Link>
-          </div>
-
-          <p className="mt-2 text-center text-[10px] text-slate-500">
-            Ringkasan dihitung dari data produksi dan material divisi.
-          </p>
+          <span className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+            {tanggal}
+          </span>
         </div>
+      </header>
+
+      {/* Alert Approval Menunggu jika ada */}
+      {approval > 0 && (
+        <Link
+          to="/divisi/permintaan"
+          className="flex items-center justify-between gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 transition hover:bg-amber-100/70"
+        >
+          <div className="flex items-center gap-2">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-amber-200/80 text-amber-800">
+              <FontAwesomeIcon icon={faBell} className="h-3 w-3" />
+            </span>
+            <span>
+              Ada <strong className="font-bold">{approval} permintaan barang</strong> menunggu persetujuan divisi.
+            </span>
+          </div>
+          <span className="shrink-0 font-bold text-amber-800 hover:underline">Lihat →</span>
+        </Link>
+      )}
+
+      {/* Grid Statistik Ringkas */}
+      <section aria-label="Ringkasan angka" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatCard label="Transaksi Hari Ini" value={transaksi} highlight={transaksi > 0} />
+        <StatCard label="WIP Bersaldo" value={wipItems.length} unit="item" />
+        <StatCard label="Item Terdaftar" value={jumlahItem} unit="item" />
+        <StatCard label="Karyawan" value={jumlahKaryawan} unit="orang" />
       </section>
 
-      <section aria-label="Modul divisi" className="rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[#1E3A5F]">Modul</h2>
-          <span className="text-[10px] font-medium text-slate-400">Akses cepat</span>
+      {/* Tombol Aksi Cepat */}
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          to="/divisi/produksi"
+          className="flex items-center justify-center gap-2 rounded-xl bg-[#00A8E8] py-2.5 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0096D1] active:scale-[0.99]"
+        >
+          <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
+          <span>Input Produksi</span>
+        </Link>
+        <Link
+          to="/divisi/transfer-wip"
+          className="flex items-center justify-center gap-2 rounded-xl border border-[#1E3A5F] bg-white py-2.5 px-3 text-xs font-bold text-[#1E3A5F] shadow-sm transition hover:bg-slate-50 active:scale-[0.99]"
+        >
+          <FontAwesomeIcon icon={faArrowRightArrowLeft} className="h-3.5 w-3.5 text-[#00A8E8]" />
+          <span>Transfer WIP</span>
+        </Link>
+      </div>
+
+      {/* Modul Navigasi Ringkas */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div className="mb-2.5 flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Menu Cepat
+          </h2>
+          <span className="text-[11px] text-slate-400">Pilih modul</span>
         </div>
-        <div className="grid grid-cols-3 gap-y-4 sm:grid-cols-6">
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
           {MODUL.map((item) => (
-            <ModulTile key={item.to} item={item} />
+            <Link
+              key={item.to}
+              to={item.to}
+              className="flex flex-col items-center rounded-xl p-2 text-center transition hover:bg-slate-50 active:scale-95"
+            >
+              <span
+                className={`grid h-10 w-10 place-items-center rounded-xl text-sm shadow-xs ${item.color}`}
+              >
+                <FontAwesomeIcon icon={item.icon} />
+              </span>
+              <span className="mt-1.5 truncate text-[11px] font-semibold text-slate-700">
+                {item.label}
+              </span>
+            </Link>
           ))}
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      {/* Ringkasan WIP & Catatan Terbaru */}
+      <div className="grid gap-3 lg:grid-cols-[1fr_minmax(0,1.2fr)]">
+        {/* WIP Bersaldo Mini */}
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              <h2 className="text-xs font-bold text-[#1E3A5F]">WIP Bersaldo</h2>
+            </div>
+            <Link
+              to="/divisi/produksi?tab=wip"
+              className="text-[11px] font-bold text-[#00A8E8] hover:underline"
+            >
+              Lihat semua →
+            </Link>
+          </div>
+          {wipItems.length === 0 ? (
+            <p className="px-4 py-5 text-center text-xs text-slate-400">
+              Tidak ada stok WIP tersisa saat ini.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {wipItems.slice(0, 5).map((row) => (
+                <li
+                  key={`${row.divisiId ?? "tanpa"}:${row.itemId}`}
+                  className="flex items-center justify-between gap-2 px-3.5 py-2 text-xs hover:bg-slate-50/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-slate-800">{row.nama}</p>
+                    <p className="font-mono text-[10px] text-slate-400">{row.kode}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="font-bold tabular-nums text-[#1E3A5F]">
+                      {angka(row.saldoAkhir).toLocaleString("id-ID")}
+                    </span>
+                    <span className="ml-1 text-[10px] text-slate-400">{row.unit}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Catatan Terbaru */}
         <CatatanTerbaru
           divisiId={activeDivisiId}
           divisiNama={activeDivisiNama}
           refreshKey={0}
           onLihatSemua={() => navigate("/divisi/produksi?tab=riwayat")}
         />
-
-        <section className="self-start overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-            <h2 className="text-sm font-bold text-[#1E3A5F]">WIP bersaldo</h2>
-            <Link to="/divisi/produksi?tab=wip" className="text-xs font-semibold text-[#0077A8] hover:underline">
-              Lihat WIP
-            </Link>
-          </div>
-          {(data?.wipItems.length ?? 0) === 0 ? (
-            <p className="p-5 text-center text-sm text-[#6B7280]">Belum ada saldo WIP.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {data?.wipItems.slice(0, 5).map((row) => (
-                <li
-                  key={`${row.divisiId ?? "tanpa"}:${row.itemId}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-[#1F2937]">{row.nama}</p>
-                    <p className="font-mono text-xs text-[#6B7280]">{row.kode}</p>
-                  </div>
-                  <span className="shrink-0 font-bold tabular-nums text-[#1E3A5F]">
-                    {angka(row.saldoAkhir).toLocaleString("id-ID")} {row.unit}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
     </div>
   );

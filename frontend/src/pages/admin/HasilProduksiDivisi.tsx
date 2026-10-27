@@ -139,11 +139,11 @@ export default function HasilProduksiDivisi({ lockedDivisiId = null }: Props) {
       )}
 
       {loading ? (
-        <section className="rounded-xl bg-white p-6 text-center text-sm text-[#6B7280] shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+        <section className="rounded-xl border border-[#D1D5DB] bg-white p-6 text-center text-sm text-[#6B7280] shadow-sm">
           Memuat divisi dan item...
         </section>
       ) : error ? (
-        <section className="rounded-xl border border-[#EF4444]/30 bg-white p-6 text-center shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+        <section className="rounded-xl border border-[#EF4444]/30 bg-white p-6 text-center shadow-sm">
           <p role="alert" className="text-sm text-[#EF4444]">
             {error}
           </p>
@@ -157,8 +157,8 @@ export default function HasilProduksiDivisi({ lockedDivisiId = null }: Props) {
         </section>
       ) : (
         <>
-          <nav aria-label="Tampilan hasil produksi">
-            <div className="flex flex-wrap gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+          <nav aria-label="Tampilan hasil produksi" className="overflow-x-auto border-b border-[#D1D5DB]">
+            <div className="flex gap-1">
               {TABS.map((item) => {
                 const aktif = tab === item.key;
                 return (
@@ -167,10 +167,10 @@ export default function HasilProduksiDivisi({ lockedDivisiId = null }: Props) {
                     type="button"
                     onClick={() => pilihTab(item.key)}
                     aria-pressed={aktif}
-                    className={`shrink-0 rounded-lg px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8] ${
+                    className={`-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8] ${
                       aktif
-                        ? "bg-[#1E3A5F] text-white shadow-sm"
-                        : "text-[#6B7280] hover:bg-[#F5F7FA] hover:text-[#1F2937]"
+                        ? "border-[#00A8E8] text-[#1E3A5F]"
+                        : "border-transparent text-[#6B7280] hover:text-[#1F2937]"
                     }`}
                   >
                     {item.label}

@@ -93,9 +93,7 @@ export default function RekapBarangVariant() {
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState<string[] | null>(
-    null,
-  );
+  const [selectedStatuses, setSelectedStatuses] = useState<string[] | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -518,27 +516,28 @@ export default function RekapBarangVariant() {
               </div>
             </div>
 
+            {/* --- Bagian tabel hanya dengan scroll horizontal (jika perlu) --- */}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                 <caption className="sr-only">
                   Rekap jumlah barang per tanggal, item, ukuran, dan status
                 </caption>
-                <thead>
-                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-[#6B7280]">
-                    <th className="w-12 px-4 py-3 font-semibold">No</th>
-                    <th className="min-w-[180px] px-4 py-3 font-semibold">Item</th>
-                    <th className="px-4 py-3 font-semibold">Size</th>
+                <thead className="bg-[#F8FAFC]">
+                  <tr className="border-b-2 border-slate-200 text-xs uppercase tracking-wider text-slate-600">
+                    <th className="w-12 px-4 py-3.5 font-bold">No</th>
+                    <th className="min-w-[200px] px-4 py-3.5 font-bold">Item</th>
+                    <th className="px-4 py-3.5 font-bold">Size</th>
                     {visibleStatuses.map((kode) => (
-                      <th key={kode} className="px-4 py-3 text-right font-semibold">
+                      <th key={kode} className="px-4 py-3.5 text-right font-bold">
                         {statusMeta.get(kode)?.label ?? kode}
                       </th>
                     ))}
-                    <th className="px-4 py-3 text-right font-semibold">
+                    <th className="px-4 py-3.5 text-right font-bold">
                       Total per Item
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white">
                   {pageGroups.flatMap((group, groupIndex) => {
                     const rowsBefore = pageGroups
                       .slice(0, groupIndex)
@@ -546,84 +545,93 @@ export default function RekapBarangVariant() {
                     const dateHeader =
                       groupIndex === 0 ||
                       pageGroups[groupIndex - 1].tanggal !== group.tanggal;
+                      
                     return [
                       ...(dateHeader
                         ? [
                             <tr
                               key={`tanggal-${group.tanggal ?? "kosong"}-${groupIndex}`}
-                              className="border-b border-slate-100 bg-[#1E3A5F]/5"
+                              className="bg-slate-100/80"
                             >
-                              <th
+                              <td
                                 colSpan={visibleStatuses.length + 4}
-                                className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-[#1E3A5F]"
+                                className="border-b border-slate-200 px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-slate-700"
                               >
                                 {group.tanggal
                                   ? formatTanggal(group.tanggal)
                                   : "Tanpa tanggal"}
-                              </th>
+                              </td>
                             </tr>,
                           ]
                         : []),
-                      ...group.rows.map(({ row }, rowIndex) => (
-                        <tr
-                          key={`${group.key}-${row.variantId}`}
-                          className="border-b border-slate-50 last:border-0 hover:bg-[#F5F7FA]"
-                        >
-                          <td className="px-4 py-2.5 tabular-nums text-[#6B7280]">
-                            {rowOffset + rowsBefore + rowIndex + 1}
-                          </td>
-                          {rowIndex === 0 && (
-                            <td
-                              rowSpan={group.rows.length}
-                              className="border-l border-slate-100 px-4 py-2.5 align-top font-medium text-[#1F2937]"
-                            >
-                              {group.item}
+                      ...group.rows.map(({ row }, rowIndex) => {
+                        const isLastInGroup = rowIndex === group.rows.length - 1;
+                        return (
+                          <tr
+                            key={`${group.key}-${row.variantId}`}
+                            className={`transition-colors hover:bg-slate-50 ${
+                              isLastInGroup
+                                ? "border-b-2 border-slate-200"
+                                : "border-b border-slate-100"
+                            }`}
+                          >
+                            <td className="px-4 py-2.5 tabular-nums text-slate-500">
+                              {rowOffset + rowsBefore + rowIndex + 1}
                             </td>
-                          )}
-                          <td className="px-4 py-2.5 text-[#1F2937]">
-                            {row.size}
-                          </td>
-                          {visibleStatuses.map((kode) => (
-                            <td
-                              key={kode}
-                              className="px-4 py-2.5 text-right tabular-nums text-[#6B7280]"
-                            >
-                              {n(row.perStatus[kode] ?? 0)}
+                            {rowIndex === 0 && (
+                              <td
+                                rowSpan={group.rows.length}
+                                className="border-r border-slate-100 bg-slate-50/50 px-4 py-3 align-top font-semibold text-slate-800"
+                              >
+                                {group.item}
+                              </td>
+                            )}
+                            <td className="px-4 py-2.5 font-medium text-slate-700">
+                              {row.size}
                             </td>
-                          ))}
-                          {rowIndex === 0 && (
-                            <td
-                              rowSpan={group.rows.length}
-                              className="border-l border-slate-100 px-4 py-2.5 text-right align-top font-bold tabular-nums text-[#1E3A5F]"
-                            >
-                              {n(group.total)}
-                            </td>
-                          )}
-                        </tr>
-                      )),
+                            {visibleStatuses.map((kode) => (
+                              <td
+                                key={kode}
+                                className="px-4 py-2.5 text-right tabular-nums text-slate-600"
+                              >
+                                {n(row.perStatus[kode] ?? 0)}
+                              </td>
+                            ))}
+                            {rowIndex === 0 && (
+                              <td
+                                rowSpan={group.rows.length}
+                                className="border-l border-slate-100 bg-[#1E3A5F]/[0.02] px-4 py-3 text-right align-top font-bold tabular-nums text-[#1E3A5F]"
+                              >
+                                {n(group.total)}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      }),
                     ];
                   })}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-[#1E3A5F]/15 bg-[#1E3A5F]/5 font-bold">
-                    <td colSpan={3} className="px-4 py-2.5 text-[#1E3A5F]">
-                      TOTAL
+                <tfoot className="bg-slate-50">
+                  <tr className="border-t-2 border-slate-200 font-bold">
+                    <td colSpan={3} className="px-4 py-3.5 text-[#1E3A5F]">
+                      TOTAL KESELURUHAN
                     </td>
                     {totals.map((value, i) => (
                       <td
                         key={visibleStatuses[i]}
-                        className="px-4 py-2.5 text-right tabular-nums text-[#1E3A5F]"
+                        className="px-4 py-3.5 text-right tabular-nums text-[#1E3A5F]"
                       >
                         {n(value)}
                       </td>
                     ))}
-                    <td className="px-4 py-2.5 text-right tabular-nums text-[#1E3A5F]">
+                    <td className="px-4 py-3.5 text-right tabular-nums text-[#1E3A5F]">
                       {n(grandTotal)}
                     </td>
                   </tr>
                 </tfoot>
               </table>
             </div>
+            {/* --- Akhir bagian tabel --- */}
           </div>
 
           {totalPages > 1 && (

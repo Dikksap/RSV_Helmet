@@ -54,6 +54,7 @@ interface DaftarBarisProps {
   errors: Record<string, BarisError>;
   opsi: OpsiBaris[];
   wipSaldo?: Record<number, number>;
+  autoFillJumlahDariWip?: boolean;
   bolehTambah: boolean;
   catatanTerbuka: Record<string, boolean>;
   onTambah: () => void;
@@ -75,6 +76,7 @@ function DaftarBaris({
   errors,
   opsi,
   wipSaldo,
+  autoFillJumlahDariWip = false,
   bolehTambah,
   catatanTerbuka,
   onTambah,
@@ -120,7 +122,15 @@ function DaftarBaris({
                     Item
                     <select
                       value={row.itemId}
-                      onChange={(event) => onUbah(row.key, { itemId: event.target.value })}
+                      onChange={(event) => {
+                        const newItemId = event.target.value;
+                        const patch: Partial<BarisForm> = { itemId: newItemId };
+                        if (autoFillJumlahDariWip && wipSaldo && newItemId) {
+                          const wip = wipSaldo[Number(newItemId)] ?? 0;
+                          if (wip > 0) patch.jumlah = String(wip);
+                        }
+                        onUbah(row.key, patch);
+                      }}
                       className={`${FIELD} w-full`}
                       aria-label={`Item ${judul} baris ${index + 1}`}
                     >
@@ -263,7 +273,7 @@ export default function FormHasilProduksi({
   const opsiHasil = useMemo<OpsiBaris[]>(
     () =>
       kelompokkanItem(
-        items.filter((item) => item.isActive),
+        items.filter((item) => item.isActive && item.jenis === "SM"),
         divisiId,
       ).utama.map((item) => ({
         id: item.id,
@@ -552,6 +562,7 @@ export default function FormHasilProduksi({
           errors={errors.input}
           opsi={opsiInput}
           wipSaldo={wipSaldo}
+          autoFillJumlahDariWip
           bolehTambah
           catatanTerbuka={catatanTerbuka}
           onTambah={() => tambahBaris("input")}

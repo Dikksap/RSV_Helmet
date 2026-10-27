@@ -19,35 +19,33 @@ export default function DivisiPageHeader({
   actions,
 }: Props) {
   return (
-    <header className="space-y-3">
+    <header className="space-y-2 sm:space-y-3">
       <Link
         to="/divisi/home"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0077A8] hover:underline lg:hidden"
+        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#00A8E8] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8] lg:hidden"
       >
         <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" aria-hidden="true" />
-        Ringkasan
+        Ringkasan Divisi
       </Link>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-sky-50 text-[#0077A8] ring-1 ring-sky-100">
-            <FontAwesomeIcon icon={icon} className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00A8E8]">
-              Divisi · {divisiNama}
-            </p>
-            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-[#1E3A5F]">
-              {title}
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#00A8E8] sm:text-[11px]">
+            <FontAwesomeIcon icon={icon} className="h-3 w-3" aria-hidden="true" />
+            Divisi · {divisiNama}
+          </p>
+          <h1 className="mt-0.5 text-lg font-bold leading-tight tracking-tight text-[#1E3A5F] sm:mt-1 sm:text-2xl">
+            {title}
+          </h1>
+          {description && (
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#6B7280] sm:line-clamp-none sm:text-sm">
               {description}
             </p>
-          </div>
+          )}
         </div>
 
         {actions && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:gap-2">{actions}</div>
         )}
       </div>
     </header>

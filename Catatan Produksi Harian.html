@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Catatan Produksi Harian</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f2f4f0;--panel:#fff;--ink:#1c2a25;--mute:#66736d;--line:#d9dfd9;--acc:#1f6f5c;--acc-ink:#fff;--calc:#eaf0ec;--bad:#b4432b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#131a17;--panel:#1b2420;--ink:#e6ede9;--mute:#93a39b;--line:#2d3b35;--acc:#4fb79c;--acc-ink:#0c1512;--calc:#232f2a;--bad:#ef8a72;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#131a17;--panel:#1b2420;--ink:#e6ede9;--mute:#93a39b;--line:#2d3b35;--acc:#4fb79c;--acc-ink:#0c1512;--calc:#232f2a;--bad:#ef8a72;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Public Sans",system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+.sub,.note{color:var(--mute)}
+.sub{margin:0 0 18px}.note{font-size:13px;margin:0 0 14px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+.tab{background:none;border:0;padding:10px 14px;font:inherit;font-weight:500;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--acc)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:8px 12px;cursor:pointer}
+.btn.pri,.chip[aria-pressed="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.btn.del{color:var(--bad)}
+.chip{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:99px;padding:6px 14px;cursor:pointer}
+input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
+.dateTitle{font-weight:600;margin-left:auto;color:var(--mute)}
+section.blk{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:18px;overflow:hidden}
+section.blk>h2{font-size:15px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+section.blk>h2 small{color:var(--mute);font-weight:400}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:520px}table.w{min-width:980px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+th{font-size:13px;color:var(--mute);font-weight:500}
+tr:last-child td{border-bottom:0}
+td.calc{background:var(--calc);font-weight:600;font-variant-numeric:tabular-nums}
+td.neg{color:var(--bad)}
+td input{width:78px;text-align:right;font-variant-numeric:tabular-nums}
+.flag{display:block;color:var(--bad);font-size:12px;white-space:normal}.unit,.from{color:var(--mute);font-size:12px}
+.unit{margin-left:4px}.from{display:block;white-space:normal}
+.empty{padding:16px 14px;color:var(--mute)}
+.form{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;align-items:center}
+.row{display:flex;gap:6px;justify-content:flex-end}
+.hdr{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);align-items:center}
+.hdr label{font-size:13px;color:var(--mute);display:flex;gap:6px;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin-bottom:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.ch{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sisa{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}.sisa small{font-size:13px;font-weight:400;color:var(--mute)}.sisa.neg{color:var(--bad)}
+.sm{font-size:13px;color:var(--mute);margin-top:-6px}
+.f{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--mute)}
+.f input{width:100%;font-size:18px;padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums}.f input[type=text]{font-size:14px;text-align:left}
+.chip.s{font-size:13px;padding:6px 12px;align-self:flex-start}
+details{border-top:1px dashed var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
+summary{cursor:pointer;font-size:13px;color:var(--mute)}
+.pl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line)}
+.pl input{width:90px;text-align:right}
+.bdg{background:var(--bad);color:#fff;border-radius:99px;font-size:11px;padding:0 6px;margin-left:4px}
+.hdr label{cursor:pointer}
+.bars{display:flex;align-items:flex-end;gap:2px;height:44px;margin-top:4px}.bars i{flex:1;background:var(--acc);min-height:2px;border-radius:2px 2px 0 0;opacity:.85}
+.stat{text-align:center}.stat .sisa{font-size:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Catatan Produksi Harian</h1>
+  <p class="sub">Stok per divisi. Isi seperlunya saja. Stok awal, bahan terpakai, dan kiriman dihitung otomatis.</p>
+  <div class="tabs" role="tablist">
+    <button class="tab" data-t="harian">Catat harian</button>
+    <button class="tab" data-t="alur">Alur stok</button>
+    <button class="tab" data-t="rekap">Rekap</button>
+    <button class="tab" data-t="cek">Cek selisih</button>
+    <button class="tab" data-t="riwayat">Riwayat</button>
+    <button class="tab" data-t="atur">Atur divisi &amp; item</button>
+  </div>
+  <div id="view"></div>
+</div>
+<script>
+const KEY='produksi-v2';
+let S={items:[],divs:[],entries:{},recv:[],ver:3},tab='harian',date=today(),cd='',hd='',hi='',cf='';
+function today(){return fd(new Date())}
+function fd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function shift(d,n){const t=new Date(d+'T00:00:00');t.setDate(t.getDate()+n);return fd(t)}
+const n=v=>+v||0,uid=p=>p+Date.now().toString(36)+Math.floor(Math.random()*99);
+function load(){try{const r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
+ S.recv=S.recv||[];
+ if(!S.items.length&&!S.divs.length){S.ver=3;S.items=[{id:'i1',name:'Bahan mentah',unit:'kg'},{id:'i2',name:'Setengah jadi',unit:'pcs'},{id:'i3',name:'Barang jadi',unit:'pcs'}];
+  S.divs=[{id:'d1',name:'Gudang',next:'d2',rows:[{item:'i1',role:'bahan',opening:0}]},
+   {id:'d2',name:'Produksi',next:'d3',rows:[{item:'i1',role:'bahan',opening:0},{item:'i2',role:'hasil',opening:0,basis:'i1',ratio:5,tol:5}]},
+   {id:'d3',name:'Finishing',next:'',rows:[{item:'i2',role:'bahan',opening:0},{item:'i3',role:'hasil',opening:0,basis:'i2',ratio:1,tol:5}]}]}
+ if(!S.ver){Object.entries(S.entries).forEach(([k,E])=>Object.entries(E).forEach(([di,X])=>{const nx=dv((dv(di)||{}).next);Object.entries(X).forEach(([ii,x])=>{if(x.out===undefined)return;
+  if(nx&&nx.rows.some(r=>r.item===ii)){x.kirim=n(x.kirim)+x.out;S.recv.push({id:uid('r'),rd:k,to:nx.id,src:di,item:ii,sd:k,q:x.out})}else x.pakai=n(x.pakai)+x.out;delete x.out})}));S.ver=3;save()}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const fmt=v=>n(v).toLocaleString('id-ID',{maximumFractionDigits:2}),sg=v=>(v>0?'+':'')+fmt(v);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const it=id=>S.items.find(i=>i.id===id)||{name:'?',unit:''},dv=id=>S.divs.find(d=>d.id===id);
+const dates=()=>[...new Set([...Object.keys(S.entries),...S.recv.map(v=>v.rd)])].sort();
+const dl=d=>new Date(d+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+const sd=d=>new Date(d+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
+const EV=(d,D,id)=>((S.entries[d]||{})[D]||{})[id]||{};
+function kin(d,D,id){const x=EV(d,D.id,id);if(x.kirim!==undefined)return n(x.kirim);const r=D.rows.find(q=>q.item===id),nx=dv(D.next);return r&&r.role==='hasil'&&nx&&nx.rows.some(q=>q.item===id)&&D.autoKirim!==false?n(x.in):0}
+function cell(d,D,id){const x=EV(d,D.id,id),r=D.rows.find(q=>q.item===id)||{},nx=dv(D.next);let ap=0,hasA=false;
+ D.rows.forEach(q=>{if(q.role==='hasil'&&q.basis===id&&+q.ratio>0){ap+=n(EV(d,D.id,q.item).in)/q.ratio;hasA=true}});ap=Math.round(ap*100)/100;
+ const canK=!!(nx&&nx.rows.some(q=>q.item===id)),ak=x.kirim===undefined?kin(d,D,id):0;
+ const k=kin(d,D,id),p=x.pakai===undefined?ap:n(x.pakai),s=n(x.susut),l=n(x.lain);
+ let au=S.recv.filter(v=>v.rd===d&&v.to===D.id&&v.item===id).reduce((a,v)=>a+v.q,0);
+ if(D.autoRecv)S.divs.forEach(P=>{if(P.next===D.id&&P.rows.some(q=>q.item===id))au+=kin(d,P,id)});
+ return{m:n(x.in),au,k,p,su:s,l,o:k+p+s+l,c:x.count===undefined?null:+x.count,why:x.why||'',ap,hasA,canK,ak}}
+const open=D=>{const b={};D.rows.forEach(r=>b[r.item]=n(r.opening));return b};
+function step(D,d,b){return D.rows.map(r=>{const c=cell(d,D,r.item),a=b[r.item],cal=a+c.m+c.au-c.o,s=c.c==null?cal:c.c;b[r.item]=s;return{r,a,...c,cal,s,adj:s-cal}})}
+function rowCalc(d,D){const b=open(D);dates().forEach(k=>{if(k<d)step(D,k,b)});return step(D,d,b)}
+function rflag(d,D,r){if(r.role!=='hasil'||!r.basis||!(+r.ratio>0))return null;const xu=EV(d,D.id,r.basis).pakai;if(xu===undefined)return null;const u=n(xu),a=n(EV(d,D.id,r.item).in);if(!u&&!a)return null;
+ const e=u*r.ratio,df=a-e,pc=e?df/e*100:100;return Math.abs(pc)>(r.tol===''||r.tol===undefined?5:+r.tol)?{D,r,d,u,e,a,df,pc}:null}
+const fl=f=>'⚠ Standar '+fmt(f.e)+', aktual '+fmt(f.a)+' ('+sg(f.pc)+'%)';
+function pend(D,upto){const L=[];dates().forEach(k=>{if(k>upto)return;S.divs.forEach(P=>{if(P.next!==D.id)return;P.rows.forEach(r=>{if(!D.rows.some(x=>x.item===r.item))return;
+ const sn=D.autoRecv?0:kin(k,P,r.item);if(!sn)return;const rc=S.recv.filter(v=>v.sd===k&&v.src===P.id&&v.item===r.item&&v.rd<=upto).reduce((a,v)=>a+v.q,0);if(sn-rc>1e-9)L.push({k,P,item:r.item,sn,p:sn-rc})})})});return L}
+const curDiv=()=>dv(cd)||S.divs[0];
+const ev=(D,i,k)=>{const v=EV(date,D,i)[k];return v===undefined?'':esc(v)};
+function render(){document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.t===tab));
+ document.getElementById('view').innerHTML={harian:vHarian,alur:vAlur,rekap:vRekap,cek:vCek,riwayat:vRiwayat,atur:vAtur}[tab]()}
+const dateBar=()=>'<div class="bar"><button class="btn" data-a="prev" aria-label="Hari sebelumnya">‹</button><input type="date" id="dt" value="'+date+'"><button class="btn" data-a="next" aria-label="Hari berikutnya">›</button><button class="btn" data-a="now">Hari ini</button><span class="dateTitle">'+dl(date)+'</span></div>';
+const inp=(k,v,lab,dis)=>'<input type="number" inputmode="decimal" '+(k==='count'?'':'min="0" ')+'step="any" data-k="'+k+'" aria-label="'+lab+'" value="'+v+'"'+(dis?' disabled':'')+'>';
+const tbl=(hd,rows)=>'<div class="scroll"><table><thead><tr>'+hd.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+const sec=(t,sub,body)=>'<section class="blk"><h2>'+t+'<small>'+sub+'</small></h2>'+body+'</section>';
+let rs=false,op=new Set();
+function rerender(){const a=document.activeElement,key=a&&a.dataset&&a.dataset.k?[a.dataset.id,a.dataset.k,a.selectionStart]:null;render();
+ if(key){const e=document.querySelector('[data-id="'+key[0]+'"][data-k="'+key[1]+'"]');if(e){rs=true;e.focus();try{e.setSelectionRange(key[2],key[2])}catch(_){}rs=false}}}
+const fld=(k,lab,id,ph)=>'<label class="f"><span>'+lab+'</span><input type="number" inputmode="decimal" '+(k==='count'?'':'min="0" ')+'step="any" data-id="'+id+'" data-k="'+k+'" placeholder="'+(ph?'otomatis '+fmt(ph):'0')+'" value="'+ev(curDiv().id,id,k)+'"></label>';
+function card(D,x,nx){const r=x.r,i=it(r.item),id=r.item,f=rflag(date,D,r),avail=Math.max(0,x.a+x.m+x.au-x.p-x.su-x.l),hasIn=S.divs.some(P=>P.next===D.id&&P.rows.some(q=>q.item===id));
+ return '<div class="card"><div class="ch"><b>'+esc(i.name)+'</b><span class="sisa'+(x.s<0?' neg':'')+'">'+fmt(x.s)+'<small> '+esc(i.unit)+'</small></span></div>'+
+ '<div class="sm">Awal '+fmt(x.a)+' · Masuk '+fmt(x.m+x.au)+' · Keluar '+fmt(x.o)+'</div>'+
+ (r.role==='hasil'?fld('in','Dihasilkan hari ini',id):hasIn?'':fld('in','Masuk (beli / dari luar)',id))+
+ (r.role==='bahan'?fld('pakai','Dipakai produksi',id,x.hasA?x.ap:0):'')+
+ (x.canK?fld('kirim','Kirim ke '+esc(nx.name),id,x.ak)+'<button class="chip s" data-a="fill" data-id="'+id+'" data-v="'+avail+'">Kirim semua sisa ('+fmt(avail)+')</button>':'')+
+ (f?'<span class="flag">'+fl(f)+'</span>':'')+
+ '<details data-id="'+id+'"'+(op.has(id)?' open':'')+'><summary>Detail: susut, lain, opname</summary>'+fld('susut','Susut / reject',id)+fld('lain','Keluar lain (jual, dll)',id)+fld('count','Hitungan fisik (opname)',id)+
+ '<label class="f"><span>Alasan selisih</span><input type="text" data-id="'+id+'" data-k="why" value="'+ev(D.id,id,'why')+'"></label>'+
+ (x.c==null?'<button class="chip s" data-a="cocok" data-id="'+id+'">Fisik sama dengan sistem</button>':'<span class="from">Selisih '+sg(x.adj)+'</span>')+'</details></div>'}
+function vHarian(){
+ if(!S.divs.length)return '<div class="empty">Belum ada divisi. Tambahkan di tab Atur divisi &amp; item.</div>';
+ const D=curDiv(),nx=dv(D.next),rc=rowCalc(date,D),P=pend(D,date),R=S.recv.filter(v=>v.to===D.id&&v.rd===date);
+ let h=dateBar()+'<div class="bar">'+S.divs.map(d=>{const c=pend(d,date).length;return '<button class="chip" data-a="div" data-id="'+d.id+'" aria-pressed="'+(d.id===D.id)+'">'+esc(d.name)+(c?'<span class="bdg">'+c+'</span>':'')+'</button>'}).join('')+'<button class="btn" data-a="copy" style="margin-left:auto">↻ Isi seperti terakhir</button></div>';
+ if(P.length||R.length)h+='<section class="blk"><h2>Kiriman masuk<small>cek lalu terima</small></h2>'+P.map(x=>'<div class="pl"><span><b>'+fmt(x.p)+' '+esc(it(x.item).unit)+' '+esc(it(x.item).name)+'</b> dari '+esc(x.P.name)+' <small class="unit">'+sd(x.k)+'</small></span><span class="row"><input type="number" min="0" step="any" max="'+x.p+'" value="'+x.p+'" aria-label="Jumlah diterima"><button class="btn pri" data-a="recv" data-p="'+x.p+'" data-div="'+D.id+'" data-src="'+x.P.id+'" data-item="'+x.item+'" data-sd="'+x.k+'">Terima</button></span></div>').join('')+
+  (P.length>1?'<div class="form"><button class="btn pri" data-a="recvall">Terima semua</button></div>':'')+
+  R.map(v=>'<div class="pl"><span>Diterima '+fmt(v.q)+' '+esc(it(v.item).name)+' dari '+esc((dv(v.src)||{name:'?'}).name)+'</span><button class="btn" data-a="unrecv" data-id="'+v.id+'">Batalkan</button></div>').join('')+'</section>';
+ h+='<p class="note">'+(D.autoRecv?'Kiriman ke divisi ini diterima otomatis. ':'')+'Kolom yang kosong dihitung otomatis. Ketik angka hanya bila berbeda dari standar.</p><div class="grid">'+rc.map(x=>card(D,x,nx)).join('')+'</div>';
+ return h}
+function setv(id,k,v){const E=S.entries[date]=S.entries[date]||{},X=E[curDiv().id]=E[curDiv().id]||{},x=X[id]=X[id]||{};x[k]=v;save()}
+function vAlur(){
+ let h=dateBar()+'<p class="note">Posisi stok semua divisi pada tanggal ini, berurutan menurut alur.</p>';
+ if(!S.divs.length)return h+'<div class="empty">Belum ada divisi.</div>';
+ S.divs.forEach(D=>{const nx=dv(D.next),rc=rowCalc(date,D);
+  h+=sec(esc(D.name),nx?'→ '+esc(nx.name):'akhir alur',rc.length?tbl(['Item','Stok awal','Masuk','Keluar','Sisa'],rc.map(x=>[esc(it(x.r.item).name)+'<span class="unit">'+esc(it(x.r.item).unit)+'</span>',fmt(x.a),fmt(x.m+x.au),fmt(x.o),'<b'+(x.s<0?' class="neg" style="color:var(--bad)"':'')+'>'+fmt(x.s)+'</b>'])):'<div class="empty">Tidak ada item.</div>')});
+ return h}
+let rm='minggu',rdt=today();
+function prange(){const d=new Date(rdt+'T00:00:00');if(rm==='minggu'){const a=shift(rdt,-((d.getDay()+6)%7));return[a,shift(a,6)]}return[fd(new Date(d.getFullYear(),d.getMonth(),1)),fd(new Date(d.getFullYear(),d.getMonth()+1,0))]}
+const plabel=(a,z)=>rm==='minggu'?sd(a)+' – '+sd(z):new Date(a+'T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+function recap(D,a,z){const b=open(D),R={};D.rows.forEach(r=>R[r.item]={r,aw:0,m:0,k:0,p:0,su:0,l:0,adj:0,s:0});let sn=false;const snap=()=>{D.rows.forEach(r=>R[r.item].aw=b[r.item]);sn=true};
+ dates().forEach(d=>{if(d>z)return;if(d<a){step(D,d,b);return}if(!sn)snap();step(D,d,b).forEach(x=>{const q=R[x.r.item];q.m+=x.m+x.au;q.k+=x.k;q.p+=x.p;q.su+=x.su;q.l+=x.l;q.adj+=x.adj})});
+ if(!sn)snap();D.rows.forEach(r=>R[r.item].s=b[r.item]);return D.rows.map(r=>R[r.item])}
+function vRekap(){
+ const[a,z]=prange(),ds=[];for(let d=a;d<=z;d=shift(d,1))ds.push(d);
+ let h='<div class="bar"><button class="chip" data-a="rm" data-id="minggu" aria-pressed="'+(rm==='minggu')+'">Mingguan</button><button class="chip" data-a="rm" data-id="bulan" aria-pressed="'+(rm==='bulan')+'">Bulanan</button><button class="btn" data-a="rprev" aria-label="Sebelumnya">‹</button><button class="btn" data-a="rnow">'+(rm==='minggu'?'Minggu ini':'Bulan ini')+'</button><button class="btn" data-a="rnext" aria-label="Berikutnya">›</button><span class="dateTitle">'+plabel(a,z)+'</span><button class="btn" data-a="rcsv">Unduh CSV</button></div>';
+ if(!S.divs.length)return h+'<div class="empty">Belum ada divisi.</div>';
+ let rt=0,op=0,pd=0;const tc=dates().filter(d=>d>=a&&d<=z&&S.entries[d]).length;
+ S.divs.forEach(D=>{pd+=pend(D,z).length;ds.forEach(d=>D.rows.forEach(r=>{if(rflag(d,D,r))rt++}));const b=open(D);dates().forEach(d=>{if(d>z)return;step(D,d,b).forEach(x=>{if(d>=a&&x.c!=null&&Math.abs(x.adj)>1e-9)op++})})});
+ h+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">'+[['Hari tercatat',tc],['Selisih rasio',rt],['Selisih opname',op],['Kiriman belum diterima',pd]].map(([t,v])=>'<div class="card stat"><span class="sisa'+(v&&t!=='Hari tercatat'?' neg':'')+'">'+v+'</span><span class="sm" style="margin:0">'+t+'</span></div>').join('')+'</div>';
+ S.divs.forEach(D=>{const rc=recap(D,a,z),nx=dv(D.next);
+  const notes=[];rc.forEach(q=>{const nm=esc(it(q.r.item).name);
+   if(q.r.role==='hasil'&&q.r.basis&&+q.r.ratio>0){const bq=rc.find(y=>y.r.item===q.r.basis);if(bq&&bq.p>0){const ra=q.m/bq.p,pc=(ra/q.r.ratio-1)*100;notes.push(nm+': rasio aktual '+fmt(ra)+' per 1 bahan (standar '+fmt(q.r.ratio)+', '+sg(pc)+'%)')}}
+   if(q.su>0&&q.p>0)notes.push(nm+': susut '+fmt(q.su)+' ('+fmt(q.su/q.p*100)+'% dari yang dipakai)')});
+  const bars=rc.filter(q=>q.r.role==='hasil').map(q=>{const v=ds.map(d=>cell(d,D,q.r.item).m),mx=Math.max(...v,1);return '<div class="form" style="display:block"><span class="unit">Hasil per hari: '+esc(it(q.r.item).name)+'</span><div class="bars">'+v.map((x,i)=>'<i style="height:'+Math.max(x/mx*100,4)+'%" title="'+sd(ds[i])+': '+fmt(x)+'"></i>').join('')+'</div></div>'}).join('');
+  h+=sec(esc(D.name),nx?'→ '+esc(nx.name):'akhir alur',tbl(['Item','Stok awal','Masuk','Dikirim','Dipakai','Susut','Lain','Opname','Sisa akhir'],rc.map(q=>[esc(it(q.r.item).name)+'<span class="unit">'+esc(it(q.r.item).unit)+'</span>',fmt(q.aw),fmt(q.m),fmt(q.k),fmt(q.p),fmt(q.su),fmt(q.l),q.adj?sg(q.adj):'-','<b'+(q.s<0?' style="color:var(--bad)"':'')+'>'+fmt(q.s)+'</b>']))+bars+(notes.length?'<div class="form" style="display:block">'+notes.map(t=>'<div class="unit">'+t+'</div>').join('')+'</div>':''))});
+ return h}
+function rcsv(){const[a,z]=prange(),R=[['periode','divisi','item','satuan','stok_awal','masuk','dikirim','dipakai','susut','keluar_lain','penyesuaian_opname','sisa_akhir']];
+ S.divs.forEach(D=>recap(D,a,z).forEach(q=>R.push([a+' s/d '+z,D.name,it(q.r.item).name,it(q.r.item).unit,q.aw,q.m,q.k,q.p,q.su,q.l,q.adj,q.s])));
+ const t=R.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+ const e=document.createElement('a');e.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));e.download='rekap-'+rm+'-'+a+'.csv';document.body.appendChild(e);e.click();e.remove()}
+function vCek(){
+ const P=[],RT=[],OP=[],NG=[];
+ S.divs.forEach(D=>{pend(D,date).forEach(x=>P.push({D,...x}));const b=open(D);
+  dates().forEach(k=>{if(k>date)return;D.rows.forEach(r=>{const f=rflag(k,D,r);if(f)RT.push(f)});step(D,k,b).forEach(x=>{if(x.c!=null&&Math.abs(x.adj)>1e-9)OP.push({k,D,x})})});
+  rowCalc(date,D).forEach(x=>{if(x.s<0)NG.push({D,x})})});
+ RT.sort((a,b)=>b.d.localeCompare(a.d));OP.sort((a,b)=>b.k.localeCompare(a.k));
+ return dateBar()+'<p class="note">Temuan sampai tanggal terpilih. Selisih yang tidak ada penjelasannya perlu ditelusuri.</p>'+
+ sec('Kiriman belum diterima',P.length+' temuan',P.length?tbl(['Dikirim','Dari','Ke','Item','Belum diterima'],P.map(x=>[sd(x.k),esc(x.P.name),esc(x.D.name),esc(it(x.item).name),fmt(x.p)+' '+esc(it(x.item).unit)])):'<div class="empty">Semua kiriman sudah diterima.</div>')+
+ sec('Hasil tidak sesuai standar',RT.length+' temuan',RT.length?tbl(['Tanggal','Divisi','Hasil','Bahan dipakai','Standar','Aktual','Selisih'],RT.slice(0,50).map(f=>[sd(f.d),esc(f.D.name),esc(it(f.r.item).name),fmt(f.u)+' '+esc(it(f.r.basis).unit),fmt(f.e),fmt(f.a),'<b style="color:var(--bad)">'+sg(f.df)+' ('+sg(f.pc)+'%)</b>'])):'<div class="empty">Tidak ada selisih. Atur rasio standar di tab Atur.</div>')+
+ sec('Selisih stok opname',OP.length+' temuan',OP.length?tbl(['Tanggal','Divisi','Item','Sistem','Fisik','Selisih','Alasan'],OP.slice(0,50).map(o=>[sd(o.k),esc(o.D.name),esc(it(o.x.r.item).name),fmt(o.x.cal),fmt(o.x.c),'<b style="color:var(--bad)">'+sg(o.x.adj)+'</b>',esc(o.x.why||'(belum ada alasan)')])):'<div class="empty">Tidak ada selisih opname.</div>')+
+ sec('Stok minus',NG.length+' temuan',NG.length?tbl(['Divisi','Item','Sisa'],NG.map(g=>[esc(g.D.name),esc(it(g.x.r.item).name),'<b style="color:var(--bad)">'+fmt(g.x.s)+'</b>'])):'<div class="empty">Tidak ada stok minus.</div>')}
+function vRiwayat(){
+ if(!S.divs.length)return '<div class="empty">Belum ada divisi.</div>';
+ const D=dv(hd)||S.divs[0];hd=D.id;if(!D.rows.some(r=>r.item===hi))hi=(D.rows[0]||{}).item||'';
+ let h='<div class="bar"><select id="hd" aria-label="Divisi">'+S.divs.map(d=>'<option value="'+d.id+'"'+(d.id===D.id?' selected':'')+'>'+esc(d.name)+'</option>').join('')+'</select><select id="hi" aria-label="Item">'+D.rows.map(r=>'<option value="'+r.item+'"'+(r.item===hi?' selected':'')+'>'+esc(it(r.item).name)+'</option>').join('')+'</select><button class="btn" data-a="csv">Unduh CSV semua divisi</button></div>';
+ const rows=[],b=open(D);dates().forEach(d=>{const x=step(D,d,b).find(y=>y.r.item===hi);if(x)rows.push([sd(d),fmt(x.a),fmt(x.m+x.au),fmt(x.o),x.c==null?'-':sg(x.adj),'<b'+(x.s<0?' style="color:var(--bad)"':'')+'>'+fmt(x.s)+'</b>'])});
+ return h+sec('','',rows.length?tbl(['Tanggal','Stok awal','Masuk','Keluar','Penyesuaian opname','Sisa'],rows.reverse()):'<div class="empty">Belum ada catatan.</div>')}
+function vAtur(){
+ const del=(k,id)=>cf===k+id?'Yakin hapus?':'Hapus';
+ let h=sec('Item','bahan mentah, setengah jadi, barang jadi','<div class="form"><input id="ni" placeholder="Nama item"><input id="nu" placeholder="Satuan (kg, pcs)" style="width:130px"><button class="btn pri" data-a="additem">Tambah item</button></div>'+
+ (S.items.length?'<div class="scroll"><table><tbody>'+S.items.map(i=>'<tr data-o="item" data-id="'+i.id+'"><td><input data-f="name" value="'+esc(i.name)+'" aria-label="Nama item" style="text-align:left"></td><td><input data-f="unit" value="'+esc(i.unit)+'" aria-label="Satuan" style="width:90px;text-align:left"></td><td><div class="row"><button class="btn del" data-a="delitem" data-id="'+i.id+'">'+del('item',i.id)+'</button></div></td></tr>').join('')+'</tbody></table></div>':''));
+ h+=sec('Divisi','urutan dan tujuan kirim menentukan alur','<div class="form"><input id="nd" placeholder="Nama divisi"><button class="btn pri" data-a="adddiv">Tambah divisi</button></div>');
+ S.divs.forEach(D=>{const free=S.items.filter(i=>!D.rows.some(r=>r.item===i.id));
+  h+='<section class="blk" data-o="div" data-id="'+D.id+'"><div class="hdr"><input data-f="name" value="'+esc(D.name)+'" aria-label="Nama divisi" style="font-weight:600"><label>Kirim ke <select data-f="next"><option value="">(akhir alur)</option>'+S.divs.filter(d=>d.id!==D.id).map(d=>'<option value="'+d.id+'"'+(d.id===D.next?' selected':'')+'>'+esc(d.name)+'</option>').join('')+'</select></label>'+
+  '<label><input type="checkbox" data-f="autoKirim"'+(D.autoKirim!==false?' checked':'')+'> Kirim hasil otomatis</label><label><input type="checkbox" data-f="autoRecv"'+(D.autoRecv?' checked':'')+'> Terima otomatis</label><span class="row" style="margin-left:auto"><button class="btn" data-a="up" data-id="'+D.id+'" aria-label="Naik">↑</button><button class="btn" data-a="down" data-id="'+D.id+'" aria-label="Turun">↓</button><button class="btn del" data-a="deldiv" data-id="'+D.id+'">'+del('div',D.id)+'</button></span></div>';
+  if(D.rows.length)h+='<div class="scroll"><table class="w"><thead><tr><th>Item di divisi ini</th><th>Peran</th><th>Stok awal pertama</th><th>Dasar bahan</th><th>Hasil per 1 bahan</th><th>Toleransi %</th><th></th></tr></thead><tbody>'+D.rows.map(r=>{const hs=r.role==='hasil'?'':' disabled';return '<tr data-o="row" data-div="'+D.id+'" data-id="'+r.item+'"><td>'+esc(it(r.item).name)+'</td><td><select data-f="role"><option value="bahan"'+(r.role==='bahan'?' selected':'')+'>Bahan</option><option value="hasil"'+(r.role==='hasil'?' selected':'')+'>Hasil</option></select></td><td><input type="number" step="any" data-f="opening" value="'+n(r.opening)+'" aria-label="Stok awal pertama"></td>'+
+   '<td><select data-f="basis"'+hs+'><option value="">-</option>'+D.rows.filter(x=>x.role==='bahan'&&x.item!==r.item).map(x=>'<option value="'+x.item+'"'+(x.item===r.basis?' selected':'')+'>'+esc(it(x.item).name)+'</option>').join('')+'</select></td>'+
+   '<td><input type="number" step="any" data-f="ratio" value="'+(r.ratio===undefined?'':r.ratio)+'"'+hs+' aria-label="Hasil per 1 bahan"></td><td><input type="number" step="any" data-f="tol" value="'+(r.tol===undefined?5:r.tol)+'"'+hs+' aria-label="Toleransi"></td>'+
+   '<td><div class="row"><button class="btn del" data-a="delrow" data-div="'+D.id+'" data-id="'+r.item+'">Lepas</button></div></td></tr>'}).join('')+'</tbody></table></div>';
+  h+=free.length?'<div class="form"><select id="rs-'+D.id+'" aria-label="Item">'+free.map(i=>'<option value="'+i.id+'">'+esc(i.name)+'</option>').join('')+'</select><select id="rr-'+D.id+'" aria-label="Peran"><option value="bahan">Bahan</option><option value="hasil">Hasil</option></select><button class="btn" data-a="addrow" data-id="'+D.id+'">Tambah item ke divisi</button></div>':'<div class="empty">'+(S.items.length?'Semua item sudah dipakai di divisi ini.':'Tambahkan item dulu di atas.')+'</div>';
+  h+='</section>'});
+ return h+'<p class="note">Rasio standar: pada baris Hasil, pilih bahan dasarnya dan hasil per 1 bahan. Bila Dipakai dikosongkan, bahan terpakai dihitung otomatis dari hasil ÷ rasio. Bila Dipakai diisi manual, hasil dibandingkan dengan standar dan ditandai jika selisihnya melewati toleransi. Terima otomatis melewatkan konfirmasi penerimaan di divisi itu.</p>'}
+function csv(){const R=[['tanggal','divisi','item','satuan','stok_awal','masuk','dikirim','dipakai','susut','keluar_lain','opname','penyesuaian','sisa']];
+ S.divs.forEach(D=>{const b=open(D);dates().forEach(d=>step(D,d,b).forEach(x=>R.push([d,D.name,it(x.r.item).name,it(x.r.item).unit,x.a,x.m+x.au,x.k,x.p,x.su,x.l,x.c==null?'':x.c,x.adj,x.s])))});
+ const t=R.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='produksi.csv';document.body.appendChild(a);a.click();a.remove()}
+document.addEventListener('click',e=>{
+ const t=e.target.closest('.tab');if(t){tab=t.dataset.t;cf='';render();return}
+ const b=e.target.closest('button[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;
+ if(a==='prev')date=shift(date,-1);else if(a==='next')date=shift(date,1);else if(a==='now')date=today();
+ else if(a==='div')cd=id;
+ else if(a==='csv'){csv();return}
+ else if(a==='recv'){const q=Math.min(+b.closest('tr').querySelector('input').value,+b.dataset.p);if(q>0){S.recv.push({id:uid('r'),rd:date,to:b.dataset.div,src:b.dataset.src,item:b.dataset.item,sd:b.dataset.sd,q});save()}}
+ else if(a==='unrecv'){S.recv=S.recv.filter(v=>v.id!==id);save()}
+ else if(a==='rm')rm=id;
+ else if(a==='rnow')rdt=today();
+ else if(a==='rprev'||a==='rnext'){const k=a==='rprev'?-1:1;if(rm==='minggu')rdt=shift(rdt,7*k);else{const d=new Date(rdt+'T00:00:00');rdt=fd(new Date(d.getFullYear(),d.getMonth()+k,1))}}
+ else if(a==='rcsv'){rcsv();return}
+ else if(a==='fill')setv(id,'kirim',+b.dataset.v);
+ else if(a==='cocok'){const x=rowCalc(date,curDiv()).find(y=>y.r.item===id);setv(id,'count',Math.round(x.cal*100)/100)}
+ else if(a==='copy'){const D=curDiv(),pk=dates().filter(k=>k<date&&S.entries[k]&&S.entries[k][D.id]).pop();if(pk){const E=S.entries[date]=S.entries[date]||{},X=E[D.id]=E[D.id]||{};
+  Object.entries(S.entries[pk][D.id]).forEach(([ii,x])=>{const t=X[ii]=X[ii]||{};['in','kirim','pakai','susut','lain'].forEach(k=>{if(x[k]!==undefined&&t[k]===undefined)t[k]=x[k]})});save()}}
+ else if(a==='recvall'){pend(curDiv(),date).forEach(x=>S.recv.push({id:uid('r'),rd:date,to:curDiv().id,src:x.P.id,item:x.item,sd:x.k,q:x.p}));save()}
+ else if(a==='additem'){const x=document.getElementById('ni').value.trim();if(!x){document.getElementById('ni').focus();return}S.items.push({id:uid('i'),name:x,unit:document.getElementById('nu').value.trim()||'pcs'});save()}
+ else if(a==='adddiv'){const x=document.getElementById('nd').value.trim();if(!x){document.getElementById('nd').focus();return}
+  const nd={id:uid('d'),name:x,next:'',rows:[]},last=S.divs[S.divs.length-1];if(last&&!last.next)last.next=nd.id;S.divs.push(nd);save()}
+ else if(a==='addrow'){dv(id).rows.push({item:document.getElementById('rs-'+id).value,role:document.getElementById('rr-'+id).value,opening:0,basis:'',ratio:'',tol:5});save()}
+ else if(a==='delrow'){const D=dv(b.dataset.div);D.rows=D.rows.filter(r=>r.item!==id);save()}
+ else if(a==='up'||a==='down'){const i=S.divs.findIndex(d=>d.id===id),j=a==='up'?i-1:i+1;if(j>=0&&j<S.divs.length){[S.divs[i],S.divs[j]]=[S.divs[j],S.divs[i]];save()}}
+ else if(a==='delitem'||a==='deldiv'){const k=(a==='delitem'?'item':'div')+id;if(cf!==k){cf=k;render();return}cf='';
+  if(a==='delitem'){S.items=S.items.filter(i=>i.id!==id);S.recv=S.recv.filter(v=>v.item!==id);S.divs.forEach(D=>D.rows=D.rows.filter(r=>r.item!==id));Object.values(S.entries).forEach(E=>Object.values(E).forEach(x=>delete x[id]))}
+  else{S.divs=S.divs.filter(d=>d.id!==id);S.recv=S.recv.filter(v=>v.to!==id&&v.src!==id);S.divs.forEach(d=>{if(d.next===id)d.next=''});Object.values(S.entries).forEach(E=>delete E[id])}save()}
+ render()});
+function edit(el){const tr=el.closest('[data-o]'),f=el.dataset.f;if(!tr||!f)return false;const o=tr.dataset.o;
+ const g=o==='item'?S.items.find(i=>i.id===tr.dataset.id):o==='div'?dv(tr.dataset.id):(dv(tr.dataset.div)||{rows:[]}).rows.find(r=>r.item===tr.dataset.id);
+ if(g){g[f]=el.type==='checkbox'?el.checked:['opening','ratio','tol'].includes(f)?(el.value===''?'':+el.value):el.value;save()}return true}
+document.addEventListener('input',e=>{const el=e.target,k=el.dataset.k;
+ if(k){const D=curDiv(),id=el.dataset.id,E=S.entries[date]=S.entries[date]||{},X=E[D.id]=E[D.id]||{},x=X[id]=X[id]||{};
+  if(el.value==='')delete x[k];else x[k]=k==='why'?el.value:(k==='count'?+el.value:Math.max(0,+el.value));save();rerender()}
+ else if(el.tagName==='INPUT')edit(el)});
+document.addEventListener('focusin',e=>{if(!rs&&e.target.type==='number')e.target.select()});
+document.addEventListener('toggle',e=>{const d=e.target;if(d.tagName==='DETAILS'){d.open?op.add(d.dataset.id):op.delete(d.dataset.id)}},true);
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.k){e.preventDefault();const L=[...document.querySelectorAll('#view input[data-k]')].filter(i=>i.offsetParent),i=L.indexOf(e.target);(L[i+1]||e.target).focus()}});
+document.addEventListener('change',e=>{const el=e.target;
+ if(el.id==='dt'&&el.value){date=el.value;render()}
+ else if(el.id==='hd'){hd=el.value;render()}
+ else if(el.id==='hi'){hi=el.value;render()}
+ else if(el.tagName==='SELECT'&&edit(el))render()});
+load();render();
+</script>
+</body>
+</html>
