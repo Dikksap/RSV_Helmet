@@ -13,6 +13,7 @@ import {
   type WipRejectOptions,
 } from "../../api/erp";
 import { getUser, getUserPermissions } from "../../api/auth";
+import { getDivisi, type Divisi } from "../../api/divisi";
 
 const field = "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
 const primaryButton = "rounded-lg bg-[#00A8E8] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50";
@@ -40,14 +41,28 @@ const statusLabel: Record<WipReject["status"], string> = {
 
 type RepairForm = { attempted: string; repaired: string; outputItemId: string; notes: string };
 
-export default function QualityControl() {
+type Props = {
+  selectedDivisionId?: number | null;
+};
+
+export default function QualityControl({ selectedDivisionId }: Props) {
   const user = getUser();
   const permissions = getUserPermissions();
   const isAdmin = user?.role === "admin";
   const isQcRole = isAdmin || user?.role === "qc";
+  const canRepairWork = isAdmin || user?.role === "produksi" || permissions.includes("REPAIR_WORK");
   const canQualityInspect = isQcRole && (isAdmin || permissions.includes("QUALITY_INSPECT"));
   const canReview = isQcRole && (isAdmin || permissions.includes("QUALITY_FINALIZE"));
-  const canRepair = permissions.includes("REPAIR_WORK") && !isQcRole;
+  const [adminDivisions, setAdminDivisions] = useState<Divisi[]>([]);
+  const [adminDivisionId, setAdminDivisionId] = useState<number | null>(null);
+  const repairDivisionId = isAdmin
+    ? selectedDivisionId !== undefined
+      ? selectedDivisionId
+      : adminDivisionId
+    : user?.divisiId ?? null;
+  const canRepair = isAdmin
+    ? repairDivisionId !== null
+    : canRepairWork && !isQcRole;
   const [options, setOptions] = useState<WipRejectOptions | null>(null);
   const [rejects, setRejects] = useState<WipReject[]>([]);
   const [report, setReport] = useState<QualityDailyReport | null>(null);
@@ -65,15 +80,44 @@ export default function QualityControl() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    let activeRepairDivisionId = isAdmin
+      ? selectedDivisionId !== undefined
+        ? selectedDivisionId
+        : adminDivisionId
+      : undefined;
+    if (isAdmin && selectedDivisionId === undefined) {
+      const divisions = await getDivisi();
+      setAdminDivisions(divisions);
+      if (!activeRepairDivisionId) {
+        const storedId = Number(localStorage.getItem("rsv_divisi_workspace"));
+        activeRepairDivisionId =
+          divisions.find((division) => division.id === storedId)?.id ??
+          divisions[0]?.id;
+        setAdminDivisionId(activeRepairDivisionId ?? null);
+      }
+    }
     const [nextOptions, nextRejects, nextReport] = await Promise.all([
       canQualityInspect ? getWipRejectOptions() : Promise.resolve(null),
-      (canQualityInspect || canRepair) ? listWipRejects(canReview ? undefined : "ACTIVE") : Promise.resolve([]),
+      (canQualityInspect || canRepair)
+        ? listWipRejects(
+            canReview ? undefined : "ACTIVE",
+            isAdmin ? activeRepairDivisionId ?? undefined : undefined,
+          )
+        : Promise.resolve([]),
       canQualityInspect ? getQualityDailyReport(reportDate) : Promise.resolve(null),
     ]);
     setOptions(nextOptions);
     setRejects(nextRejects);
     setReport(nextReport);
-  }, [canQualityInspect, canRepair, canReview, reportDate]);
+  }, [
+    adminDivisionId,
+    canQualityInspect,
+    canRepair,
+    canReview,
+    isAdmin,
+    reportDate,
+    selectedDivisionId,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -154,6 +198,7 @@ export default function QualityControl() {
     event.preventDefault();
     const form = repairForms[reject.id] ?? { attempted: "", repaired: "", outputItemId: "", notes: "" };
     const saved = await runAction(`repair-${reject.id}`, () => createWipRejectRepairAttempt(reject.id, {
+      ...(isAdmin && repairDivisionId !== null ? { divisionId: repairDivisionId } : {}),
       quantityAttempted: Number(form.attempted),
       quantityRepaired: Number(form.repaired),
       ...(Number(form.repaired) > 0 && reject.repairStage
@@ -178,6 +223,11 @@ export default function QualityControl() {
   const normalLines = report?.normalOutput ?? [];
   const repairLines = report?.repairOutput ?? [];
 
+  const chooseAdminDivision = (divisionId: number) => {
+    setAdminDivisionId(divisionId);
+    localStorage.setItem("rsv_divisi_workspace", String(divisionId));
+  };
+
   return (
     <main className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
       <header>
@@ -189,8 +239,46 @@ export default function QualityControl() {
         </p>
       </header>
 
+      <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+        <h2 className="font-semibold">Alur QC yang tersedia saat ini</h2>
+        <ol className="mt-2 list-inside list-decimal space-y-1">
+          <li>QC memilih item output tahap terakhir, lalu mencatat jumlah lolos dan reject.</li>
+          <li>Untuk reject, QC wajib memilih alasan dan tahap/divisi tempat proses diulang.</li>
+          <li>Petugas divisi terpilih mengambil tugas dan mencatat output rework; output lalu meneruskan routing sampai diperiksa QC di tahap terakhir.</li>
+        </ol>
+        <p className="mt-2">
+          QC 2 setelah Perakitan belum tersedia: routing aktif saat ini belum memiliki tahap Perakitan dan belum mencatat output varian Assembly.
+        </p>
+        <p className="mt-2">
+          Reject pada alur ini adalah rework melalui routing. Repair lokal untuk cacat kecil dengan pemeriksaan QC 2 ulang belum tersedia.
+        </p>
+        {canQualityInspect && canReview && (
+          <p className="mt-2">
+            Akun QC mengisi pemeriksaan. Petugas yang ditugaskan dapat mengerjakan repair melalui formulir pada daftar tugas di bawah.
+          </p>
+        )}
+      </section>
+
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {notice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+
+      {isAdmin && selectedDivisionId === undefined && (
+        <label className="block max-w-sm text-sm font-medium text-slate-700">
+          Divisi kerja rework
+          <select
+            className={field}
+            value={adminDivisionId ?? ""}
+            onChange={(event) => chooseAdminDivision(Number(event.target.value))}
+          >
+            <option value="">Pilih divisi kerja</option>
+            {adminDivisions
+              .filter((division) => division.nama.toLocaleLowerCase("id-ID") !== "qc")
+              .map((division) => (
+                <option key={division.id} value={division.id}>{division.nama}</option>
+              ))}
+          </select>
+        </label>
+      )}
 
       {canQualityInspect && (
         <>
@@ -249,7 +337,7 @@ export default function QualityControl() {
                     </select>
                   </label>
                   <label className="block text-sm font-medium text-slate-700">
-                    Ulangi proses mulai tahap
+                    Tahap mulai rework
                     <select className={field} value={repairStageId} onChange={(event) => setRepairStageId(event.target.value)} required>
                       <option value="">Pilih tahap dan divisi</option>
                       {selectedFinalItem?.repairStages.filter((stage) => stage.outputItems.length > 0).map((stage) => (
@@ -258,7 +346,7 @@ export default function QualityControl() {
                     </select>
                   </label>
                   <p className="text-xs text-amber-900 sm:col-span-2">
-                    Reject masuk ke antrean divisi tahap terpilih. Setelah repair, hasilnya dicatat sebagai output tahap tersebut
+                    Rework berarti proses produksi diulang dari tahap terpilih. Barang masuk ke antrean divisi tersebut; setelah dikerjakan, hasilnya dicatat sebagai output tahap
                     dan diteruskan melalui divisi routing berikutnya. QC memeriksa kembali setelah tahap terakhir.
                   </p>
                 </div>
@@ -347,7 +435,14 @@ export default function QualityControl() {
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Antrean repair divisi</h2>
-            <p className="mt-1 text-sm text-slate-500">Ambil reject, catat jumlah yang diperiksa dan jumlah yang berhasil diperbaiki.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Ambil tugas terlebih dahulu. Setelah tugas diambil oleh akun Anda, form input jumlah yang diperiksa, jumlah yang berhasil diperbaiki, output, dan catatan akan muncul pada kartu tugas.
+            </p>
+            {isAdmin && repairDivisionId !== null && (
+              <p className="mt-1 text-xs font-medium text-sky-800">
+                Divisi kerja aktif: {adminDivisions.find((division) => division.id === repairDivisionId)?.nama ?? `#${repairDivisionId}`}
+              </p>
+            )}
           </div>
           {queue.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Belum ada reject untuk divisi Anda.</p> : (
             <div className="space-y-3">
@@ -356,7 +451,11 @@ export default function QualityControl() {
                 const ownsTask = reject.claimedBy?.id === user?.id;
                 return (
                   <RejectCard key={reject.id} reject={reject} canReview={false} canRepair
-                    busyKey={busyKey} onClaim={() => void runAction(`claim-${reject.id}`, () => claimWipReject(reject.id), "Reject berhasil diambil oleh Anda.")}
+                    busyKey={busyKey} onClaim={() => void runAction(
+                      `claim-${reject.id}`,
+                      () => claimWipReject(reject.id, isAdmin ? repairDivisionId ?? undefined : undefined),
+                      "Reject berhasil diambil oleh Anda.",
+                    )}
                     ownTask={ownsTask}
                     repairForm={form}
                     onRepairFormChange={(update) => setRepairForm(reject.id, update)}
@@ -407,7 +506,11 @@ function RejectCard({
   onRepairFormChange?: (update: Partial<RepairForm>) => void;
   onRepair?: (event: FormEvent) => void;
 }) {
-  const pendingAttempt = reject.attempts.find((attempt) => attempt.reviewApproved === null && !attempt.reviewedAt);
+  const pendingAttempt = reject.status === "WAITING_QC"
+    ? reject.attempts.find((attempt) =>
+        attempt.outputItem === null && attempt.reviewApproved === null && !attempt.reviewedAt,
+      )
+    : undefined;
   const canClaim = canRepair && reject.status === "OPEN" && !reject.claimedBy;
   const isBusy = busyKey !== null;
   return (
@@ -449,6 +552,9 @@ function RejectCard({
 
       {canRepair && ownTask && reject.status === "IN_PROGRESS" && repairForm && onRepairFormChange && onRepair && (
         <form className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2" onSubmit={onRepair}>
+          <p className="text-sm font-semibold text-sky-900 sm:col-span-2">
+            Input hasil repair — isi jumlah yang dikerjakan dan jumlah yang berhasil diperbaiki.
+          </p>
           <label className="text-sm font-medium text-slate-700">
             Jumlah yang diperiksa
             <input className={field} type="number" min="1" step="1" required value={repairForm.attempted}
@@ -495,7 +601,9 @@ function RejectCard({
                 {dateTime(attempt.performedAt)} — {quantity(attempt.quantityRepaired)} {reject.item.unit} berhasil
                 {attempt.outputItem ? `; output ${attempt.outputItem.nama}` : ""}
                 {attempt.outputItem
-                  ? "; diteruskan ke routing"
+                  ? (
+                    "; output tercatat sebagai WIP untuk proses routing berikutnya."
+                  )
                   : attempt.reviewedAt
                     ? `; ${attempt.reviewApproved ? "disetujui QC" : "perlu repair ulang"}`
                     : "; menunggu QC"}

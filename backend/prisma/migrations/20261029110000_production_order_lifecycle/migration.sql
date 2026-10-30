@@ -1,0 +1,8 @@
+ALTER TABLE `ProductionOrder`
+  MODIFY `status` ENUM('DRAFT', 'AKTIF', 'SELESAI', 'BATAL', 'RELEASED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED') NOT NULL DEFAULT 'DRAFT';
+
+UPDATE `ProductionOrder` SET `status` = 'IN_PROGRESS' WHERE `status` = 'AKTIF';
+UPDATE `ProductionOrder` SET `status` = 'COMPLETED' WHERE `status` = 'SELESAI';
+
+ALTER TABLE `ProductionOrder`
+  MODIFY `status` ENUM('DRAFT', 'RELEASED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED', 'BATAL') NOT NULL DEFAULT 'DRAFT';

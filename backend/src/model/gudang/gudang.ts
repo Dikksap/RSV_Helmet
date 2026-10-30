@@ -26,26 +26,3 @@ export async function listGudang(statusScope?: string[] | null) {
   });
   return recountByScope(rows, statusScope);
 }
-
-export async function getGudangById(id: number, statusScope?: string[] | null) {
-  const row = await prisma.gudang.findUnique({ where: { id }, include: countBarang });
-  if (!row) return null;
-  const [recounted] = await recountByScope([row], statusScope);
-  return recounted;
-}
-
-export async function createGudang(data: { kode: string; name: string; isActive?: boolean }) {
-  return prisma.gudang.create({ data, include: countBarang });
-}
-
-export async function updateGudang(
-  id: number,
-  data: { kode?: string; name?: string; isActive?: boolean },
-) {
-  return prisma.gudang.update({ where: { id }, data, include: countBarang });
-}
-
-// Hapus gudang: FK SetNull menjaga barang + riwayat mutasi tetap ada.
-export async function deleteGudang(id: number) {
-  await prisma.gudang.delete({ where: { id } });
-}

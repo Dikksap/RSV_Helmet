@@ -23,7 +23,7 @@ export type CreateOrderInput = {
   nomor: string;
   periode: string;
   label?: string;
-  status?: "DRAFT" | "AKTIF" | "SELESAI" | "BATAL";
+  status?: "DRAFT" | "RELEASED" | "IN_PROGRESS" | "COMPLETED" | "CLOSED" | "BATAL";
   mulaiProduksi?: string | null;
   items?: CreateOrderItemInput[];
 };
@@ -83,7 +83,7 @@ export async function createOrder(data: CreateOrderInput) {
       nomor: data.nomor.trim(),
       periode: data.periode.trim(),
       label: data.label?.trim() || null,
-      status: data.status ?? "AKTIF",
+      status: data.status ?? "DRAFT",
       mulaiProduksi: data.mulaiProduksi ? new Date(data.mulaiProduksi) : null,
       totalQty: totalOf(items),
       items: {
@@ -103,7 +103,13 @@ export async function createOrder(data: CreateOrderInput) {
 
 export async function updateOrder(
   id: number,
-  data: { nomor?: string; periode?: string; label?: string; status?: "DRAFT" | "AKTIF" | "SELESAI" | "BATAL"; mulaiProduksi?: string | null },
+  data: {
+    nomor?: string;
+    periode?: string;
+    label?: string;
+    status?: "DRAFT" | "RELEASED" | "IN_PROGRESS" | "COMPLETED" | "CLOSED" | "BATAL";
+    mulaiProduksi?: string | null;
+  },
 ) {
   return prisma.productionOrder.update({
     where: { id },
@@ -246,8 +252,9 @@ export async function getRealisasi(
   return rows.map((r) => ({ tanggal: dayKey(r.tanggal), variantId: r.variantId, qty: r.qty, reject: r.reject }));
 }
 
-// Hitungan Barang FINISHGOOD per tanggal per variant sebagai saran
-// pengisian aktual. Hanya variant milik order yang dihitung.
+// Hitungan Barang per tanggal per variant sebagai saran pengisian aktual.
+// Semua status kecuali REGISTER dihitung (REGISTER = label baru dicetak,
+// belum masuk alur produksi). Hanya variant milik order yang dihitung.
 export async function getFinishgoodCounts(
   orderId: number,
   awal: Date | null,
@@ -256,7 +263,7 @@ export async function getFinishgoodCounts(
   const items = await prisma.productionOrderItem.findMany({ where: { orderId }, select: { variantId: true } });
   if (items.length === 0) return [];
   const conds = [
-    Prisma.sql`b.status = 'FINISHGOOD'`,
+    Prisma.sql`b.status <> 'REGISTER'`,
     ...(awal && akhir
       ? [Prisma.sql`b.tanggal >= ${startOfDay(awal)} AND b.tanggal <= ${endOfDay(akhir)}`]
       : []),

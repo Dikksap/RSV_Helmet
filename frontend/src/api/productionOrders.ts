@@ -2,7 +2,7 @@ import { authHeaders } from "./auth";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
-export type StatusProductionOrder = "DRAFT" | "AKTIF" | "SELESAI" | "BATAL";
+export type StatusProductionOrder = "DRAFT" | "RELEASED" | "IN_PROGRESS" | "COMPLETED" | "CLOSED" | "BATAL";
 
 export interface ProductionOrderListItem {
   id: number;

@@ -634,7 +634,7 @@ export default function JadwalTab({
                                 {d.unfilledTotal.toLocaleString(
                                   "id-ID"
                                 )}{" "}
-                                finishgood
+                                barang
                               </button>
                             )}
                           </div>

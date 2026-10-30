@@ -4,9 +4,7 @@ import {
   createQualityInspection,
   finalizeQualityInspection,
   getQualityInspection,
-  listQualityLots,
   listQualityInspections,
-  listQualityVariants,
   listRepairAssignments,
   reopenQualityInspection,
   reviewRepairAttempt,
@@ -16,25 +14,11 @@ import {
   type ReopenQualityLineInput,
 } from "../../model/quality/quality.js";
 import { InventoryError } from "../../model/inventory/inventory.js";
-import { parseTanggalBisnis, tanggalBisnis } from "../../lib/tanggalBisnis.js";
-import {
-  listProductionRoutings,
-  saveProductionRouting,
-  type ProductionRoutingStageInput,
-} from "../../model/quality/routing.js";
-import {
-  createWipStocktake,
-  getWipFlowReport,
-  listWipStocktakeOptions,
-  listWipStocktakes,
-} from "../../model/quality/wipFlow.js";
 import {
   claimWipReject,
   createRejectReason,
   createWipReject,
   createWipRejectRepairAttempt,
-  getQualityDailyReport,
-  inspectFinalWip,
   listRejectOptions,
   listRejectReasons,
   listWipRejects,
@@ -46,6 +30,54 @@ function positiveInt(value: unknown): number | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+function canRepairWork(req: Request): boolean {
+  const access = req.access;
+  return !!access && (
+    access.role === "admin" ||
+    access.role === "produksi" ||
+    access.permissions.includes("REPAIR_WORK")
+  );
+}
+
+function repairDivisionForRequest(
+  req: Request,
+  res: Response,
+  requestedValue: unknown,
+): number | null {
+  const access = req.access;
+  if (!access) {
+    res.status(401).json({ message: "Token tidak ditemukan" });
+    return null;
+  }
+
+  if (access.role === "admin") {
+    const divisionId = positiveInt(requestedValue) ?? access.divisiId ?? null;
+    if (!divisionId) {
+      res.status(400).json({ message: "Pilih divisi kerja sebelum memproses rework" });
+      return null;
+    }
+    return divisionId;
+  }
+
+  if (!canRepairWork(req)) {
+    res.status(403).json({ message: "Tidak memiliki akses pekerjaan rework" });
+    return null;
+  }
+  if (!access.divisiId) {
+    res.status(403).json({ message: "Akun produksi harus terhubung ke divisi untuk mengerjakan rework" });
+    return null;
+  }
+
+  if (requestedValue !== undefined && requestedValue !== null) {
+    const requestedDivisionId = positiveInt(requestedValue);
+    if (requestedDivisionId !== access.divisiId) {
+      res.status(403).json({ message: "Rework hanya dapat dikerjakan pada divisi akun Anda" });
+      return null;
+    }
+  }
+  return access.divisiId;
 }
 
 function decimal(value: unknown): number {
@@ -129,46 +161,24 @@ export async function createWipRejectHandler(req: Request, res: Response) {
   }
 }
 
-export async function inspectFinalWipHandler(req: Request, res: Response) {
-  if (!isQcUser(req)) return res.status(403).json({ message: "Menu ini khusus petugas QC" });
-  const itemId = positiveInt(req.body?.itemId);
-  const passedQuantity = decimal(req.body?.passedQuantity);
-  const rejectedQuantity = decimal(req.body?.rejectedQuantity);
-  const reasonId = req.body?.reasonId == null ? undefined : positiveInt(req.body.reasonId) ?? undefined;
-  const repairStageId = req.body?.repairStageId == null ? undefined : positiveInt(req.body.repairStageId) ?? undefined;
-  if (
-    !itemId ||
-    !Number.isSafeInteger(passedQuantity) ||
-    passedQuantity < 0 ||
-    !Number.isSafeInteger(rejectedQuantity) ||
-    rejectedQuantity < 0 ||
-    passedQuantity + rejectedQuantity <= 0 ||
-    (rejectedQuantity > 0 && (!reasonId || !repairStageId))
-  ) {
-    return res.status(400).json({ message: "Item, jumlah lolos/reject, serta alasan dan tahap repair jika ada reject wajib valid" });
-  }
-  try {
-    return res.status(201).json(await inspectFinalWip({
-      itemId,
-      passedQuantity,
-      rejectedQuantity,
-      reasonId,
-      repairStageId,
-      inspectedById: req.user!.id,
-    }));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
 export async function listWipRejectsHandler(req: Request, res: Response) {
   const isAdmin = req.access?.role === "admin";
-  const isRepairWorker = req.access?.permissions.includes("REPAIR_WORK") ?? false;
+  const isRepairWorker = canRepairWork(req);
   if (!isQcUser(req) && !isRepairWorker) {
     return res.status(403).json({ message: "Tidak memiliki akses antrean reject" });
   }
   const divisionId = req.access?.divisiId ?? null;
-  const divisionFilter = isAdmin || isQcUser(req) ? undefined : divisionId ?? undefined;
+  const requestedDivisionId = req.query.divisionId === undefined
+    ? undefined
+    : positiveInt(req.query.divisionId);
+  if (req.query.divisionId !== undefined && !requestedDivisionId) {
+    return res.status(400).json({ message: "Filter divisi rework tidak valid" });
+  }
+  const divisionFilter = isAdmin
+    ? requestedDivisionId ?? undefined
+    : isQcUser(req)
+      ? undefined
+      : divisionId ?? undefined;
   if (isRepairWorker && !isAdmin && !isQcUser(req) && !divisionId) {
     return res.status(403).json({ message: "Akun belum terhubung ke divisi repair" });
   }
@@ -196,11 +206,9 @@ export async function listWipRejectsHandler(req: Request, res: Response) {
 
 export async function claimWipRejectHandler(req: Request, res: Response) {
   const id = rejectId(req.params.id);
-  const divisionId = req.access?.divisiId;
   if (!id) return res.status(400).json({ message: "Reject tidak valid" });
-  if (!divisionId || req.access?.permissions.includes("REPAIR_WORK") !== true) {
-    return res.status(403).json({ message: "Akun repair harus terhubung ke divisi" });
-  }
+  const divisionId = repairDivisionForRequest(req, res, req.body?.divisionId);
+  if (!divisionId) return;
   try {
     return res.json(await claimWipReject(id, req.user!.id, divisionId));
   } catch (error) {
@@ -210,11 +218,12 @@ export async function claimWipRejectHandler(req: Request, res: Response) {
 
 export async function createWipRejectRepairAttemptHandler(req: Request, res: Response) {
   const id = rejectId(req.params.id);
-  const divisionId = req.access?.divisiId;
+  const divisionId = repairDivisionForRequest(req, res, req.body?.divisionId);
   const outputItemId = req.body?.outputItemId == null ? undefined : positiveInt(req.body.outputItemId) ?? undefined;
   const quantityAttempted = decimal(req.body?.quantityAttempted);
   const quantityRepaired = decimal(req.body?.quantityRepaired);
-  if (!id || !divisionId) return res.status(400).json({ message: "Reject atau divisi repair tidak valid" });
+  if (!id) return res.status(400).json({ message: "Reject tidak valid" });
+  if (!divisionId) return;
   if (typeof req.body?.notes !== "undefined" && typeof req.body.notes !== "string") {
     return res.status(400).json({ message: "Catatan repair tidak valid" });
   }
@@ -251,173 +260,6 @@ export async function reviewWipRejectRepairHandler(req: Request, res: Response) 
       approved: req.body.approved,
       notes: req.body.notes,
     }));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function getQualityDailyReportHandler(req: Request, res: Response) {
-  const date = typeof req.query.date === "string" ? req.query.date : tanggalBisnis(new Date());
-  const parsedDate = parseTanggalBisnis(date);
-  if (!parsedDate || tanggalBisnis(parsedDate) !== date) {
-    return res.status(400).json({ message: "Tanggal laporan harus berformat YYYY-MM-DD" });
-  }
-  try {
-    return res.json(await getQualityDailyReport(date));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function listQualityLotsHandler(_req: Request, res: Response) {
-  try {
-    return res.json(await listQualityLots());
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function listProductionRoutingsHandler(_req: Request, res: Response) {
-  try {
-    return res.json(await listProductionRoutings());
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function saveProductionRoutingHandler(req: Request, res: Response) {
-  const rawStages = req.body?.stages;
-  if (!Array.isArray(rawStages)) {
-    return res.status(400).json({ message: "Tahap routing wajib diisi" });
-  }
-  const stages: ProductionRoutingStageInput[] = [];
-  for (const raw of rawStages) {
-    if (!raw || typeof raw !== "object") {
-      return res.status(400).json({ message: "Tahap routing tidak valid" });
-    }
-    const stage = raw as Record<string, unknown>;
-    const divisiId = positiveInt(stage.divisiId);
-    const parseItemIds = (value: unknown) => Array.isArray(value)
-      ? value.map(positiveInt)
-      : [];
-    const inputItemIds = parseItemIds(stage.inputItemIds);
-    const outputItemIds = parseItemIds(stage.outputItemIds);
-    if (
-      typeof stage.stage !== "string" ||
-      !stage.stage.trim() ||
-      stage.stage.trim().length > 80 ||
-      !divisiId ||
-      inputItemIds.length === 0 ||
-      outputItemIds.length === 0 ||
-      inputItemIds.some((itemId) => itemId === null) ||
-      outputItemIds.some((itemId) => itemId === null)
-    ) {
-      return res.status(400).json({ message: "Nama tahap, divisi, dan Item input/output routing wajib valid" });
-    }
-    stages.push({
-      stage: stage.stage.trim(),
-      divisiId,
-      inputItemIds: inputItemIds as number[],
-      outputItemIds: outputItemIds as number[],
-    });
-  }
-  try {
-    return res.status(201).json(await saveProductionRouting({ stages }));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-function parseReportDate(value: unknown, boundary: "from" | "to"): Date | null {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T${boundary === "from" ? "00:00:00.000" : "23:59:59.999"}Z`);
-  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? null : date;
-}
-
-export async function getWipFlowReportHandler(req: Request, res: Response) {
-  const to = req.query.to === undefined ? new Date() : parseReportDate(req.query.to, "to");
-  const from = req.query.from === undefined
-    ? new Date(Date.now() - 29 * 24 * 60 * 60 * 1000)
-    : parseReportDate(req.query.from, "from");
-  const divisionId = req.query.divisionId === undefined ? undefined : positiveInt(req.query.divisionId) ?? undefined;
-  const itemId = req.query.itemId === undefined ? undefined : positiveInt(req.query.itemId) ?? undefined;
-  if (!from || !to) {
-    return res.status(400).json({ message: "Tanggal laporan harus berformat YYYY-MM-DD yang valid" });
-  }
-  if ((req.query.divisionId !== undefined && !divisionId) || (req.query.itemId !== undefined && !itemId)) {
-    return res.status(400).json({ message: "Filter divisi atau item tidak valid" });
-  }
-  if (to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) {
-    return res.status(400).json({ message: "Rentang laporan maksimal 366 hari" });
-  }
-  try {
-    return res.json(await getWipFlowReport({ from, to, divisionId, itemId }));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function listWipStocktakeOptionsHandler(_req: Request, res: Response) {
-  try {
-    return res.json(await listWipStocktakeOptions());
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function listWipStocktakesHandler(req: Request, res: Response) {
-  const page = req.query.page === undefined ? 1 : positiveInt(req.query.page);
-  const limit = req.query.limit === undefined ? 20 : positiveInt(req.query.limit);
-  if (!page || !limit || limit > 100) {
-    return res.status(400).json({ message: "page harus positif dan limit harus 1 sampai 100" });
-  }
-  try {
-    return res.json(await listWipStocktakes(page, limit));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function createWipStocktakeHandler(req: Request, res: Response) {
-  const locationId = positiveInt(req.body?.locationId);
-  const rawItems = req.body?.items;
-  const notes = req.body?.notes;
-  if (!locationId || !Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 200) {
-    return res.status(400).json({ message: "Lokasi dan 1–200 baris hitung WIP wajib diisi" });
-  }
-  if (notes !== undefined && notes !== null && typeof notes !== "string") {
-    return res.status(400).json({ message: "Catatan sesi harus berupa teks" });
-  }
-  const items: Array<{ itemId: number; physicalQuantity: number; reason: string }> = [];
-  for (const raw of rawItems) {
-    if (!raw || typeof raw !== "object") {
-      return res.status(400).json({ message: "Baris opname tidak valid" });
-    }
-    const row = raw as Record<string, unknown>;
-    const itemId = positiveInt(row.itemId);
-    const physicalQuantity = typeof row.physicalQuantity === "number" ||
-      (typeof row.physicalQuantity === "string" && row.physicalQuantity.trim() !== "")
-      ? Number(row.physicalQuantity)
-      : Number.NaN;
-    if (!itemId || !Number.isFinite(physicalQuantity) || typeof row.reason !== "string") {
-      return res.status(400).json({ message: "Setiap baris harus memiliki item, jumlah fisik, dan alasan koreksi" });
-    }
-    items.push({ itemId, physicalQuantity, reason: row.reason });
-  }
-  if (!req.user?.id) return res.status(401).json({ message: "Token tidak ditemukan" });
-  try {
-    return res.status(201).json(await createWipStocktake(
-      { locationId, items, notes: typeof notes === "string" ? notes : null },
-      req.user.id,
-    ));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function listQualityVariantsHandler(_req: Request, res: Response) {
-  try {
-    return res.json(await listQualityVariants());
   } catch (error) {
     return respondError(res, error);
   }

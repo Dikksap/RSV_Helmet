@@ -4,7 +4,6 @@ const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(),
   stokItemMutasi: { groupBy: vi.fn() },
   item: { findFirst: vi.fn(), findMany: vi.fn() },
-  hasilProduksiHarian: { findUnique: vi.fn() },
 }));
 
 const stokMock = vi.hoisted(() => ({
@@ -37,7 +36,6 @@ vi.mock("../src/model/permintaanBarang/permintaanBarang.js", () => ({
 
 import {
   createHasilProduksi,
-  getHasilProduksiById,
   HasilProduksiError,
   INPUT_TIDAK_VALID,
   WipKurangError,
@@ -59,6 +57,7 @@ let routingStages: Array<{
   inputItems: Array<{ itemId: number }>;
   outputItems: Array<{ itemId: number }>;
 }> = [];
+let workOrderFixture: unknown = null;
 let updateCount = 1;
 let tx: ReturnType<typeof buatTx>;
 
@@ -93,6 +92,9 @@ function buatTx() {
     },
     productionRoutingStage: {
       findMany: vi.fn(async () => routingStages),
+    },
+    productionWorkOrder: {
+      findUnique: vi.fn(async () => workOrderFixture),
     },
     hasilProduksiPemakaian: {
       create: vi.fn().mockResolvedValue({}),
@@ -135,6 +137,7 @@ beforeEach(() => {
   wipRows = [{ id: 10, jumlahSisa: 100, jumlahDipakai: 0 }];
   wipRowsByItem = new Map();
   routingStages = [];
+  workOrderFixture = null;
   updateCount = 1;
   stokMock.getSaldo.mockResolvedValue(1_000);
   stokMock.catatMutasi.mockResolvedValue({});
@@ -186,6 +189,43 @@ describe("createHasilProduksi", () => {
       { hasilProduksiHarianItemId: 101, pemakaianMaterialItemId: 10, jumlah: 5 },
       { hasilProduksiHarianItemId: 102, pemakaianMaterialItemId: 30, jumlah: 4 },
     ]);
+  });
+
+  it("mengikat hasil produksi ke work order dan memakai routing tahap yang ditetapkan", async () => {
+    routingStages = [{
+      inputItems: [{ itemId: 1 }],
+      outputItems: [{ itemId: 2 }],
+    }];
+    workOrderFixture = {
+      id: 7,
+      orderId: 55,
+      routingStageId: 3,
+      status: "IN_PROGRESS",
+      routingStage: {
+        divisiId: 1,
+        inputItems: [{ itemId: 1 }],
+        outputItems: [{ itemId: 2 }],
+      },
+    };
+
+    await createHasilProduksi({
+      divisiId: 1,
+      productionWorkOrderId: 7,
+      items: [
+        { itemId: 1, tipe: "MASUK", jumlah: 5 },
+        { itemId: 2, tipe: "HASIL", jumlah: 4 },
+      ],
+    });
+
+    expect(tx.hasilProduksiHarian.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        orderId: 55,
+        productionWorkOrderId: 7,
+      }),
+    }));
+    expect(tx.productionRoutingStage.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 3 }),
+    }));
   });
 
   it("WIP cukup: HASIL SM masuk WIP, KELUAR tetap mutasi, konsumsi FIFO sesuai tiap MASUK", async () => {
@@ -501,99 +541,5 @@ describe("createHasilProduksi", () => {
 
     expect(tx.hasilProduksiHarian.create).not.toHaveBeenCalled();
     expect(stokMock.catatMutasi).not.toHaveBeenCalled();
-  });
-});
-
-describe("getHasilProduksiById", () => {
-  it("menyertakan konsumsi WIP pada detail produksi", async () => {
-    prismaMock.hasilProduksiHarian.findUnique.mockResolvedValue(null);
-
-    await getHasilProduksiById(10);
-
-    const args = prismaMock.hasilProduksiHarian.findUnique.mock.calls[0][0] as {
-      include: { items: { include: { pemakaian: unknown; pemakaianMaterialItem: unknown } } };
-    };
-    expect(args.include.items.include.pemakaian).toEqual({
-      select: {
-        id: true,
-        jumlah: true,
-        pemakaianMaterialItem: {
-          select: {
-            id: true,
-            pemakaian: {
-              select: {
-                tanggal: true,
-                divisi: { select: { id: true, nama: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-    expect(args.include.items.include.pemakaianMaterialItem).toEqual({
-      select: {
-        id: true,
-        jumlahDiterima: true,
-        jumlahDipakai: true,
-        jumlahSisa: true,
-        satuan: true,
-        pemakaian: {
-          select: {
-            id: true,
-            nomor: true,
-            tanggal: true,
-            sumber: true,
-            divisi: { select: { id: true, nama: true } },
-          },
-        },
-      },
-    });
-  });
-
-  it("memetakan hasil WIP ke wipMasuk", async () => {
-    const wipMasuk = {
-      id: 50,
-      jumlahDiterima: 5,
-      jumlahDipakai: 0,
-      jumlahSisa: 5,
-      satuan: "pcs",
-      pemakaian: {
-        id: 9,
-        nomor: "WIP-HP-20261022-0001",
-        tanggal: new Date("2026-10-21T17:00:00.000Z"),
-        sumber: "HASIL_PRODUKSI",
-        divisi: { id: 1, nama: "Buffing" },
-      },
-    };
-    prismaMock.hasilProduksiHarian.findUnique.mockResolvedValue({
-      id: 10,
-      nomor: "HP-20261022-0001",
-      tanggalProduksi: new Date("2026-10-21T17:00:00.000Z"),
-      divisiId: 1,
-      keterangan: null,
-      createdAt: new Date("2026-10-21T17:00:00.000Z"),
-      updatedAt: new Date("2026-10-21T17:00:00.000Z"),
-      divisi: { id: 1, nama: "Buffing" },
-      items: [
-        {
-          id: 102,
-          hasilProduksiHarianId: 10,
-          itemId: 2,
-          tipe: "HASIL",
-          jumlah: 5,
-          keterangan: null,
-          createdAt: new Date("2026-10-21T17:00:00.000Z"),
-          item: item(2),
-          stokMutasi: null,
-          pemakaian: [],
-          pemakaianMaterialItem: wipMasuk,
-        },
-      ],
-    });
-
-    const result = await getHasilProduksiById(10);
-
-    expect(result?.items[0]).toMatchObject({ wipMasuk });
-    expect(result?.items[0]).not.toHaveProperty("pemakaianMaterialItem");
   });
 });

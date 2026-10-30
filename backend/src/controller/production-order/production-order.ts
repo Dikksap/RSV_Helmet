@@ -31,7 +31,7 @@ import {
   type ScheduleOverrides,
 } from "../../model/production-order/schedule.js";
 
-const VALID_STATUS = ["DRAFT", "AKTIF", "SELESAI", "BATAL"] as const;
+const VALID_STATUS = ["DRAFT", "RELEASED", "IN_PROGRESS", "COMPLETED", "CLOSED", "BATAL"] as const;
 
 function validId(v: string): number | null {
   const n = Number(v);
@@ -82,7 +82,7 @@ export async function createOrderHandler(req: Request, res: Response) {
     if (!periode || typeof periode !== "string" || !periode.trim())
       return res.status(400).json({ message: "Field 'periode' wajib diisi" });
     if (status !== undefined && !VALID_STATUS.includes(status))
-      return res.status(400).json({ message: "Status harus DRAFT/AKTIF/SELESAI/BATAL" });
+      return res.status(400).json({ message: "Status harus DRAFT/RELEASED/IN_PROGRESS/COMPLETED/CLOSED/BATAL" });
     if (items !== undefined) {
       if (!Array.isArray(items)) return res.status(400).json({ message: "Field 'items' harus array" });
       for (const it of items) {
@@ -106,7 +106,7 @@ export async function updateOrderHandler(req: Request, res: Response) {
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
     const { nomor, periode, label, status, mulaiProduksi } = req.body;
     if (status !== undefined && !VALID_STATUS.includes(status))
-      return res.status(400).json({ message: "Status harus DRAFT/AKTIF/SELESAI/BATAL" });
+      return res.status(400).json({ message: "Status harus DRAFT/RELEASED/IN_PROGRESS/COMPLETED/CLOSED/BATAL" });
     if (nomor !== undefined && (typeof nomor !== "string" || !nomor.trim()))
       return res.status(400).json({ message: "Field 'nomor' tidak valid" });
     if (periode !== undefined && (typeof periode !== "string" || !periode.trim()))

@@ -8,11 +8,10 @@ import {
   claimWipReject,
   createWipReject,
   createWipRejectRepairAttempt,
-  inspectFinalWip,
   WipRejectError,
 } from "../src/model/quality/wipReject.js";
 
-describe("QC Akhir reject validation", () => {
+describe("WIP reject and repair validation", () => {
   it("rejects invalid input before opening a database transaction", async () => {
     const transaction = vi.fn();
     Object.assign(prismaMock, { $transaction: transaction });
@@ -78,22 +77,6 @@ describe("QC Akhir reject validation", () => {
     })).rejects.toMatchObject({
       code: "INVALID_INPUT",
     });
-  });
-
-  it("does not allow an empty final QC result", async () => {
-    const transaction = vi.fn();
-    Object.assign(prismaMock, { $transaction: transaction });
-
-    await expect(inspectFinalWip({
-      itemId: 1,
-      passedQuantity: 0,
-      rejectedQuantity: 0,
-      inspectedById: 4,
-    })).rejects.toMatchObject({
-      code: "INVALID_INPUT",
-    });
-
-    expect(transaction).not.toHaveBeenCalled();
   });
 
   it("prevents a repair division from claiming another division's reject", async () => {

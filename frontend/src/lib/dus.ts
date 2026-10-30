@@ -19,6 +19,12 @@ export function isDusPengganti(g: DusLike): boolean {
 
 export const DUS_CAPACITY = 8;
 
+// Nama dus berisi angka ("5", "DUS 12"): urut numerik menaik, non-angka di belakang.
+export function compareDus(a: { nama: string }, b: { nama: string }) {
+  const num = (s: string) => Number(s.match(/\d+(\.\d+)?/)?.[0] ?? Number.POSITIVE_INFINITY);
+  return num(a.nama) - num(b.nama) || a.nama.localeCompare(b.nama, "id", { numeric: true });
+}
+
 export function nextDusName(groups: DusLike[], pengganti: boolean): string {
   const prefix = pengganti ? "DUS PENGGANTI" : "DUS";
   let max = 0;

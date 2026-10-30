@@ -21,7 +21,7 @@ interface Props {
   onChanged: () => void;
 }
 
-const ORDER_STATUS: StatusProductionOrder[] = ["DRAFT", "AKTIF", "SELESAI", "BATAL"];
+const ORDER_STATUS: StatusProductionOrder[] = ["DRAFT", "RELEASED", "IN_PROGRESS", "COMPLETED", "CLOSED", "BATAL"];
 
 export default function MasterTab({ orderId, detail, loading, onChanged }: Props) {
   // Salinan lokal: update (>Enter) langsung tampil tanpa refetch + loading.

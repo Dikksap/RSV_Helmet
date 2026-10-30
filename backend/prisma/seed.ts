@@ -28,7 +28,14 @@ async function main() {
     { name: "Petugas Gudang", email: "gudang@example.com", password: "gudang123",   role: "gudang" },
     { name: "Operator Produksi", email: "produksi@example.com", password: "produksi123", role: "produksi" },
     { name: "Petugas QC",   email: "qc@example.com",       password: "qc123",       role: "qc" },
+    { name: "Supervisor Inventory", email: "supervisor@example.com", password: "supervisor123", role: "supervisor" },
   ];
+
+  await prisma.role.upsert({
+    where: { kode: "supervisor" },
+    update: { nama: "Supervisor" },
+    create: { kode: "supervisor", nama: "Supervisor" },
+  });
 
   for (const user of users) {
     const hashedPassword = await bcrypt.hash(user.password, 10);
@@ -101,11 +108,8 @@ async function main() {
       "INVENTORY_VIEW",
       "INVENTORY_MOVE",
       "INVENTORY_ADJUST",
-      "SHIPMENT_VIEW",
-      "SHIPMENT_MANAGE",
-      "SHIPMENT_POST",
-      "SHIPMENT_RETURN",
     ],
+    supervisor: ["INVENTORY_VIEW", "INVENTORY_ADJUST_APPROVE"],
   };
 
   const allStatus = statusSeed.map((s) => s.kode);
@@ -132,6 +136,7 @@ async function main() {
     { kode: "INVENTORY_VIEW", nama: "Lihat saldo dan mutasi inventory", kelompok: "INVENTORY" },
     { kode: "INVENTORY_MOVE", nama: "Memindahkan stok antar lokasi", kelompok: "INVENTORY" },
     { kode: "INVENTORY_ADJUST", nama: "Mencatat saldo awal dan penyesuaian inventory", kelompok: "INVENTORY" },
+    { kode: "INVENTORY_ADJUST_APPROVE", nama: "Menyetujui atau menolak adjustment inventory", kelompok: "INVENTORY" },
     { kode: "INVENTORY_LOCATION_MANAGE", nama: "Memetakan master ke lokasi inventory", kelompok: "INVENTORY" },
     { kode: "QUALITY_VIEW", nama: "Melihat inspeksi QC", kelompok: "QUALITY" },
     { kode: "QUALITY_INSPECT", nama: "Mencatat hasil inspeksi QC", kelompok: "QUALITY" },
@@ -140,10 +145,6 @@ async function main() {
     { kode: "QUALITY_ROUTING_MANAGE", nama: "Mengelola routing proses QC dan BOM", kelompok: "QUALITY" },
     { kode: "REPAIR_ASSIGN", nama: "Menugaskan perbaikan hasil QC", kelompok: "REPAIR" },
     { kode: "REPAIR_WORK", nama: "Mengerjakan penugasan repair sesuai divisi", kelompok: "REPAIR" },
-    { kode: "SHIPMENT_VIEW", nama: "Melihat shipment pelanggan", kelompok: "SHIPMENT" },
-    { kode: "SHIPMENT_MANAGE", nama: "Mengelola draft shipment pelanggan", kelompok: "SHIPMENT" },
-    { kode: "SHIPMENT_POST", nama: "Memosting pengiriman pelanggan", kelompok: "SHIPMENT" },
-    { kode: "SHIPMENT_RETURN", nama: "Mencatat retur shipment pelanggan", kelompok: "SHIPMENT" },
   ]) {
     await prisma.permission.upsert({
       where: { kode: permission.kode },

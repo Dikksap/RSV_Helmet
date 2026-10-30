@@ -66,6 +66,21 @@ const ADMIN_MODULES: Module[] = [
   },
 ];
 
+const PRODUKSI_MODULES: Module[] = [
+  {
+    title: "Produksi",
+    desc: "Catat hasil produksi harian",
+    to: "/produksi/home",
+    icon: icon(
+      <>
+        <path d="M3 21h18" />
+        <path d="M5 21V8l5 3V8l5 3V5l5 3v13" />
+        <path d="M9 21v-4h6v4" />
+      </>,
+    ),
+  },
+];
+
 const LOCK_ICON = (
   <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z" />
@@ -229,7 +244,9 @@ function ScanSheet({ onClose }: { onClose: () => void }) {
 function LandingPage() {
   const [role, setRole] = useState<string | undefined>(() => getUser()?.role);
   const admin = role === "admin";
-  const dashboardTo = role === "admin" ? "/admin/home" : role === "gudang" ? "/gudang/home" : null;
+  const canProduksi = role === "produksi" || admin;
+  const dashboardTo =
+    role === "admin" ? "/admin/home" : role === "gudang" ? "/gudang/home" : role === "produksi" ? "/produksi/home" : null;
   const [scanOpen, setScanOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const user = role ? getUser() : null;
@@ -356,6 +373,7 @@ function LandingPage() {
         </section>
 
         <ModuleGroup title="Operator" modules={OPERATOR_MODULES} locked={!role} />
+        <ModuleGroup title="Produksi" modules={PRODUKSI_MODULES} locked={!canProduksi} />
         <ModuleGroup title="Admin" modules={ADMIN_MODULES} locked={!admin} />
       </main>
 

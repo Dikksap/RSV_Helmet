@@ -9,6 +9,7 @@ import {
   login,
   setAuth,
 } from "../../api/auth";
+import { getApiErrorMessage } from "../../api/errors";
 import logoUrl from "../../assets/logo.png";
 
 const inputClass =
@@ -44,7 +45,7 @@ function Login() {
 
       navigate(homeForRole(response.user.role), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+      setError(getApiErrorMessage(err, "Terjadi kesalahan saat masuk. Silakan coba kembali."));
     } finally {
       setIsLoading(false);
     }

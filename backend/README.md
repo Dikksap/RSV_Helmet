@@ -90,6 +90,8 @@ Jangan gunakan `migrate dev` pada database produksi. Image produksi menjalankan 
 
 Seed utama juga membuat data contoh alur WIP berbasis workflow aplikasi: RAW020 → SM0025 (Buffing), SM0025 → SM0026/SM0027/SM0028 (Base Coat), 7 varian keluaran Decal, lalu SM0001–SM0008 (Top Coat). Seed menetapkan mapping untuk 8 varian warna, membuat routing aktif untuk seluruh kombinasi ukuran produk beserta BOM seed, serta mencatat hasil produksi dan transfer melalui workflow agar lot dan ledger terbentuk. Pembagian contoh Decal adalah: Base Coat hitam → solid black dan motif BOB/Carbon; putih → solid white dan motif Nation; platinum grey → solid platinum dan motif Redline. Black doff dan black glossy sama-sama memakai output decal hitam, tetapi tetap menghasilkan item Top Coat yang berbeda. Data ini adalah contoh konsisten untuk pengujian, bukan pengganti konfirmasi BOM produksi aktual. Seed `seed-hasil-produksi-harian.ts` memanggil fixture alur yang sama; fixture lama yang membuat perpindahan tanpa posting ledger sudah dihapus.
 
+Seed juga menyediakan akun demo **Supervisor Inventory** (`supervisor@example.com` / `supervisor123`) dengan permission `INVENTORY_ADJUST_APPROVE`. Kredensial seed hanya untuk development dan validasi lokal; jangan gunakan akun/password demo di lingkungan produksi.
+
 ## Routing API
 
 Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan file router di `src/routes/`.
@@ -105,9 +107,8 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 | `/api/colors` | `colors.ts` |
 | `/api/divisi` | `divisi.ts` |
 | `/api/gudang` | `gudang.ts` |
-| `/api/hasil-produksi-harian` | `hasil-produksi-harian.ts` |
 | `/api/integrasi-jurnal` | `integrasi-jurnal.ts` |
-| `/api/inventory` | `inventory.ts` |
+| `/api/inventory` | `inventory.ts` (workflow adjustment saja) |
 | `/api/items` | `item.ts` |
 | `/api/karyawan` | `karyawan.ts` |
 | `/api/mutasi-gudang` | `mutasiGudang.ts` |
@@ -120,7 +121,6 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 | `/api/quality` | `quality.ts` |
 | `/api/roles` | `role.ts` |
 | `/api/sizes` | `sizes.ts` |
-| `/api/shipments` | `shipment.ts` |
 | `/api/status-barang` | `statusBarang.ts` |
 | `/api/status-transition` | `statusTransition.ts` |
 | `/api/stok-opname` | `stokOpname.ts` |
@@ -128,25 +128,18 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 | `/api/subassemblies` | `subassembly.ts` |
 | `/api/users` | `user.ts` |
 | `/api/variant-produk` | `variant-produk.ts` |
-| `/api/wip-transfer` | `wip-transfer.ts` |
 
-### API workflow inventory, QC, dan shipment
+### API inventory dan quality yang masih aktif
 
-Workflow berikut tersedia di backend dan seluruh endpoint memerlukan autentikasi serta permission yang sesuai. Pada 2026-10-25, seluruh migration ERP, routing produksi, dan opname WIP telah diterapkan pada database Docker lokal `express_api`, lalu database di-seed ulang dengan fixture alur produksi per divisi. Ini bukan database produksi; jangan menjalankan reset atau cutover pada database lain tanpa persetujuan tersendiri.
+Endpoint UI eksklusif yang dihapus: seluruh `/api/shipments`, endpoint saldo/lokasi/mutasi pada `/api/inventory` (hanya workflow `/adjustments` yang dipertahankan untuk persetujuan supervisor), seluruh `/api/hasil-produksi-harian`, seluruh `/api/wip-transfer`, `GET /api/quality/daily-report`, `POST /api/quality/final-inspections`, seluruh `/api/quality/wip-flow` dan `/api/quality/wip-stocktake`, `GET /api/quality/variants`, `PUT /api/quality/routings`, serta endpoint detail/CRUD `/api/gudang/:id` dan penulisan `/api/gudang`. Skema, tabel, data historis, dan migration terkait sengaja dipertahankan. Helper `src/model/inventory/inventory.ts` tetap digunakan internal untuk posting ledger dan validasi saldo; API `/api/mutasi-gudang` dan `GET /api/gudang` juga tetap tersedia untuk workflow gudang aktif dan pilihan gudang pada mutasi.
 
-| Prefix | Endpoint utama | Permission |
-| --- | --- | --- |
-| `/api/inventory` | `GET /locations`, `GET /balances`, `GET /movements`; pemetaan lokasi dan mutasi/reversal | `INVENTORY_VIEW`, `INVENTORY_LOCATION_MANAGE`, `INVENTORY_MOVE`, `INVENTORY_ADJUST` |
-| `/api/quality` | `GET /wip-rejects/options`, alasan reject, antrean reject, claim/attempt/review repair; `GET /daily-report`; pengaturan routing terpisah; `GET /wip-flow`; endpoint opname WIP | `QUALITY_VIEW`, `QUALITY_ROUTING_MANAGE`, `QUALITY_INSPECT`, `QUALITY_FINALIZE`, `REPAIR_WORK`, `INVENTORY_VIEW`, `INVENTORY_ADJUST` |
-| `/api/shipments` | daftar/detail/draft/post/cancel shipment, `POST /finished-goods/receive`, `POST /returns` | `SHIPMENT_VIEW`, `SHIPMENT_MANAGE`, `SHIPMENT_POST`, `SHIPMENT_RETURN` |
+API quality yang masih aktif hanya menyediakan workflow reject/rework serta `GET /api/quality/routings`. Reject/rework dipertahankan sebagai workflow QC/admin bersama yang juga digunakan halaman Quality Control aktif; tidak ada prefix quality tersendiri untuk Divisi. Endpoint baca routing dipertahankan karena Work Order tahap aktif menggunakannya untuk memilih tahap. Penulisan konfigurasi routing, final-inspection mandiri, laporan QC harian, laporan WIP, dan opname WIP tidak lagi diekspos.
 
-Input Produksi Harian menerima beberapa item MASUK dan HASIL dalam satu transaksi. Jumlah tiap MASUK dikonsumsi dari saldo WIP item yang sama secara FIFO; sistem memvalidasi ketersediaan WIP per item. Jumlah input dan hasil tidak dijumlahkan untuk dibandingkan karena tiap item dapat memiliki satuan berbeda. Jika routing aktif, seluruh item input dan output WIP yang dicatat harus sesuai dengan konfigurasi tahap divisi tersebut.
+Penyesuaian saldo operasional internal wajib tetap melalui helper ledger: gerakan idempoten, pemeriksaan saldo lokasi/lot, dan riwayat append-only tetap diberlakukan oleh model inventory.
 
-QC Akhir memakai alur reject WIP yang terpisah dari ProductVariant: petugas QC memilih item output tahap terakhir yang memiliki stok menunggu QC, lalu membagi jumlahnya menjadi lolos dan reject. Jumlah lolos dipindahkan lewat ledger ke lokasi inventori divisi QC. Untuk reject, petugas memilih alasan serta tahap/divisi routing tempat repair dimulai; reject dipindahkan dari divisi tahap terakhir ke lokasi divisi perbaikan dan masuk ke antrean repair. Divisi repair mengambil tugas dan mencatat jumlah diperiksa/berhasil serta output tahap yang akan dibuat. Output repair menjadi lot WIP di divisi repair dan dapat ditransfer ke tahap routing berikutnya; jika repair dilakukan pada tahap sebelum tahap terakhir, output yang dipilih harus menjadi input tahap berikutnya. Output tahap terakhir masuk kembali ke antrean QC Akhir. Catatan reject dan repair mempertahankan alokasi lot WIP serta riwayat pelaku. Laporan harian ringkas mengelompokkan keluaran normal dari `HasilProduksiHarian` per divisi/item dan output repair.
+`/api/divisi` tetap aktif untuk master-data divisi yang dikelola admin dan dipakai oleh operasi bersama. Endpoint shared `/api/permintaan-barang`, `/api/pemakaian-material` (termasuk alias `/api/pemakaian-materials`), `/api/items`, `/api/karyawan`, dan `/api/production-orders` juga tetap aktif karena digunakan di luar workspace Divisi, termasuk proses admin/gudang dan master data. Tidak ada endpoint Hasil Produksi Harian atau transfer WIP yang terdaftar pada Express app, dan route/controller API lamanya telah dihapus. Service `createHasilProduksi`, `createWipTransfer`, serta `approveWipTransfer` tetap menjadi dependensi internal seed alur produksi; keduanya bukan endpoint HTTP. Schema, tabel, konfigurasi routing, dan histori tetap dipertahankan.
 
-Konfigurasi routing produksi dapat dikelola admin pada halaman **Routing Produksi** (`/admin/routing-produksi`) atau melalui `GET /api/quality/routings` dan `PUT /api/quality/routings` dengan permission `QUALITY_ROUTING_MANAGE`. Routing adalah satu alur global yang tidak terikat ke varian produk maupun BOM. Setiap tahap memilih divisi, beberapa item input, dan beberapa item output; output harus berupa item SM milik divisi tahap tersebut, dan item input tahap berikutnya harus berasal dari output tahap sebelumnya. Transfer WIP dibatasi ke divisi tahap berikutnya yang menerima item tersebut. Output semua item tahap terakhir menjadi sumber QC Akhir dan penanganan reject. Menyimpan konfigurasi membuat versi routing global baru dan menonaktifkan routing aktif sebelumnya; divisi dan item tetap dikelola melalui menu master masing-masing.
-
-Halaman **Aliran WIP & Opname** tersedia untuk admin dan gudang. Laporan membandingkan saldo pembuka, mutasi masuk/keluar menurut jenis, saldo ledger penutup, hasil QC final, serta attempt repair/disposisi review dalam rentang tanggal (maksimal 366 hari). Tabel mutasi menampilkan 1.000 kejadian terbaru; ringkasan saldo menghitung seluruh kejadian periode dan UI memberi tahu bila detail terpotong. Opname mencatat saldo sistem, hitung fisik, selisih, dan alasan untuk setiap selisih (minimal 5 karakter); baris tanpa selisih boleh tanpa alasan. Setiap koreksi menghasilkan gerakan ledger `ADJUSTMENT` append-only dengan referensi sesi; kelebihan membuat lot WIP `OPNAME`, sedangkan kekurangan mengurangi lot tersedia secara FIFO. Baris sesi dan mutasi tidak memiliki API edit/hapus.
+Repair/rework bersama tetap menyimpan alokasi lot dan riwayat pelaku. `GET /api/quality/routings` dan layanan production-order/work-order dipertahankan; layanan tersebut tetap dapat merujuk ke record divisi meskipun workspace Divisi tidak lagi tersedia melalui API.
 
 Migration routing produksi dan aliran/opname WIP, termasuk `20261026200000_route_repaired_wip_forward`, sudah diterapkan ke database Docker lokal `express_api`. Untuk database lain, terapkan migration yang belum ada secara berurutan dengan `npx prisma migrate deploy` sebelum menjalankan versi backend ini. Saldo legacy dari export stok tetap merupakan sumber terpisah dari ledger WIP per lokasi; jangan anggap saldo lama atau 5.010 barang `FINISHGOOD` sebagai stok operasional yang tersedia.
 

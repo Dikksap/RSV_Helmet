@@ -3,10 +3,10 @@ import type { Prisma } from "../../../generated/prisma/client.js";
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
   VALID_STATUSES,
-  VALID_TRANSITIONS,
   bulkUpdateBarangStatus,
   statusScopeFilter,
   updateBarangStatus,
+  isTransitionAllowed,
   type StatusBarang,
 } from "./barang.status.js";
 import {
@@ -28,7 +28,6 @@ export {
   generateBarangBulk,
   getGenerateInfo,
   VALID_STATUSES,
-  VALID_TRANSITIONS,
   bulkUpdateBarangStatus,
   updateBarangStatus,
   updateBarang,
@@ -299,7 +298,8 @@ export async function bulkScanBarang(
       }
 
       if (
-        !VALID_TRANSITIONS[barang.status as StatusBarang]?.includes(newStatus)
+        barang.status !== newStatus ||
+        !(await isTransitionAllowed(barang.status as StatusBarang, newStatus))
       ) {
         failed.push({
           kodeBarang: kode,

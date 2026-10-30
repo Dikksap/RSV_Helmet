@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -39,6 +39,7 @@ const ROLE_LABELS: Record<string, string> = {
   produksi: "Produksi",
   qc: "QC",
   user: "Operator",
+  supervisor: "Supervisor",
 };
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
@@ -260,7 +261,7 @@ function RoleLayout({
     navigate("/login", { replace: true });
   };
 
-  if (!allowed.includes(user?.role ?? "")) return null;
+  if (!allowed.includes(user?.role ?? "")) return <Navigate to="/login" replace />;
 
   const sidebar = (collapsedAt: boolean) => (
     <SidebarContent

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowLeft, type IconDefinition } from "@fortawesome/free-solid-svg-icons";
+import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 
 interface Props {
   icon: IconDefinition;
@@ -20,14 +19,6 @@ export default function DivisiPageHeader({
 }: Props) {
   return (
     <header className="space-y-2 sm:space-y-3">
-      <Link
-        to="/divisi/home"
-        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#00A8E8] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A8E8] lg:hidden"
-      >
-        <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" aria-hidden="true" />
-        Ringkasan Divisi
-      </Link>
-
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#00A8E8] sm:text-[11px]">

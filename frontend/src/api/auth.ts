@@ -1,4 +1,18 @@
+import { getApiErrorMessage, getHttpErrorMessage, reportApiConnection } from "./errors";
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
+
+async function authFetch(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    const response = await fetch(`${apiUrl}${path}`, init);
+    reportApiConnection(null);
+    return response;
+  } catch (error) {
+    const message = getApiErrorMessage(error, "Gagal menghubungi server API");
+    reportApiConnection(message);
+    throw new Error(message, { cause: error });
+  }
+}
 
 export interface LoginCredentials {
   email: string;
@@ -20,7 +34,7 @@ export interface LoginResponse {
 }
 
 export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
-  const response = await fetch(`${apiUrl}/auth/login`, {
+  const response = await authFetch("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentials),
@@ -28,20 +42,28 @@ export async function login(credentials: LoginCredentials): Promise<LoginRespons
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message ?? "Email atau password salah");
+    throw new Error(getHttpErrorMessage(response.status, payload?.message, "Email atau password salah"));
   }
 
-  return response.json() as Promise<LoginResponse>;
+  try {
+    return (await response.json()) as LoginResponse;
+  } catch {
+    throw new Error("Respons server tidak valid. Silakan coba kembali.");
+  }
 }
 
 export async function logout(token: string): Promise<void> {
-  await fetch(`${apiUrl}/auth/logout`, {
+  const response = await authFetch("/auth/logout", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
   });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(getHttpErrorMessage(response.status, payload?.message, "Gagal mengakhiri sesi"));
+  }
 }
 
 const PERM_KEY = "rsv_auth_permissions";
@@ -56,7 +78,7 @@ export interface ProfileUpdate {
 /** Ubah profil sendiri. User hasil server disimpan ke localStorage agar header ikut berubah. */
 export async function updateProfile(body: ProfileUpdate): Promise<User> {
   const token = getToken();
-  const response = await fetch(`${apiUrl}/auth/me`, {
+  const response = await authFetch("/auth/me", {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -67,7 +89,7 @@ export async function updateProfile(body: ProfileUpdate): Promise<User> {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message ?? "Gagal memperbarui profil");
+    throw new Error(getHttpErrorMessage(response.status, payload?.message, "Gagal memperbarui profil"));
   }
 
   const { user } = (await response.json()) as { message: string; user: User };
@@ -79,7 +101,7 @@ export async function checkSession(): Promise<string | null> {
   const token = getToken();
   if (!token) return null;
   try {
-    const response = await fetch(`${apiUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const response = await authFetch("/auth/me", { headers: { Authorization: `Bearer ${token}` } });
     if (response.status === 401) return null;
     if (!response.ok) return getUser()?.role ?? null;
     const { user, permissions } = (await response.json()) as { user: User; permissions?: string[] };
@@ -157,7 +179,9 @@ export function redirectToLogin(): void {
 export function homeForRole(role: string | undefined): string {
   if (role === "admin") return "/admin/home";
   if (role === "gudang") return "/gudang/home";
-  if (role === "produksi" || role === "qc") return "/divisi/home";
-  if (role === "user") return getUser()?.divisiId ? "/divisi/home" : "/scan-qr";
+  if (role === "produksi") return "/produksi/home";
+  if (role === "supervisor") return "/";
+  if (role === "qc") return "/";
+  if (role === "user") return "/scan-qr";
   return "/";
 }

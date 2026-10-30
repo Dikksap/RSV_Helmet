@@ -10,14 +10,6 @@ export const VALID_STATUSES: StatusBarang[] = [
   "BAD",
 ];
 
-export const VALID_TRANSITIONS: Record<StatusBarang, StatusBarang[]> = {
-  REGISTER: ["FINISHGOOD", "OUT", "RETUR", "BAD"],
-  FINISHGOOD: ["OUT", "RETUR", "BAD"],
-  RETUR: ["FINISHGOOD", "OUT", "BAD"],
-  OUT: [],
-  BAD: [],
-};
-
 export type StatusFilter = StatusBarang | { in: StatusBarang[] } | undefined;
 
 export function statusScopeFilter(
@@ -42,14 +34,6 @@ export async function isTransitionAllowed(
   return rows.some((row) => row.toKode === next);
 }
 
-function validateTransition(
-  current: StatusBarang,
-  next: StatusBarang,
-): boolean {
-  if (current === next) return true;
-  return VALID_TRANSITIONS[current]?.includes(next) ?? false;
-}
-
 export async function updateBarangStatus(
   barangId: number,
   newStatus: StatusBarang,
@@ -61,7 +45,7 @@ export async function updateBarangStatus(
     throw new Error("Barang tidak ditemukan");
   }
 
-  if (!validateTransition(barang.status as StatusBarang, newStatus)) {
+  if (!(await isTransitionAllowed(barang.status as StatusBarang, newStatus))) {
     throw new Error(
       `Transisi status dari ${barang.status} ke ${newStatus} tidak valid`,
     );

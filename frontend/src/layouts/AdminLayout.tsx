@@ -1,6 +1,5 @@
 import {
   BARANG_PRODUKSI,
-  ERP_OPERATIONS,
   KARYAWAN,
   MANAJEMEN,
   NAV_INTEGRASI,
@@ -10,7 +9,7 @@ import {
 
 import RoleLayout, { type NavGroup } from "./RoleLayout";
 
-const GROUPS: NavGroup[] = [BARANG_PRODUKSI, MANAJEMEN, WAREHOUSE, ERP_OPERATIONS, KARYAWAN, NAV_INTEGRASI].filter(
+const GROUPS: NavGroup[] = [BARANG_PRODUKSI, MANAJEMEN, WAREHOUSE, KARYAWAN, NAV_INTEGRASI].filter(
   (g) => g.children.length > 0,
 );
 

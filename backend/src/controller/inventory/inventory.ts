@@ -1,14 +1,14 @@
 import type { Request, Response } from "express";
 import {
-  getInventoryBalances,
+  approveStockAdjustment,
+  getDivisionInventoryLocationId,
+  getInventoryLocationDetails,
   InventoryError,
-  listInventoryLocations,
-  listInventoryMovements,
-  mapDivisionLocation,
-  mapWarehouseLocation,
-  postInventoryMovement,
-  reverseInventoryMovement,
+  listStockAdjustments,
+  rejectStockAdjustment,
+  requestStockAdjustment,
 } from "../../model/inventory/inventory.js";
+import { getBatasDivisi } from "../../lib/divisiScope.js";
 
 const positiveInt = (value: unknown): number | null => {
   if (typeof value !== "string" && typeof value !== "number") return null;
@@ -19,7 +19,12 @@ const positiveInt = (value: unknown): number | null => {
 function serialize(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.map(serialize);
-  if (value && typeof value === "object" && "toJSON" in value && typeof value.toJSON === "function") {
+  if (
+    value &&
+    typeof value === "object" &&
+    "toJSON" in value &&
+    typeof value.toJSON === "function"
+  ) {
     return value.toJSON();
   }
   if (value && typeof value === "object") {
@@ -32,10 +37,19 @@ function serialize(value: unknown): unknown {
 
 function respondError(res: Response, error: unknown) {
   if (error instanceof InventoryError) {
-    const status = error.code === "INSUFFICIENT_STOCK" ? 409
-      : error.code === "LOCATION_NOT_FOUND" || error.code === "ITEM_NOT_FOUND" ? 404
-      : error.code === "IDEMPOTENCY_CONFLICT" || error.code === "ALREADY_REVERSED" ? 409
-      : 400;
+    const status = [
+      "INSUFFICIENT_STOCK",
+      "STALE_ADJUSTMENT",
+      "ADJUSTMENT_ALREADY_REVIEWED",
+      "NO_DIFFERENCE",
+      "IDEMPOTENCY_CONFLICT",
+    ].includes(error.code)
+      ? 409
+      : ["LOCATION_NOT_FOUND", "ITEM_NOT_FOUND", "ADJUSTMENT_NOT_FOUND"].includes(error.code)
+        ? 404
+        : error.code === "SCOPE_DENIED" || error.code === "ADJUSTMENT_SELF_APPROVAL"
+          ? 403
+          : 400;
     return res.status(status).json({ code: error.code, message: error.message });
   }
   return res.status(500).json({
@@ -43,161 +57,128 @@ function respondError(res: Response, error: unknown) {
   });
 }
 
-export async function getInventoryLocationsHandler(_req: Request, res: Response) {
+export async function listStockAdjustmentsHandler(req: Request, res: Response) {
+  const rawStatus = req.query.status;
+  const status =
+    rawStatus === "PENDING" || rawStatus === "APPROVED" || rawStatus === "REJECTED"
+      ? rawStatus
+      : undefined;
+  if (rawStatus !== undefined && status === undefined) {
+    return res.status(400).json({ message: "status adjustment tidak valid" });
+  }
+  const access = req.access;
+  if (!access) return res.status(401).json({ message: "Token tidak ditemukan" });
+  const canApprove = access.permissions.includes("INVENTORY_ADJUST_APPROVE");
+  const divisiId = access.role === "admin" ? undefined : access.divisiId ?? undefined;
+  const warehouseOnly =
+    divisiId === undefined &&
+    access.role !== "admin" &&
+    !canApprove &&
+    access.role === "gudang";
+  if (divisiId === undefined && access.role !== "admin" && !canApprove && !warehouseOnly) {
+    return res.status(403).json({ message: "Akun belum terhubung ke divisi" });
+  }
   try {
-    return res.json(await listInventoryLocations());
+    return res.json(
+      serialize(await listStockAdjustments({ divisiId, warehouseOnly, status })),
+    );
   } catch (error) {
     return respondError(res, error);
   }
 }
 
-export async function mapWarehouseLocationHandler(req: Request, res: Response) {
-  const gudangId = positiveInt(req.body?.gudangId);
-  if (!gudangId) return res.status(400).json({ message: "gudangId wajib bilangan bulat positif" });
-  try {
-    return res.status(201).json(await mapWarehouseLocation(gudangId));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function mapDivisionLocationHandler(req: Request, res: Response) {
-  const divisiId = positiveInt(req.body?.divisiId);
-  if (!divisiId) return res.status(400).json({ message: "divisiId wajib bilangan bulat positif" });
-  try {
-    return res.status(201).json(await mapDivisionLocation(divisiId));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function getInventoryBalancesHandler(req: Request, res: Response) {
-  const itemId = req.query.itemId === undefined ? undefined : positiveInt(req.query.itemId) ?? undefined;
-  const barangId = req.query.barangId === undefined ? undefined : positiveInt(req.query.barangId) ?? undefined;
-  const locationId = req.query.locationId === undefined ? undefined : positiveInt(req.query.locationId) ?? undefined;
-  if (req.query.itemId !== undefined && !itemId) {
-    return res.status(400).json({ message: "itemId harus bilangan bulat positif" });
-  }
-  if (req.query.locationId !== undefined && !locationId) {
-    return res.status(400).json({ message: "locationId harus bilangan bulat positif" });
-  }
-  if (req.query.barangId !== undefined && !barangId) {
-    return res.status(400).json({ message: "barangId harus bilangan bulat positif" });
-  }
-  if (itemId && barangId) {
-    return res.status(400).json({ message: "Gunakan itemId atau barangId, bukan keduanya" });
-  }
-  try {
-    return res.json(await getInventoryBalances({ itemId, barangId, locationId }));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function getInventoryMovementsHandler(req: Request, res: Response) {
-  const itemId = req.query.itemId === undefined ? undefined : positiveInt(req.query.itemId) ?? undefined;
-  const barangId = req.query.barangId === undefined ? undefined : positiveInt(req.query.barangId) ?? undefined;
-  const locationId = req.query.locationId === undefined ? undefined : positiveInt(req.query.locationId) ?? undefined;
-  const take = req.query.take === undefined ? 100 : positiveInt(req.query.take);
-  if (req.query.itemId !== undefined && !itemId) {
-    return res.status(400).json({ message: "itemId harus bilangan bulat positif" });
-  }
-  if (req.query.locationId !== undefined && !locationId) {
-    return res.status(400).json({ message: "locationId harus bilangan bulat positif" });
-  }
-  if (req.query.barangId !== undefined && !barangId) {
-    return res.status(400).json({ message: "barangId harus bilangan bulat positif" });
-  }
-  if (itemId && barangId) {
-    return res.status(400).json({ message: "Gunakan itemId atau barangId, bukan keduanya" });
-  }
-  if (!take || take > 500) return res.status(400).json({ message: "take harus 1 sampai 500" });
-  try {
-    return res.json(serialize(await listInventoryMovements({ itemId, barangId, locationId, take })));
-  } catch (error) {
-    return respondError(res, error);
-  }
-}
-
-export async function postInventoryMovementHandler(req: Request, res: Response) {
-  const itemId = req.body?.itemId == null ? null : positiveInt(req.body.itemId);
-  const barangId = req.body?.barangId == null ? null : positiveInt(req.body.barangId);
-  const fromLocationId = req.body?.fromLocationId == null ? null : positiveInt(req.body.fromLocationId);
-  const toLocationId = req.body?.toLocationId == null ? null : positiveInt(req.body.toLocationId);
-  const quantityInput = req.body?.quantity;
-  const quantity = typeof quantityInput === "number" ||
-    (typeof quantityInput === "string" && quantityInput.trim() !== "")
-    ? Number(quantityInput)
-    : Number.NaN;
-  const key = typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey.trim() : "";
+export async function requestStockAdjustmentHandler(req: Request, res: Response) {
+  const itemId = positiveInt(req.body?.itemId);
+  const locationId = positiveInt(req.body?.locationId);
+  const batchId = req.body?.batchId == null ? null : positiveInt(req.body.batchId);
+  const physicalQuantity =
+    typeof req.body?.physicalQuantity === "number" ||
+    (typeof req.body?.physicalQuantity === "string" &&
+      req.body.physicalQuantity.trim() !== "")
+      ? Number(req.body.physicalQuantity)
+      : Number.NaN;
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-  const userId = req.user?.id;
-  if (req.body?.itemId != null && !itemId) {
-    return res.status(400).json({ message: "itemId harus bilangan bulat positif" });
+  if (!itemId || !locationId) {
+    return res.status(400).json({ message: "itemId dan locationId harus bilangan bulat positif" });
   }
-  if (req.body?.barangId != null && !barangId) {
-    return res.status(400).json({ message: "barangId harus bilangan bulat positif" });
+  if (req.body?.batchId != null && !batchId) {
+    return res.status(400).json({ message: "batchId harus bilangan bulat positif" });
   }
-  if ((req.body?.itemId != null) === (req.body?.barangId != null)) {
-    return res.status(400).json({ message: "Tentukan tepat satu itemId atau barangId" });
+  if (
+    !Number.isFinite(physicalQuantity) ||
+    physicalQuantity < 0 ||
+    !Number.isSafeInteger(physicalQuantity * 1_000_000)
+  ) {
+    return res.status(400).json({
+      message: "physicalQuantity harus >= 0 dengan maksimal 6 angka desimal",
+    });
   }
-  if (barangId !== null) {
-    return res.status(400).json({ message: "Mutasi barang individual hanya melalui workflow QC/shipment" });
-  }
-  if (req.body?.fromLocationId != null && !fromLocationId) {
-    return res.status(400).json({ message: "fromLocationId harus bilangan bulat positif" });
-  }
-  if (req.body?.toLocationId != null && !toLocationId) {
-    return res.status(400).json({ message: "toLocationId harus bilangan bulat positif" });
-  }
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return res.status(400).json({ message: "quantity harus lebih besar dari nol" });
-  }
-  if (barangId && quantity !== 1) {
-    return res.status(400).json({ message: "Mutasi barang individual harus berjumlah satu" });
-  }
-  if (key.length < 8 || key.length > 191) {
-    return res.status(400).json({ message: "idempotencyKey wajib 8 sampai 191 karakter" });
-  }
-  if (!reason) return res.status(400).json({ message: "reason wajib diisi" });
-  if (!userId) return res.status(401).json({ message: "Token tidak ditemukan" });
-  const requiredPermission = fromLocationId && toLocationId
-    ? "INVENTORY_MOVE"
-    : "INVENTORY_ADJUST";
-  if (!req.access?.permissions.includes(requiredPermission)) {
-    return res.status(403).json({ message: `Memerlukan permission ${requiredPermission}` });
+  if (reason.length < 5) return res.status(400).json({ message: "reason minimal 5 karakter" });
+  if (!req.user?.id || !req.access) {
+    return res.status(401).json({ message: "Token tidak ditemukan" });
   }
   try {
-    const movement = await postInventoryMovement({
+    const batas = getBatasDivisi(req.access);
+    if (!batas.admin) {
+      const location = await getInventoryLocationDetails(locationId);
+      const ownDivisionLocationId = batas.divisiId
+        ? await getDivisionInventoryLocationId(batas.divisiId)
+        : null;
+      const warehouseAllowed =
+        req.access.role === "gudang" && location?.type === "WAREHOUSE";
+      if (!location?.isActive || (!warehouseAllowed && ownDivisionLocationId !== locationId)) {
+        return res.status(403).json({ message: "Lokasi adjustment di luar cakupan akun" });
+      }
+    }
+    return res.status(201).json(serialize(await requestStockAdjustment({
       itemId,
-      barangId,
-      fromLocationId,
-      toLocationId,
-      quantity,
-      type: fromLocationId && toLocationId ? "TRANSFER"
-        : toLocationId ? "OPENING" : "ADJUSTMENT",
-      idempotencyKey: key,
-      sourceType: fromLocationId && toLocationId ? "MANUAL_TRANSFER"
-        : toLocationId ? "MANUAL_OPENING" : "MANUAL_ADJUSTMENT",
-      sourceId: key,
+      locationId,
+      batchId,
+      physicalQuantity,
       reason,
-      userId,
-    });
-    return res.status(201).json(serialize(movement));
+      requestedById: req.user.id,
+    })));
   } catch (error) {
     return respondError(res, error);
   }
 }
 
-export async function reverseInventoryMovementHandler(req: Request, res: Response) {
+export async function approveStockAdjustmentHandler(req: Request, res: Response) {
+  const id = positiveInt(req.params.id);
+  if (!id) return res.status(400).json({ message: "id adjustment tidak valid" });
+  if (!req.user?.id || !req.access) {
+    return res.status(401).json({ message: "Token tidak ditemukan" });
+  }
+  const batas = getBatasDivisi(req.access);
+  try {
+    const adjustment = await approveStockAdjustment(
+      id,
+      req.user.id,
+      batas.admin ? undefined : batas.divisiId ?? undefined,
+    );
+    return res.json(serialize(adjustment));
+  } catch (error) {
+    return respondError(res, error);
+  }
+}
+
+export async function rejectStockAdjustmentHandler(req: Request, res: Response) {
   const id = positiveInt(req.params.id);
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-  if (!id) return res.status(400).json({ message: "id mutasi tidak valid" });
+  if (!id) return res.status(400).json({ message: "id adjustment tidak valid" });
   if (reason.length < 5) return res.status(400).json({ message: "reason minimal 5 karakter" });
-  if (!req.user?.id) return res.status(401).json({ message: "Token tidak ditemukan" });
+  if (!req.user?.id || !req.access) {
+    return res.status(401).json({ message: "Token tidak ditemukan" });
+  }
+  const batas = getBatasDivisi(req.access);
   try {
-    const movement = await reverseInventoryMovement(BigInt(id), req.user.id, reason);
-    return res.status(201).json(serialize(movement));
+    const adjustment = await rejectStockAdjustment(
+      id,
+      req.user.id,
+      reason,
+      batas.admin ? undefined : batas.divisiId ?? undefined,
+    );
+    return res.json(serialize(adjustment));
   } catch (error) {
     return respondError(res, error);
   }

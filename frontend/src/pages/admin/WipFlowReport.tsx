@@ -237,7 +237,7 @@ export default function WipFlowReport() {
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Tahap</th><th>Divisi</th><th>Item WIP</th><th className="text-right">Awal</th><th className="text-right">Masuk</th><th className="text-right">Keluar</th><th className="text-right">Akhir</th><th className="text-right">Saldo ledger akhir</th></tr></thead>
                   <tbody className="divide-y">
                     {report.balances.map((row) => <tr key={`${row.locationId}:${row.itemId}`}>
-                      <td className="px-4 py-3">{row.stage ? stageLabels[row.stage] ?? row.stage : "Belum dipetakan"}</td>
+                      <td className="px-4 py-3">{row.stage ? stageLabels[row.stage] ?? row.stage : "Tidak ada di routing aktif"}</td>
                       <td>{row.divisionName}</td><td>{row.itemCode} · {row.itemName}</td>
                       <td className="text-right">{numberText(row.opening)} {row.unit}</td>
                       <td className="text-right">{numberText(row.inflow)} {row.unit}</td>

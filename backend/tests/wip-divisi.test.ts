@@ -10,7 +10,7 @@ vi.mock("../src/lib/prisma.js", () => ({
 }));
 
 import prisma from "../src/lib/prisma.js";
-import { getWipLedgerHarian, getWipRows } from "../src/model/wip/wip.js";
+import { getWipRows } from "../src/model/wip/wip.js";
 import { getStokPerDivisi } from "../src/model/pemakaianMaterial/pemakaianMaterial.js";
 
 const pemakaianFindMany = vi.mocked(prisma.pemakaianMaterialItem.findMany);
@@ -216,106 +216,5 @@ describe("getWipRows", () => {
       dipakai: wip.keluar,
       sisa: wip.saldoAkhir,
     });
-  });
-});
-
-describe("getWipLedgerHarian", () => {
-  const rowsHarian = [
-    pmi({
-      id: 1,
-      itemId: 20,
-      kode: "SM0025",
-      nama: "Batok Jadi",
-      divisiId: 1,
-      divisiNama: "Buffing",
-      tanggal: "2026-10-05T10:00:00+07:00",
-      diterima: 100,
-      dipakai: 0,
-      sisa: 100,
-    }),
-    pmi({
-      id: 2,
-      itemId: 20,
-      kode: "SM0025",
-      nama: "Batok Jadi",
-      divisiId: 1,
-      divisiNama: "Buffing",
-      tanggal: "2026-10-10T10:00:00+07:00",
-      diterima: 40,
-      dipakai: 35,
-      sisa: 105,
-      alokasi: [{ jumlah: 20, approvedAt: "2026-10-12T10:00:00+07:00" }],
-      konsumsi: [{ jumlah: 10, tanggal: "2026-10-11T10:00:00+07:00" }],
-    }),
-    pmi({
-      id: 3,
-      itemId: 20,
-      kode: "SM0025",
-      nama: "Batok Jadi",
-      divisiId: 1,
-      divisiNama: "Buffing",
-      tanggal: "2026-10-20T10:00:00+07:00",
-      diterima: 999,
-      dipakai: 0,
-      sisa: 999,
-    }),
-  ];
-
-  it("menghitung stok awal dari riwayat dan memisahkan keluar produksi, transfer, dan lain", async () => {
-    pemakaianFindMany.mockResolvedValue(rowsHarian as never);
-    konsumsiFindMany.mockResolvedValue([konsumsi(2, 10, "2026-10-11T10:00:00+07:00")] as never);
-
-    const { data, total } = await getWipLedgerHarian({
-      dari: new Date("2026-10-10T00:00:00+07:00"),
-      sampai: new Date("2026-10-12T00:00:00+07:00"),
-      itemId: 20,
-    });
-
-    expect(data).toEqual([
-      expect.objectContaining({
-        tanggal: "2026-10-12",
-        stokAwal: 125,
-        masuk: 0,
-        keluarProduksi: 0,
-        keluarTransfer: 20,
-        keluarLain: 0,
-        sisa: 105,
-      }),
-      expect.objectContaining({
-        tanggal: "2026-10-11",
-        stokAwal: 135,
-        keluarProduksi: 10,
-        sisa: 125,
-      }),
-      expect.objectContaining({
-        tanggal: "2026-10-10",
-        stokAwal: 100,
-        masuk: 40,
-        keluarLain: 5,
-        sisa: 135,
-      }),
-    ]);
-    expect(total).toMatchObject({
-      itemId: 20,
-      stokAwal: 100,
-      masuk: 40,
-      keluarProduksi: 10,
-      keluarTransfer: 20,
-      keluarLain: 5,
-      sisa: 105,
-    });
-  });
-
-  it("tidak menghitung total saat filter bukan satu item", async () => {
-    pemakaianFindMany.mockResolvedValue(rowsHarian as never);
-    konsumsiFindMany.mockResolvedValue([konsumsi(2, 10, "2026-10-11T10:00:00+07:00")] as never);
-
-    const { data, total } = await getWipLedgerHarian({
-      dari: new Date("2026-10-10T00:00:00+07:00"),
-      sampai: new Date("2026-10-12T00:00:00+07:00"),
-    });
-
-    expect(data).toHaveLength(3);
-    expect(total).toBeNull();
   });
 });

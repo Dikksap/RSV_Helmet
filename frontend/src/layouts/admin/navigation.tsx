@@ -3,7 +3,6 @@ import {
   faArchive,
   faBook,
   faBoxesStacked,
-  faChartColumn,
   faClipboardCheck,
   faClipboardList,
   faDatabase,
@@ -13,10 +12,10 @@ import {
   faKey,
   faLayerGroup,
   faListUl,
+  faLocationDot,
   faPlug,
   faSitemap,
   faTags,
-  faTruck,
   faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -69,18 +68,11 @@ export const BARANG_PRODUKSI: NavGroup = {
       description: "Stok koli hasil produksi",
     },
     {
-      to: "/admin/hasil-produksi-divisi",
-      label: "Hasil Produksi Harian",
-      icon: faChartColumn,
+      to: "/admin/arsip-stok-produksi",
+      label: "Arsip Stok Koli",
+      icon: faArchive,
       end: true,
-      description: "Laporan capaian produksi harian",
-    },
-    {
-      to: "/divisi/home",
-      label: "Ruang Divisi",
-      icon: faSitemap,
-      end: false,
-      description: "Area kerja antar divisi",
+      description: "Arsip stok koli per tanggal",
     },
     {
       to: "/admin/pengaturan",
@@ -133,13 +125,6 @@ export const MANAJEMEN: NavGroup = {
       description: "Lihat BOM produk dan komponen per level",
     },
     {
-      to: "/admin/routing-produksi",
-      label: "Routing Produksi",
-      icon: faSitemap,
-      end: true,
-      description: "Atur urutan tahap dan divisi per varian produk",
-    },
-    {
       to: "/admin/realisasi-produksi",
       label: "Realisasi Produksi",
       icon: faClipboardCheck,
@@ -183,54 +168,11 @@ export const WAREHOUSE: NavGroup = {
       description: "Verifikasi fisik persediaan",
     },
     {
-      to: "/admin/gudang",
-      label: "Gudang Hasil Produksi",
-      icon: faArchive,
+      to: "/admin/lokasi",
+      label: "Lokasi",
+      icon: faLocationDot,
       end: true,
-      description: "Penyimpanan produk jadi",
-    },
-    {
-      to: "/admin/mutasi-gudang",
-      label: "Riwayat Mutasi Helm",
-      icon: faFileLines,
-      end: true,
-      description: "Perpindahan stok barang",
-    },
-  ],
-};
-
-export const ERP_OPERATIONS: NavGroup = {
-  label: "ERP Operasional",
-  icon: faClipboardCheck,
-  description: "Ledger, quality, dan distribusi",
-  children: [
-    {
-      to: "/admin/inventory",
-      label: "Ledger Lokasi",
-      icon: faBoxesStacked,
-      end: true,
-      description: "Saldo dan gerakan inventory per lokasi",
-    },
-    {
-      to: "/admin/quality",
-      label: "QC Akhir",
-      icon: faClipboardCheck,
-      end: true,
-      description: "Reject item Top Coat, antrean repair, dan pemeriksaan hasil",
-    },
-    {
-      to: "/admin/wip-flow",
-      label: "Aliran WIP & Opname",
-      icon: faChartColumn,
-      end: true,
-      description: "Laporan produksi, QC, repair, dan rekonsiliasi fisik WIP",
-    },
-    {
-      to: "/admin/shipments",
-      label: "Shipment",
-      icon: faTruck,
-      end: true,
-      description: "Pengiriman pelanggan dan retur",
+      description: "Peta lokasi kantor & gudang",
     },
   ],
 };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   getProductionOrders, getProductionOrderSummary, getProductionSchedule, getRealisasi, saveRealisasi,
   type ProductionOrderListItem, type ProductionOrderSummary, type ProductionSchedule, type RealisasiRow, type RealisasiStageRow,
@@ -12,10 +13,12 @@ type Tab = "jadwal" | "input" | "rekap";
 type Row = { variantId:number; label:string; sub:string; rencana:number; finishgood:number; };
 
 export default function RealisasiProduksi(){
-  const [tab,setTab]=useState<Tab>("jadwal");
+  const [searchParams]=useSearchParams();
+  const requestedOrderId=Number(searchParams.get("order"))||null;
+  const [tab,setTab]=useState<Tab>(requestedOrderId?"input":"jadwal");
   const [orders,setOrders]=useState<ProductionOrderListItem[]>([]);
   const [ordersLoaded,setOrdersLoaded]=useState(false);
-  const [orderId,setOrderId]=useState<number|null>(null);
+  const [orderId,setOrderId]=useState<number|null>(requestedOrderId);
   const [tanggal,setTanggal]=useState(todayKey());
   const [awal,setAwal]=useState(()=>shiftDay(todayKey(),-6));
   const [akhir,setAkhir]=useState(todayKey());
@@ -39,8 +42,10 @@ export default function RealisasiProduksi(){
   const [error,setError]=useState<string|null>(null);
   const [notice,setNotice]=useState<string|null>(null);
 
-  useEffect(()=>{ getProductionOrders().then(res=>{ const aktif=res.filter(o=>o.status==="AKTIF"); setOrders(aktif); if(aktif.length>0) setOrderId(p=>p??aktif[0].id); setOrdersLoaded(true); }).catch(e=>{ setError(e instanceof Error?e.message:"Gagal memuat orders."); setOrdersLoaded(true); }); },[]);
+  useEffect(()=>{ getProductionOrders().then(res=>{ const aktif=res.filter(o=>o.status==="RELEASED"||o.status==="IN_PROGRESS"); setOrders(aktif); setOrderId(current=>current&&aktif.some(o=>o.id===current)?current:aktif[0]?.id??null); setOrdersLoaded(true); }).catch(e=>{ setError(e instanceof Error?e.message:"Gagal memuat orders."); setOrdersLoaded(true); }); },[]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- update the date range when the selected order changes
   useEffect(()=>{ const o=orders.find(x=>x.id===orderId)??null; if(!o) return; const [a,b]=monthRange(o.periode); setAwal(a); setAkhir(b); },[orderId,orders]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch the selected order's summary and schedule
   useEffect(()=>{ if(orderId===null) return; setLoadingOrder(true); Promise.all([getProductionOrderSummary(orderId),getProductionSchedule(orderId)]).then(([summary,schedule])=>{ setOrderData({summary,schedule}); const dates=schedule.rows.map(r=>r.tanggal).filter(Boolean).sort(); if(dates.length>0){ setAwal(dates[0]); setAkhir(dates[dates.length-1]); } }).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat order.")).finally(()=>setLoadingOrder(false)); },[orderId]);
 
   const loadInput=useCallback(async()=>{
@@ -69,6 +74,7 @@ export default function RealisasiProduksi(){
       setRows(next); setInputs(nextInputs); setRejectInputs(nextReject);
     }catch(e){ setError(e instanceof Error?e.message:"Gagal memuat realisasi."); } finally{ setLoading(false); }
   },[orderId,orderData,tanggal]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load input data when the input tab becomes active
   useEffect(()=>{ if(tab==="input") void loadInput(); },[tab,loadInput]);
 
   const loadJadwal=useCallback(async()=>{
@@ -76,8 +82,10 @@ export default function RealisasiProduksi(){
     setLoadingJadwal(true); setError(null);
     try{ const data=await getRealisasi(orderId,awal,akhir); setJadwalSaved(data.realisasi); setJadwalFg(data.finishgood??[]); setJadwalTahap(data.tahapan??[]); }catch(e){ setError(e instanceof Error?e.message:"Gagal memuat jadwal realisasi."); } finally{ setLoadingJadwal(false); }
   },[orderId,awal,akhir]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load schedule data when the schedule tab becomes active
   useEffect(()=>{ if(tab==="jadwal") void loadJadwal(); },[tab,loadJadwal]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load report data when the report tab becomes active
   useEffect(()=>{ if(tab!=="rekap" || orderId===null) return; setLoadingRekap(true); setError(null); getRealisasi(orderId).then(data=>setRekapAll(data.realisasi)).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat rekap.")).finally(()=>setLoadingRekap(false)); },[tab,orderId]);
 
   const rekapRows=useMemo(()=>{
@@ -160,12 +168,13 @@ export default function RealisasiProduksi(){
       const have=new Set(jadwalSaved.filter(x=>x.tanggal===t).map(x=>x.variantId));
       const existing=jadwalSaved.filter(x=>x.tanggal===t).map(x=>({variantId:x.variantId, qty:x.qty, reject:x.reject}));
       const merged=[...existing, ...items.filter(i=>!have.has(i.variantId)).map(i=>({variantId:i.variantId, qty:i.qty, reject:0}))];
-      await saveRealisasi(orderId,t,merged); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari finishgood (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
+      await saveRealisasi(orderId,t,merged); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari barang non-REGISTER (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
   };
   const dayStatus=rows.length===0?{text:"Belum ada jadwal hari ini",cls:"bg-slate-100 text-slate-500"}:statusOf(totals.rencana,totals.aktual);
   const today=todayKey();
   // Auto: tanggal sebelum hari ini terkunci. Bisa di-override manual via tombol Kunci/Buka di InputTab.
   const [lockOverride,setLockOverride]=useState<boolean|null>(null);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- clear an override when its date changes
   useEffect(()=>{ setLockOverride(null); },[tanggal]);
   const locked=lockOverride??tanggal<today;
 

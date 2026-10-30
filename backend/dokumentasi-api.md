@@ -90,10 +90,6 @@
 | PUT | `/api/items/:id` | Bearer + admin | Parsial → 404/409 |
 | DELETE | `/api/items/:id` | Bearer + admin | Rincian permintaan ikut SetNull, snapshot utuh |
 | GET | `/api/gudang` | Bearer | List + `_count.barang` ter-scope status |
-| GET | `/api/gudang/:id` | Bearer | Detail + `_count` |
-| POST | `/api/gudang` | Bearer + admin | `{ kode, name, isActive? }` → 409 |
-| PUT | `/api/gudang/:id` | Bearer + admin | Parsial → 404/409 |
-| DELETE | `/api/gudang/:id` | Bearer + admin | Barang ikut SetNull, riwayat utuh |
 | GET | `/api/mutasi-gudang?barangId=&kodeBarang=&gudangId=&dari=&sampai=` | Bearer + `BARANG_LIHAT` | List + pagination |
 | GET | `/api/mutasi-gudang/barang/:barangId` | Bearer + `BARANG_LIHAT` | Riwayat per barang |
 | GET | `/api/mutasi-gudang/gudang/:gudangId` | Bearer + `BARANG_LIHAT` | Riwayat per gudang |
@@ -110,6 +106,10 @@
 | GET | `/api/production-orders/:id/capacities` | — | List kapasitas per tahap (`urutan,id` asc) |
 | PUT | `/api/production-orders/:id/capacities` | — | Replace-all kapasitas, body array |
 | GET | `/api/production-orders/:id/schedule?prep=&qc=` | — | Jadwal otomatis (fungsi murni, tanpa tabel) |
+
+### API yang sengaja tidak lagi diekspos
+
+`src/app.ts` tidak mendaftarkan router `/api/hasil-produksi-harian` atau `/api/wip-transfer`; request ke prefix tersebut menghasilkan 404. `/api/divisi` tetap aktif sebagai master-data admin yang juga dipakai operasi bersama; shared `/api/permintaan-barang`, `/api/pemakaian-material` (dan alias `/api/pemakaian-materials`), `/api/items`, `/api/karyawan`, serta service production/order/work-order tetap aktif karena digunakan di luar workspace. Tidak ada quality route eksklusif Divisi yang bisa dipensiunkan tanpa memutus workflow QC/admin bersama, sehingga reject/rework tetap tersedia untuk proses tersebut; GET routing juga tetap dipakai Work Order. Perubahan ini tidak menghapus schema, tabel, konfigurasi, atau data historis. Detail endpoint quality yang telah dipensiunkan sebelumnya dijelaskan di `backend/README.md`.
 
 ### 0.2 Auth matrix
 
@@ -394,7 +394,7 @@ descending by tanggal.
   "status": "FINISHGOOD", "keterangan": "QC pass - optional" }
 ```
 - Validasi: `kodeBarang` array min 1 → 400; `status` enum → 400.
-- Model: dedup (`duplicates` → `failed "Duplicate barcode dalam request"`), loop sequential, per-item `findUnique` → `failed "Barang tidak ditemukan"`, cek `VALID_TRANSITIONS[current].includes(newStatus)` — **same-status DITOLAK** (beda dengan `/bulk-status`), per-item `prisma.$transaction` (update + `riwayatBarang.create`), bukan global transaction (partial success mungkin).
+- Model: dedup (`duplicates` → `failed "Duplicate barcode dalam request"`), loop sequential, per-item `findUnique` → `failed "Barang tidak ditemukan"`, cek `isTransitionAllowed(current, newStatus)` dari tabel `StatusTransition` — **same-status DITOLAK** (beda dengan `/bulk-status`), per-item `prisma.$transaction` (update + `riwayatBarang.create`), bukan global transaction (partial success mungkin).
 - Broadcast per success `barang.status_updated`.
 - Selalu 200 (kecuali validasi 400):
 ```json

@@ -19,8 +19,10 @@ export const TABS: { key: Tab; label: string }[] = [
 
 export const STATUS_STYLE: Record<StatusProductionOrder, string> = {
   DRAFT: "border-slate-200 bg-slate-100 text-slate-600",
-  AKTIF: "border-sky-200 bg-sky-50 text-sky-700",
-  SELESAI: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  RELEASED: "border-blue-200 bg-blue-50 text-blue-700",
+  IN_PROGRESS: "border-sky-200 bg-sky-50 text-sky-700",
+  COMPLETED: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  CLOSED: "border-slate-300 bg-slate-200 text-slate-700",
   BATAL: "border-red-200 bg-red-50 text-[#EF4444]",
 };
 

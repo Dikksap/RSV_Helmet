@@ -1,5 +1,5 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
-import { awalHariBisnis, tambahHariBisnis, tanggalBisnis } from "../../lib/tanggalBisnis.js";
+import { awalHariBisnis, tanggalBisnis } from "../../lib/tanggalBisnis.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import {
   SumberPemakaianMaterial,
@@ -12,7 +12,7 @@ import {
   type PermintaanRecord,
 } from "../permintaanBarang/permintaanBarang.js";
 import { catatMutasi, getSaldo, lockItem, StokKurangError } from "../stokItem/stokItem.js";
-import { getWipRows, type WipRow } from "../wip/wip.js";
+import { getWipRows } from "../wip/wip.js";
 import {
   ensureDivisionInventoryLocation,
   postInventoryMovementInTransaction,
@@ -33,48 +33,9 @@ export type HasilProduksiInput = {
   nomor?: string | null;
   tanggalProduksi?: Date | null;
   divisiId: number;
+  productionWorkOrderId?: number;
   keterangan?: string | null;
   items: HasilProduksiItemInput[];
-};
-
-export type HasilProduksiListParams = {
-  page: number;
-  limit: number;
-  divisiId?: number;
-  dari?: Date;
-  sampai?: Date;
-  q?: string;
-};
-
-export type HasilProduksiRekapParams = {
-  dari?: Date;
-  sampai?: Date;
-  divisiId?: number;
-  itemId?: number;
-};
-
-type RekapTipe = {
-  masuk: number;
-  keluar: number;
-  hasil: number;
-};
-
-type RekapItem = RekapTipe & {
-  itemId: number;
-  itemKode: string;
-  itemNama: string;
-  satuan: string;
-};
-
-type RekapTanggal = RekapItem & {
-  tanggal: string;
-  divisiId: number;
-  divisiNama: string;
-};
-
-type RekapDivisi = RekapItem & {
-  divisiId: number;
-  divisiNama: string;
 };
 
 export class HasilProduksiError extends Error {
@@ -139,14 +100,6 @@ const itemSelect = {
   unit: true,
   jenis: true,
 } as const;
-
-const listInclude = {
-  divisi: { select: { id: true, nama: true } },
-  items: {
-    orderBy: { id: "asc" as const },
-    include: { item: { select: itemSelect } },
-  },
-} satisfies Prisma.HasilProduksiHarianInclude;
 
 const detailInclude = {
   divisi: { select: { id: true, nama: true } },
@@ -237,13 +190,14 @@ async function validateConfiguredProcessRoute(
   divisi: { id: number; nama: string },
   inputItemIds: number[],
   outputItemIds: number[],
+  routingStageId?: number,
 ) {
   const rows = await tx.productionRoutingStage.findMany({
     where: {
       divisiId: divisi.id,
-      routing: {
-        isActive: true,
-      },
+      ...(routingStageId !== undefined
+        ? { id: routingStageId }
+        : { routing: { isActive: true } }),
     },
     include: {
       inputItems: { select: { itemId: true } },
@@ -274,6 +228,15 @@ async function validateConfiguredProcessRoute(
 function validasiInput(input: HasilProduksiInput): void {
   if (!Number.isInteger(input.divisiId) || input.divisiId <= 0) {
     throw new HasilProduksiError(INPUT_TIDAK_VALID, "Field 'divisiId' wajib angka bulat positif");
+  }
+  if (
+    input.productionWorkOrderId !== undefined &&
+    (!Number.isInteger(input.productionWorkOrderId) || input.productionWorkOrderId <= 0)
+  ) {
+    throw new HasilProduksiError(
+      INPUT_TIDAK_VALID,
+      "Field 'productionWorkOrderId' harus angka bulat positif",
+    );
   }
   if (!Array.isArray(input.items) || input.items.length === 0) {
     throw new HasilProduksiError(INPUT_TIDAK_VALID, "Field 'items' wajib diisi minimal 1 item");
@@ -475,6 +438,46 @@ async function createInTx(
   userId: number | null,
 ) {
   const tanggal = awalHariBisnis(input.tanggalProduksi ?? new Date());
+  let workOrder: {
+    id: number;
+    orderId: number;
+    routingStageId: number;
+    status: string;
+    routingStage: {
+      divisiId: number;
+      inputItems: { itemId: number }[];
+      outputItems: { itemId: number }[];
+    };
+  } | null = null;
+  if (input.productionWorkOrderId !== undefined) {
+    await tx.$queryRaw`SELECT id FROM ProductionWorkOrder WHERE id = ${input.productionWorkOrderId} FOR UPDATE`;
+    workOrder = await tx.productionWorkOrder.findUnique({
+      where: { id: input.productionWorkOrderId },
+      include: {
+        routingStage: {
+          include: {
+            inputItems: { select: { itemId: true } },
+            outputItems: { select: { itemId: true } },
+          },
+        },
+      },
+    });
+    if (!workOrder) {
+      throw new HasilProduksiError(INPUT_TIDAK_VALID, "Work order tidak ditemukan");
+    }
+    if (workOrder.status !== "IN_PROGRESS") {
+      throw new HasilProduksiError(
+        INPUT_TIDAK_VALID,
+        "Hasil produksi hanya dapat dicatat untuk work order berstatus IN_PROGRESS",
+      );
+    }
+    if (workOrder.routingStage.divisiId !== input.divisiId) {
+      throw new HasilProduksiError(
+        INPUT_TIDAK_VALID,
+        "Divisi hasil produksi tidak sesuai dengan tahap work order",
+      );
+    }
+  }
 
   const divisi = await tx.divisi.findUnique({
     where: { id: input.divisiId },
@@ -502,7 +505,29 @@ async function createInTx(
     .filter((row) => row.tipe === TipeHasilProduksiItem.HASIL)
     .filter((row) => items.find((item) => item.id === row.itemId)?.jenis === "SM")
     .map((row) => row.itemId);
-  await validateConfiguredProcessRoute(tx, divisi, inputItemIds, hasilWipItemIds);
+  if (workOrder) {
+    const allowedInputs = new Set(workOrder.routingStage.inputItems.map((row) => row.itemId));
+    const allowedOutputs = new Set(workOrder.routingStage.outputItems.map((row) => row.itemId));
+    const actualOutputIds = input.items
+      .filter((row) => row.tipe === TipeHasilProduksiItem.HASIL)
+      .map((row) => row.itemId);
+    if (
+      inputItemIds.some((itemId) => !allowedInputs.has(itemId)) ||
+      actualOutputIds.some((itemId) => !allowedOutputs.has(itemId))
+    ) {
+      throw new HasilProduksiError(
+        INPUT_TIDAK_VALID,
+        "Input/output hasil produksi tidak sesuai dengan routing work order",
+      );
+    }
+  }
+  await validateConfiguredProcessRoute(
+    tx,
+    divisi,
+    inputItemIds,
+    hasilWipItemIds,
+    workOrder?.routingStageId,
+  );
 
   const keluarPerItem = new Map<number, number>();
   for (const item of input.items) {
@@ -573,6 +598,8 @@ async function createInTx(
       nomor,
       tanggalProduksi: tanggal,
       divisiId: input.divisiId,
+      orderId: workOrder?.orderId ?? null,
+      productionWorkOrderId: workOrder?.id ?? null,
       keterangan: textOrNull(input.keterangan),
       items: {
         create: input.items.map((item) => ({
@@ -716,150 +743,4 @@ export async function createHasilProduksi(input: HasilProduksiInput, userId: num
   }
 
   throw new Error("Gagal membuat nomor hasil produksi");
-}
-
-export async function listHasilProduksi(params: HasilProduksiListParams) {
-  const where: Prisma.HasilProduksiHarianWhereInput = {};
-  if (params.divisiId !== undefined) where.divisiId = params.divisiId;
-  if (params.dari || params.sampai) {
-    where.tanggalProduksi = {};
-    if (params.dari) where.tanggalProduksi.gte = awalHariBisnis(params.dari);
-    if (params.sampai) where.tanggalProduksi.lt = tambahHariBisnis(params.sampai, 1);
-  }
-  const q = params.q?.trim();
-  if (q) where.nomor = { contains: q };
-
-  const [total, data] = await Promise.all([
-    prisma.hasilProduksiHarian.count({ where }),
-    prisma.hasilProduksiHarian.findMany({
-      where,
-      include: listInclude,
-      orderBy: [{ tanggalProduksi: "desc" }, { id: "desc" }],
-      skip: (params.page - 1) * params.limit,
-      take: params.limit,
-    }),
-  ]);
-
-  return {
-    data,
-    meta: {
-      page: params.page,
-      limit: params.limit,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / params.limit)),
-    },
-  };
-}
-
-export async function getHasilProduksiById(id: number) {
-  const row = await prisma.hasilProduksiHarian.findUnique({
-    where: { id },
-    include: detailInclude,
-  });
-  return row ? withWipMasuk(row) : null;
-}
-
-export async function getRekapHasilProduksi(params: HasilProduksiRekapParams) {
-  const where: Prisma.HasilProduksiHarianItemWhereInput = {};
-  if (params.itemId !== undefined) where.itemId = params.itemId;
-  if (params.divisiId !== undefined || params.dari || params.sampai) {
-    where.hasilProduksiHarian = {};
-    if (params.divisiId !== undefined) where.hasilProduksiHarian.divisiId = params.divisiId;
-    if (params.dari || params.sampai) {
-      where.hasilProduksiHarian.tanggalProduksi = {};
-      if (params.dari) where.hasilProduksiHarian.tanggalProduksi.gte = awalHariBisnis(params.dari);
-      if (params.sampai) {
-        where.hasilProduksiHarian.tanggalProduksi.lt = tambahHariBisnis(params.sampai, 1);
-      }
-    }
-  }
-
-  const rows = await prisma.hasilProduksiHarianItem.findMany({
-    where,
-    select: {
-      tipe: true,
-      jumlah: true,
-      item: { select: { id: true, kode: true, nama: true, unit: true } },
-      hasilProduksiHarian: {
-        select: {
-          tanggalProduksi: true,
-          divisi: { select: { id: true, nama: true } },
-        },
-      },
-    },
-    orderBy: { id: "asc" },
-  });
-
-  const perTanggal = new Map<string, RekapTanggal>();
-  const perDivisi = new Map<string, RekapDivisi>();
-  const perItem = new Map<number, RekapItem>();
-  const total: RekapTipe = { masuk: 0, keluar: 0, hasil: 0 };
-
-  for (const row of rows) {
-    const jumlah = Number(row.jumlah);
-    const tipe: keyof RekapTipe =
-      row.tipe === TipeHasilProduksiItem.MASUK
-        ? "masuk"
-        : row.tipe === TipeHasilProduksiItem.KELUAR
-          ? "keluar"
-          : "hasil";
-    total[tipe] += jumlah;
-
-    const item = row.item;
-    const divisi = row.hasilProduksiHarian.divisi;
-    const tanggal = tanggalBisnis(row.hasilProduksiHarian.tanggalProduksi);
-    const base = {
-      itemId: item.id,
-      itemKode: item.kode,
-      itemNama: item.nama,
-      satuan: item.unit,
-      masuk: 0,
-      keluar: 0,
-      hasil: 0,
-    };
-
-    const keyTanggal = `${tanggal}|${divisi.id}|${item.id}`;
-    let rowTanggal = perTanggal.get(keyTanggal);
-    if (!rowTanggal) {
-      rowTanggal = { ...base, tanggal, divisiId: divisi.id, divisiNama: divisi.nama };
-      perTanggal.set(keyTanggal, rowTanggal);
-    }
-    rowTanggal[tipe] += jumlah;
-
-    const keyDivisi = `${divisi.id}|${item.id}`;
-    let rowDivisi = perDivisi.get(keyDivisi);
-    if (!rowDivisi) {
-      rowDivisi = { ...base, divisiId: divisi.id, divisiNama: divisi.nama };
-      perDivisi.set(keyDivisi, rowDivisi);
-    }
-    rowDivisi[tipe] += jumlah;
-
-    let rowItem = perItem.get(item.id);
-    if (!rowItem) {
-      rowItem = { ...base };
-      perItem.set(item.id, rowItem);
-    }
-    rowItem[tipe] += jumlah;
-  }
-
-  const byNama = (a: RekapItem, b: RekapItem) =>
-    a.itemNama.localeCompare(b.itemNama) || a.itemId - b.itemId;
-
-  return {
-    perTanggal: [...perTanggal.values()].sort(
-      (a, b) =>
-        a.tanggal.localeCompare(b.tanggal) ||
-        a.divisiNama.localeCompare(b.divisiNama) ||
-        a.itemNama.localeCompare(b.itemNama),
-    ),
-    perDivisi: [...perDivisi.values()].sort(
-      (a, b) => a.divisiNama.localeCompare(b.divisiNama) || byNama(a, b),
-    ),
-    perItem: [...perItem.values()].sort(byNama),
-    total,
-  };
-}
-
-export async function getWipPerItem(params: HasilProduksiRekapParams): Promise<WipRow[]> {
-  return getWipRows(params);
 }

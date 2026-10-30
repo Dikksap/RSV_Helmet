@@ -21,6 +21,15 @@ export interface ErpBalance {
   quantity: number;
 }
 
+export interface ErpUnmappedLegacyItem {
+  id: number;
+  kode: string;
+  nama: string;
+  unit: string;
+  jenis: string | null;
+  legacyBalance: number;
+}
+
 export interface ErpMovement {
   id: number;
   type: string;
@@ -31,6 +40,24 @@ export interface ErpMovement {
   fromLocation: { id: number; code: string; name: string; type: string } | null;
   toLocation: { id: number; code: string; name: string; type: string } | null;
   quantity: number | string;
+}
+
+export interface ErpStockAdjustment {
+  id: number;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  systemQuantity: number | string;
+  physicalQuantity: number | string;
+  difference: number | string;
+  reason: string;
+  reviewNotes: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  item: { id: number; kode: string; nama: string; unit: string };
+  location: { id: number; code: string; name: string; type: string; divisiId: number | null };
+  requester: { id: number; name: string };
+  approver: { id: number; name: string } | null;
+  reviewer: { id: number; name: string } | null;
+  movement: { id: string; occurredAt: string } | null;
 }
 
 export type ProductionProcessStage = string;
@@ -311,6 +338,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const listErpLocations = () => request<ErpLocation[]>("/inventory/locations");
+export const listUnmappedLegacyItems = () =>
+  request<ErpUnmappedLegacyItem[]>("/inventory/items/unmapped-legacy");
+export const setErpItemDefaultLocation = (itemId: number, locationId: number) =>
+  request("/inventory/items/" + itemId + "/default-location", {
+    method: "PUT",
+    body: JSON.stringify({ locationId }),
+  });
 export const getWipRejectOptions = () => request<WipRejectOptions>("/quality/wip-rejects/options");
 export const listWipRejectReasons = () => request<WipRejectReason[]>("/quality/wip-rejects/reasons");
 export const createWipRejectReason = (name: string) =>
@@ -318,8 +352,16 @@ export const createWipRejectReason = (name: string) =>
     method: "POST",
     body: JSON.stringify({ name }),
   });
-export const listWipRejects = (status?: WipReject["status"] | "ACTIVE") =>
-  request<WipReject[]>(`/quality/wip-rejects${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+export const listWipRejects = (
+  status?: WipReject["status"] | "ACTIVE",
+  divisionId?: number,
+) => {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (divisionId !== undefined) params.set("divisionId", String(divisionId));
+  const query = params.toString();
+  return request<WipReject[]>(`/quality/wip-rejects${query ? `?${query}` : ""}`);
+};
 export const createWipReject = (body: {
   itemId: number;
   quantity: number;
@@ -336,9 +378,13 @@ export const inspectFinalWip = (body: {
   method: "POST",
   body: JSON.stringify(body),
 });
-export const claimWipReject = (id: number) =>
-  request<WipReject>(`/quality/wip-rejects/${id}/claim`, { method: "POST" });
+export const claimWipReject = (id: number, divisionId?: number) =>
+  request<WipReject>(`/quality/wip-rejects/${id}/claim`, {
+    method: "POST",
+    ...(divisionId !== undefined ? { body: JSON.stringify({ divisionId }) } : {}),
+  });
 export const createWipRejectRepairAttempt = (id: number, body: {
+  divisionId?: number;
   quantityAttempted: number;
   quantityRepaired: number;
   outputItemId?: number;
@@ -358,6 +404,25 @@ export const getQualityDailyReport = (date: string) =>
   request<QualityDailyReport>(`/quality/daily-report?date=${encodeURIComponent(date)}`);
 export const listErpBalances = () => request<ErpBalance[]>("/inventory/balances");
 export const listErpMovements = () => request<ErpMovement[]>("/inventory/movements?take=100");
+export const listErpStockAdjustments = () =>
+  request<ErpStockAdjustment[]>("/inventory/adjustments");
+export const requestErpStockAdjustment = (body: {
+  itemId: number;
+  locationId: number;
+  physicalQuantity: number;
+  reason: string;
+}) => request<ErpStockAdjustment>("/inventory/adjustments", {
+  method: "POST",
+  body: JSON.stringify(body),
+});
+export const reviewErpStockAdjustment = (
+  id: number,
+  decision: "approve" | "reject",
+  reviewNotes?: string,
+) => request<ErpStockAdjustment>(`/inventory/adjustments/${id}/${decision}`, {
+  method: "POST",
+  ...(reviewNotes ? { body: JSON.stringify({ reviewNotes }) } : {}),
+});
 export const mapErpWarehouse = (gudangId: number) =>
   request<ErpLocation>("/inventory/locations/warehouse", { method: "POST", body: JSON.stringify({ gudangId }) });
 export const mapErpDivision = (divisiId: number) =>

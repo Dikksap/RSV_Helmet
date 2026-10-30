@@ -10,7 +10,8 @@ import {
   type BarangInGroup,
 } from "../../api/barangGroup";
 import { downloadCsv } from "../../lib/csv";
-import { DUS_CAPACITY, isDusPengganti } from "../../lib/dus";
+import { Link, useLocation } from "react-router-dom";
+import { compareDus, DUS_CAPACITY, isDusPengganti } from "../../lib/dus";
 import { useStatusOptions } from "../../lib/useStatusOptions";
 
 type Filter = "all" | "tersedia" | "penuh";
@@ -67,12 +68,6 @@ const labelEntries = (items: BarangInGroup[]) =>
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-// Nama dus berisi angka ("5", "DUS 12"): urut numerik menaik, non-angka di belakang.
-function compareDus(a: { nama: string }, b: { nama: string }) {
-  const num = (s: string) => Number(s.match(/\d+(\.\d+)?/)?.[0] ?? Number.POSITIVE_INFINITY);
-  return num(a.nama) - num(b.nama) || a.nama.localeCompare(b.nama, "id", { numeric: true });
 }
 
 function itemName(b: BarangInGroup) {
@@ -269,6 +264,7 @@ function ErrorBox({ msg }: { msg: string | null }) {
 }
 
 function StokProduksi() {
+  const base = useLocation().pathname.startsWith("/gudang") ? "/gudang" : "/admin";
   const { options: statusOptions } = useStatusOptions();
   const [groups, setGroups] = useState<BarangGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -276,8 +272,6 @@ function StokProduksi() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [selectedArsip, setSelectedArsip] = useState<Set<number>>(new Set());
-  const [showArsip, setShowArsip] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -328,7 +322,7 @@ function StokProduksi() {
   }, [anyModal, closeAll]);
 
   const active = useMemo(() => groups.filter((g) => !g.isArsip), [groups]);
-  const arsip = useMemo(() => groups.filter((g) => g.isArsip), [groups]);
+  const arsipCount = useMemo(() => groups.filter((g) => g.isArsip).length, [groups]);
   const totalBarang = active.reduce((a, g) => a + g._count.barang, 0);
   const fullCount = active.filter((g) => g._count.barang >= DUS_CAPACITY).length;
 
@@ -347,7 +341,6 @@ function StokProduksi() {
   const pengganti = filtered.filter((g) => isDusPengganti(g));
   const visibleSelected = filtered.filter((g) => selected.has(g.id));
   const allSelected = filtered.length > 0 && visibleSelected.length === filtered.length;
-  const arsipSelected = arsip.filter((g) => selectedArsip.has(g.id));
 
   const toggle = (set: React.Dispatch<React.SetStateAction<Set<number>>>, id: number) =>
     set((prev) => {
@@ -378,51 +371,46 @@ function StokProduksi() {
     );
   };
 
-  // Nama boleh sama dengan dus arsip; sama dengan dus aktif hanya diberi peringatan.
-  const activeNamesake = (nama: string, exceptId?: number) => {
+  // Nama boleh sama dengan dus arsip; sama dengan dus aktif diberi peringatan di form create/edit.
+  const activeNamesake = (nama: string) => {
     const key = nama.trim().toLowerCase();
-    return key ? active.filter((g) => g.id !== exceptId && g.nama.trim().toLowerCase() === key) : [];
+    return key ? active.filter((g) => g.nama.trim().toLowerCase() === key) : [];
   };
-  const formDup = formMode ? activeNamesake(formNama, formMode === "edit" ? editingGroup?.id : undefined) : [];
+  const formDup = formMode ? activeNamesake(formNama) : [];
 
-  const setArsipOne = async (g: BarangGroup, isArsip: boolean) => {
-    if (isArsip && !window.confirm(`Arsipkan "${g.nama}"?`)) return;
-    if (!isArsip && activeNamesake(g.nama).length > 0 && !window.confirm(`Sudah ada dus aktif bernama "${g.nama}". Tetap pulihkan?`)) return;
+  const setArsipOne = async (g: BarangGroup) => {
+    if (!window.confirm(`Arsipkan "${g.nama}"?`)) return;
     setBusyId(g.id);
     try {
-      await updateBarangGroup(g.id, { isArsip });
-      toast(isArsip ? `"${g.nama}" diarsipkan` : `"${g.nama}" dikembalikan ke daftar aktif`);
+      await updateBarangGroup(g.id, { isArsip: true });
+      toast(`"${g.nama}" diarsipkan`);
       await refresh();
     } catch (e) {
-      toast(errMsg(e, isArsip ? "Gagal mengarsipkan dus" : "Gagal memulihkan dus"), "error");
+      toast(errMsg(e, "Gagal mengarsipkan dus"), "error");
     } finally {
       setBusyId(null);
     }
   };
 
-  const bulkSetArsip = async (targets: BarangGroup[], isArsip: boolean) => {
+  const bulkSetArsip = async (targets: BarangGroup[]) => {
     if (targets.length === 0) return;
-    const clashes = isArsip ? [] : targets.filter((g) => activeNamesake(g.nama).length > 0).map((g) => g.nama);
-    const clashNote = clashes.length > 0 ? `\n\n${clashes.length} dus punya nama sama dengan dus aktif: ${clashes.join(", ")}.` : "";
-    if (!window.confirm(`${isArsip ? "Arsipkan" : "Pulihkan"} ${targets.length} dus yang dipilih?${clashNote}`)) return;
+    if (!window.confirm(`Arsipkan ${targets.length} dus yang dipilih?`)) return;
     setBulkBusy(true);
     let ok = 0;
     let firstError = "";
     for (const g of targets) {
       try {
-        await updateBarangGroup(g.id, { isArsip });
+        await updateBarangGroup(g.id, { isArsip: true });
         ok++;
       } catch (e) {
         firstError ||= errMsg(e, "Gagal");
       }
     }
     setBulkBusy(false);
-    if (isArsip) setSelected(new Set());
-    else setSelectedArsip(new Set());
+    setSelected(new Set());
     await refresh();
-    const verb = isArsip ? "diarsipkan" : "dipulihkan";
-    if (ok === targets.length) toast(`${ok} dus ${verb}`);
-    else toast(`${ok} ${verb}, ${targets.length - ok} gagal. ${firstError}`, "error");
+    if (ok === targets.length) toast(`${ok} dus diarsipkan`);
+    else toast(`${ok} diarsipkan, ${targets.length - ok} gagal. ${firstError}`, "error");
   };
 
   const openForm = (mode: "create" | "edit", g?: BarangGroup) => {
@@ -624,7 +612,7 @@ function StokProduksi() {
             Edit
           </button>
           <span className="flex-1" />
-          <button type="button" disabled={busyId === g.id} onClick={() => void setArsipOne(g, true)} className={`${MINI} text-amber-700 hover:bg-amber-50`}>
+          <button type="button" disabled={busyId === g.id} onClick={() => void setArsipOne(g)} className={`${MINI} text-amber-700 hover:bg-amber-50`}>
             {busyId === g.id ? "…" : "Arsip"}
           </button>
           <button
@@ -741,7 +729,7 @@ function StokProduksi() {
             <button type="button" disabled={isPrinting} onClick={() => void printGroups(visibleSelected, "label")} className={`${BTN_PRIMARY} h-9`}>
               {isPrinting ? "Menyiapkan…" : "Print label"}
             </button>
-            <button type="button" disabled={bulkBusy} onClick={() => void bulkSetArsip(visibleSelected, true)} className={`${BTN} h-9 bg-amber-100 text-amber-800 hover:bg-amber-200`}>
+            <button type="button" disabled={bulkBusy} onClick={() => void bulkSetArsip(visibleSelected)} className={`${BTN} h-9 bg-amber-100 text-amber-800 hover:bg-amber-200`}>
               {bulkBusy ? "Memproses…" : "Arsipkan"}
             </button>
           </div>
@@ -778,49 +766,13 @@ function StokProduksi() {
         </div>
       )}
 
-      {arsip.length > 0 && (
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-3">
-          <button
-            type="button"
-            onClick={() => setShowArsip((v) => !v)}
-            aria-expanded={showArsip}
-            className={`flex w-full items-center justify-between rounded-lg text-sm font-semibold text-slate-600 ${FOCUS}`}
-          >
-            Arsip ({arsip.length})
-            <span aria-hidden="true">{showArsip ? "▾" : "▸"}</span>
-          </button>
-          {showArsip && (
-            <>
-              {arsipSelected.length > 0 && (
-                <button type="button" disabled={bulkBusy} onClick={() => void bulkSetArsip(arsipSelected, false)} className={`${BTN} mt-3 h-9 bg-[#10B981] text-white hover:bg-[#059669]`}>
-                  {bulkBusy ? "Memulihkan…" : `Pulihkan ${arsipSelected.length} dipilih`}
-                </button>
-              )}
-              <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {[...arsip].sort(compareDus).map((g) => (
-                  <li key={g.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedArsip.has(g.id)}
-                      onChange={() => toggle(setSelectedArsip, g.id)}
-                      aria-label={`Pilih arsip ${g.nama}`}
-                      className="h-4 w-4 shrink-0 accent-[#1E3A5F]"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-700">{g.nama}</p>
-                      <p className="text-[11px] text-slate-400">
-                        {g._count.barang}/{DUS_CAPACITY} barang
-                      </p>
-                    </div>
-                    <button type="button" disabled={busyId === g.id} onClick={() => void setArsipOne(g, false)} className={`${MINI} text-emerald-700 hover:bg-emerald-50`}>
-                      {busyId === g.id ? "…" : "Pulihkan"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
+      {arsipCount > 0 && (
+        <p className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-3 text-sm text-slate-500">
+          {arsipCount} dus di arsip —{" "}
+          <Link to={`${base}/arsip-stok-produksi`} className={`font-semibold text-[#0088C0] hover:underline ${FOCUS}`}>
+            Lihat arsip
+          </Link>
+        </p>
       )}
 
       {formMode && (

@@ -1,4 +1,4 @@
-import { faArchive, faBoxesStacked, faChartColumn, faClipboardCheck, faClipboardList, faHouse, faTags } from "@fortawesome/free-solid-svg-icons";
+import { faArchive, faBoxesStacked, faClipboardCheck, faClipboardList, faHouse, faTags } from "@fortawesome/free-solid-svg-icons";
 
 import type { NavGroup, NavItem } from "../RoleLayout";
 
@@ -12,6 +12,7 @@ export const GUDANG_BARANG: NavGroup = {
   children: [
     { to: "/gudang/barang", label: "Daftar Barang", icon: faBoxesStacked },
     { to: "/gudang/stok-produksi", label: "Stok Produksi", icon: faArchive, end: true },
+    { to: "/gudang/arsip-stok-produksi", label: "Arsip Stok", icon: faArchive, end: true },
     { to: "/gudang/mutasi", label: "Riwayat Mutasi", icon: faClipboardList, end: true },
   ],
 };
@@ -34,16 +35,6 @@ export const GUDANG_WAREHOUSE: NavGroup = {
   ],
 };
 
-export const GUDANG_ERP: NavGroup = {
-  label: "ERP",
-  icon: faBoxesStacked,
-  children: [
-    { to: "/gudang/inventory", label: "Ledger Lokasi", icon: faBoxesStacked, end: true },
-    { to: "/gudang/wip-flow", label: "Aliran WIP & Opname", icon: faChartColumn, end: true },
-    { to: "/gudang/shipments", label: "Shipment & Retur", icon: faClipboardList, end: true },
-  ],
-};
-
-export const GUDANG_GROUPS: NavGroup[] = [GUDANG_BARANG, GUDANG_WAREHOUSE, GUDANG_PERMINTAAN, GUDANG_ERP].filter(
+export const GUDANG_GROUPS: NavGroup[] = [GUDANG_BARANG, GUDANG_WAREHOUSE, GUDANG_PERMINTAAN].filter(
   (g) => g.children.length > 0,
 );

@@ -6,7 +6,7 @@ type Props = {
   onCreated: (id: number) => void;
 };
 
-const STATUSES: StatusProductionOrder[] = ["DRAFT", "AKTIF", "SELESAI", "BATAL"];
+const STATUSES: StatusProductionOrder[] = ["DRAFT", "RELEASED", "IN_PROGRESS", "COMPLETED", "CLOSED", "BATAL"];
 
 const fieldCls =
   "mt-1 w-full rounded-lg border border-[#D1D5DB] px-3 py-2 text-[15px] focus:outline-2 focus:outline-[#00A8E8]";

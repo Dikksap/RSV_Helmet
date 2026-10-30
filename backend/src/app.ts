@@ -26,13 +26,10 @@ import gudangRouter from "./routes/gudang.js";
 import mutasiGudangRouter from "./routes/mutasiGudang.js";
 import subassemblyRouter from "./routes/subassembly.js";
 import pemakaianMaterialRouter from "./routes/pemakaian-material.js";
-import hasilProduksiHarianRouter from "./routes/hasil-produksi-harian.js";
-import wipTransferRouter from "./routes/wip-transfer.js";
 import bomRouter from "./routes/bom.js";
 import notificationsRouter from "./routes/notifications.js";
 import inventoryRouter from "./routes/inventory.js";
 import qualityRouter from "./routes/quality.js";
-import shipmentRouter from "./routes/shipment.js";
 
 dotenv.config();
 
@@ -72,13 +69,10 @@ app.use("/api/mutasi-gudang", mutasiGudangRouter);
 app.use("/api/subassemblies", subassemblyRouter);
 app.use("/api/pemakaian-material", pemakaianMaterialRouter);
 app.use("/api/pemakaian-materials", pemakaianMaterialRouter);
-app.use("/api/hasil-produksi-harian", hasilProduksiHarianRouter);
-app.use("/api/wip-transfer", wipTransferRouter);
 app.use("/api/bom", bomRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/quality", qualityRouter);
-app.use("/api/shipments", shipmentRouter);
 
 
 export default app;
