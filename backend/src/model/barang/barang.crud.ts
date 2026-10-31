@@ -3,6 +3,7 @@ import { clearBarangCache } from "../../lib/barangCache.js";
 import { barangInclude } from "./barang.js";
 import {
   isTransitionAllowed,
+  transitionErrorMessage,
   type StatusBarang,
 } from "./barang.status.js";
 
@@ -322,7 +323,7 @@ export async function updateBarang(id: number, input: UpdateBarangInput) {
     const current = existing.status;
     const allowed = await isTransitionAllowed(current, newStatus);
     if (!allowed) {
-      throw new Error(`Transisi status dari ${current} ke ${newStatus} tidak valid`);
+      throw new Error(await transitionErrorMessage(current, newStatus));
     }
     if (current !== newStatus) {
       data.status = newStatus;

@@ -7,6 +7,7 @@ import {
   statusScopeFilter,
   updateBarangStatus,
   isTransitionAllowed,
+  transitionErrorMessage,
   type StatusBarang,
 } from "./barang.status.js";
 import {
@@ -277,6 +278,7 @@ export async function bulkScanBarang(
   failed: { kodeBarang: string; error: string }[];
 }> {
   const uniqueKodeBarang = [...new Set(kodeBarangList)];
+  const target = String(newStatus).trim().toUpperCase();
   const duplicates = kodeBarangList.filter(
     (kode, index) => kodeBarangList.indexOf(kode) !== index,
   );
@@ -297,13 +299,10 @@ export async function bulkScanBarang(
         continue;
       }
 
-      if (
-        barang.status !== newStatus ||
-        !(await isTransitionAllowed(barang.status as StatusBarang, newStatus))
-      ) {
+      if (!(await isTransitionAllowed(barang.status as StatusBarang, target))) {
         failed.push({
           kodeBarang: kode,
-          error: `Transisi status dari ${barang.status} ke ${newStatus} tidak valid`,
+          error: await transitionErrorMessage(barang.status, target),
         });
         continue;
       }
@@ -311,7 +310,7 @@ export async function bulkScanBarang(
       const updated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
         const updatedBarang = await tx.barang.update({
           where: { id: barang.id },
-          data: { status: newStatus },
+          data: { status: target },
           include: {
             variant: {
               include: {
@@ -336,7 +335,7 @@ export async function bulkScanBarang(
         await tx.riwayatBarang.create({
           data: {
             barangId: barang.id,
-            status: newStatus,
+            status: target,
             keterangan,
           },
         });

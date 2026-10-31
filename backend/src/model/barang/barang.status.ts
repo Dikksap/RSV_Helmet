@@ -21,17 +21,33 @@ export function statusScopeFilter(
   return { in: scope };
 }
 
+// null = belum ada aturan untuk status sumber, artinya semua tujuan diizinkan.
+export async function getAllowedTransitions(
+  current: string,
+): Promise<string[] | null> {
+  const rows = await prisma.statusTransition.findMany({
+    where: { fromKode: current },
+    select: { toKode: true },
+    orderBy: { toKode: "asc" },
+  });
+  return rows.length === 0 ? null : rows.map((row) => row.toKode);
+}
+
 export async function isTransitionAllowed(
   current: string,
   next: string,
 ): Promise<boolean> {
   if (current === next) return true;
-  const rows = await prisma.statusTransition.findMany({
-    where: { fromKode: current },
-    select: { toKode: true },
-  });
-  if (rows.length === 0) return true;
-  return rows.some((row) => row.toKode === next);
+  const allowed = await getAllowedTransitions(current);
+  return allowed === null || allowed.includes(next);
+}
+
+export async function transitionErrorMessage(
+  current: string,
+  next: string,
+): Promise<string> {
+  const allowed = await getAllowedTransitions(current);
+  return `Transisi status dari ${current} ke ${next} tidak valid (diizinkan: ${allowed === null ? "semua" : allowed.join(", ")})`;
 }
 
 export async function updateBarangStatus(
@@ -39,22 +55,23 @@ export async function updateBarangStatus(
   newStatus: StatusBarang,
   keterangan?: string,
 ): Promise<NonNullable<Awaited<ReturnType<typeof prisma.barang.findUnique>>>> {
+  const target = String(newStatus).trim().toUpperCase();
   const barang = await prisma.barang.findUnique({ where: { id: barangId } });
 
   if (!barang) {
     throw new Error("Barang tidak ditemukan");
   }
 
-  if (!(await isTransitionAllowed(barang.status as StatusBarang, newStatus))) {
+  if (!(await isTransitionAllowed(barang.status as StatusBarang, target))) {
     throw new Error(
-      `Transisi status dari ${barang.status} ke ${newStatus} tidak valid`,
+      await transitionErrorMessage(barang.status, target),
     );
   }
 
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     const updatedBarang = await tx.barang.update({
       where: { id: barangId },
-      data: { status: newStatus },
+      data: { status: target },
       include: {
         variant: {
           include: {
@@ -79,7 +96,7 @@ export async function updateBarangStatus(
     await tx.riwayatBarang.create({
       data: {
         barangId,
-        status: newStatus,
+        status: target,
         keterangan,
       },
     });
