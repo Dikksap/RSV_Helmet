@@ -30,14 +30,14 @@ const kpis = [
   { label: "Jenis Bahan Material", icon: faWarehouse, accent: "border-red-800", tone: "text-red-800" },
 ];
 
-const panelClass = "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6";
+const panelClass = "rounded-xl border border-zinc-200 bg-white p-3.5 shadow-sm sm:rounded-2xl sm:p-6";
 const fieldClass =
-  "mt-1.5 h-11 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 text-sm text-zinc-500 disabled:cursor-not-allowed";
+  "mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-zinc-100 px-2.5 text-xs text-zinc-500 disabled:cursor-not-allowed sm:h-10 sm:rounded-xl sm:px-3 sm:text-sm";
 
 function PendingNotice() {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      <FontAwesomeIcon icon={faCalendarCheck} className="mt-0.5 shrink-0" />
+    <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 sm:rounded-xl sm:p-3.5 sm:text-sm">
+      <FontAwesomeIcon icon={faCalendarCheck} className="mt-0.5 shrink-0 text-amber-700" />
       <p>
         Halaman ini masih dalam tahap tampilan. Pencatatan dan data produksi belum dihubungkan ke backend.
       </p>
@@ -47,7 +47,7 @@ function PendingNotice() {
 
 function DisabledField({ label, type = "text", placeholder }: { label: string; type?: string; placeholder?: string }) {
   return (
-    <label className="block text-xs font-semibold text-zinc-700">
+    <label className="block text-[11px] font-semibold text-zinc-700 sm:text-xs">
       {label}
       <input type={type} placeholder={placeholder} disabled className={fieldClass} />
     </label>
@@ -56,8 +56,7 @@ function DisabledField({ label, type = "text", placeholder }: { label: string; t
 
 function EmptyTable({ columns, message }: { columns: string[]; message: string }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-200">
-      {/* shortcut: tabel butuh lebar, di mobile cukup pesan kosong sampai ada data untuk layout kartu */}
+    <div className="overflow-hidden rounded-lg border border-zinc-200 sm:rounded-xl">
       <div className="hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[480px] text-left text-xs sm:text-sm">
           <thead className="bg-zinc-900 text-[10px] uppercase tracking-wide text-zinc-300 sm:text-xs">
@@ -69,14 +68,14 @@ function EmptyTable({ columns, message }: { columns: string[]; message: string }
           </thead>
           <tbody>
             <tr>
-              <td colSpan={columns.length} className="px-3 py-10 text-center text-xs text-zinc-500 sm:px-4 sm:text-sm">
+              <td colSpan={columns.length} className="px-3 py-8 text-center text-xs text-zinc-500 sm:px-4 sm:py-10 sm:text-sm">
                 {message}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p className="px-4 py-10 text-center text-xs text-zinc-500 sm:hidden">{message}</p>
+      <p className="px-3 py-6 text-center text-xs text-zinc-500 sm:hidden">{message}</p>
     </div>
   );
 }
@@ -97,28 +96,30 @@ function ProduksiHome() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-zinc-100 text-zinc-800">
-      <header className="sticky top-0 z-30 overflow-hidden border-b-4 border-red-600 bg-zinc-900 text-white shadow-lg">
-        <div className="flex flex-col gap-4 border-b border-zinc-800 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-red-600 text-lg font-black">RMI</span>
+      <header className="sticky top-0 z-30 overflow-hidden border-b-2 border-red-600 bg-zinc-900 text-white shadow-md sm:border-b-4">
+        <div className="flex flex-col gap-2.5 border-b border-zinc-800 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-red-600 text-xs font-black sm:h-10 sm:w-10 sm:rounded-xl sm:text-base">
+              RMI
+            </span>
             <div>
-              <p className="text-sm font-extrabold tracking-wider">PT. RMI</p>
-              <p className="text-[11px] font-medium tracking-wide text-zinc-400">RSV MANUFACTURE INDONESIA</p>
+              <p className="text-xs font-extrabold tracking-wider sm:text-sm">PT. RMI</p>
+              <p className="text-[10px] font-medium tracking-wide text-zinc-400 sm:text-[11px]">RSV MANUFACTURE INDONESIA</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200">
+          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
+            <div className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-200 sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs">
               <FontAwesomeIcon icon={faIndustry} className="text-red-500" />
-              <span className="text-zinc-400">Divisi</span>
+              <span className="text-zinc-400">Divisi:</span>
               <span>{user?.divisi?.nama ?? "Tanpa divisi"}</span>
             </div>
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200">
+            <div className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-200 sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs">
               <FontAwesomeIcon icon={faCalendarCheck} className="text-red-500" />
               <time>{today}</time>
             </div>
             <Link
               to="/profil"
-              className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-red-600 hover:text-white"
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-red-600 hover:text-white sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs"
             >
               <FontAwesomeIcon icon={faUserPen} className="text-red-500" />
               Profil
@@ -145,132 +146,144 @@ function ProduksiHome() {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 space-y-5 px-4 py-5 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 sm:pb-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-3.5 px-3 py-3.5 pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:px-6 sm:py-6 sm:pb-8">
         <PendingNotice />
 
-        <section aria-label="Ringkasan produksi" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <article
-            key={kpi.label}
-            className={`flex items-start justify-between gap-2 rounded-2xl border border-zinc-200 border-l-4 ${kpi.accent} bg-white p-3 shadow-sm sm:items-center sm:p-4`}
-          >
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase leading-snug tracking-wide text-zinc-400 sm:text-xs">
-                {kpi.label}
-              </p>
-              <p className={`mt-1 text-xs font-bold leading-snug sm:text-sm ${kpi.tone}`}>Belum tersedia</p>
-            </div>
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-zinc-100 text-xs text-zinc-700 sm:h-10 sm:w-10 sm:rounded-xl sm:text-base">
-              <FontAwesomeIcon icon={kpi.icon} />
-            </span>
-          </article>
-        ))}
+        <section aria-label="Ringkasan produksi" className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          {kpis.map((kpi) => (
+            <article
+              key={kpi.label}
+              className={`flex items-center justify-between gap-1.5 rounded-xl border border-zinc-200 border-l-4 ${kpi.accent} bg-white p-2.5 shadow-sm sm:rounded-2xl sm:p-4`}
+            >
+              <div className="min-w-0">
+                <p className="text-[9px] font-bold uppercase leading-tight tracking-wide text-zinc-400 sm:text-xs sm:leading-snug">
+                  {kpi.label}
+                </p>
+                <p className={`mt-0.5 text-[11px] font-bold leading-tight sm:mt-1 sm:text-sm sm:leading-snug ${kpi.tone}`}>
+                  Belum tersedia
+                </p>
+              </div>
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-zinc-100 text-[11px] text-zinc-700 sm:h-10 sm:w-10 sm:rounded-xl sm:text-base">
+                <FontAwesomeIcon icon={kpi.icon} />
+              </span>
+            </article>
+          ))}
         </section>
 
         {activeTab === "produksi" && (
-        <section className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
-          <div className={`${panelClass} min-w-0 space-y-4 md:mx-auto md:w-full md:max-w-2xl lg:col-span-5 lg:mx-0 lg:max-w-none`}>
-            <div className="border-b border-zinc-100 pb-3">
-              <p className="text-base font-extrabold text-zinc-900">Input Produksi Harian PT RMI</p>
-              <p className="mt-1 text-xs text-zinc-500">Catat hasil produksi dan pemakaian material berdasarkan BOM.</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <DisabledField label="Tanggal Produksi" type="date" />
-              <DisabledField label="Divisi Produksi" placeholder="Pilih divisi produksi" />
-            </div>
-            <DisabledField label="Produk Hasil Produksi" placeholder="Pilih produk jadi" />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <DisabledField label="Jumlah Hasil Produksi" type="number" placeholder="Jumlah" />
-              <DisabledField label="Satuan Produk" placeholder="Satuan" />
-            </div>
-            <div className="rounded-xl border-l-4 border-red-600 bg-zinc-900 p-4 text-white">
-              <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide text-red-300">
-                <FontAwesomeIcon icon={faCalculator} />
-                Kalkulasi Bahan Material (BOM)
+          <section className="grid grid-cols-1 items-start gap-3.5 sm:gap-5 lg:grid-cols-12">
+            <div className={`${panelClass} min-w-0 space-y-3 sm:space-y-4 md:mx-auto md:w-full md:max-w-2xl lg:col-span-5 lg:mx-0 lg:max-w-none`}>
+              <div className="border-b border-zinc-100 pb-2.5 sm:pb-3">
+                <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Input Produksi Harian PT RMI</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Catat hasil produksi dan pemakaian material berdasarkan BOM.</p>
               </div>
-              <p className="mt-2 text-xs text-zinc-400">Kalkulasi akan ditampilkan setelah data produk dan BOM tersedia.</p>
+              <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
+                <DisabledField label="Tanggal Produksi" type="date" />
+                <DisabledField label="Divisi Produksi" placeholder="Pilih divisi produksi" />
+              </div>
+              <DisabledField label="Produk Hasil Produksi" placeholder="Pilih produk jadi" />
+              <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
+                <DisabledField label="Jumlah Hasil Produksi" type="number" placeholder="Jumlah" />
+                <DisabledField label="Satuan Produk" placeholder="Satuan" />
+              </div>
+              <div className="rounded-lg border-l-4 border-red-600 bg-zinc-900 p-3 text-white sm:rounded-xl sm:p-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-red-300 sm:text-xs">
+                  <FontAwesomeIcon icon={faCalculator} />
+                  Kalkulasi Bahan Material (BOM)
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-400 sm:mt-2 sm:text-xs">
+                  Kalkulasi akan ditampilkan setelah data produk dan BOM tersedia.
+                </p>
+              </div>
+              <DisabledField label="Tujuan Pengiriman / Output Barang" placeholder="Tujuan output barang" />
+              <button
+                type="button"
+                disabled
+                className="h-9 w-full cursor-not-allowed rounded-lg bg-red-600 text-xs font-bold text-white opacity-50 sm:h-11 sm:rounded-xl sm:text-sm"
+              >
+                Simpan Produksi
+              </button>
             </div>
-            <DisabledField label="Tujuan Pengiriman / Output Barang" placeholder="Tujuan output barang" />
-            <button type="button" disabled className="h-11 w-full cursor-not-allowed rounded-xl bg-red-600 font-bold text-white opacity-50">
-              Simpan Produksi
-            </button>
-          </div>
-          <div className={`${panelClass} min-w-0 space-y-4 lg:col-span-7`}>
-            <div>
-              <p className="text-base font-extrabold text-zinc-900">Monitoring Material PT RMI</p>
-              <p className="mt-1 text-xs text-zinc-500">Ringkasan stok material yang digunakan dalam produksi.</p>
+            <div className={`${panelClass} min-w-0 space-y-3 sm:space-y-4 lg:col-span-7`}>
+              <div>
+                <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Monitoring Material PT RMI</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Ringkasan stok material yang digunakan dalam produksi.</p>
+              </div>
+              <EmptyTable
+                columns={["Bahan Material", "Gudang", "Sisa Stok", "Status"]}
+                message="Data stok material belum tersedia."
+              />
             </div>
-            <EmptyTable
-              columns={["Bahan Material", "Gudang", "Sisa Stok", "Status"]}
-              message="Data stok material belum tersedia."
-            />
-          </div>
-        </section>
+          </section>
         )}
 
         {activeTab === "material" && (
-        <section className={`${panelClass} space-y-4 md:mx-auto md:w-full md:max-w-2xl`}>
-          <div className="border-b border-zinc-100 pb-3">
-            <p className="text-base font-extrabold text-zinc-900">Penerimaan Bahan Material PT RMI</p>
-            <p className="mt-1 text-xs text-zinc-500">Tambah persediaan bahan baku yang datang dari vendor atau supplier.</p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <DisabledField label="Tanggal Penerimaan" type="date" />
-            <DisabledField label="Divisi / Lokasi Penerima" placeholder="Pilih lokasi penerima" />
-          </div>
-          <DisabledField label="Nama Bahan Material" placeholder="Pilih bahan material" />
-          <div className="grid gap-4 sm:grid-cols-3">
-            <DisabledField label="Stok Sekarang" placeholder="—" />
-            <DisabledField label="Jumlah Masuk (+)" type="number" placeholder="Jumlah" />
-            <DisabledField label="Satuan" placeholder="Satuan" />
-          </div>
-          <button type="button" disabled className="h-11 w-full cursor-not-allowed rounded-xl bg-red-600 font-bold text-white opacity-50 sm:w-auto sm:px-6">
-            Simpan Penerimaan
-          </button>
-        </section>
+          <section className={`${panelClass} space-y-3 sm:space-y-4 md:mx-auto md:w-full md:max-w-2xl`}>
+            <div className="border-b border-zinc-100 pb-2.5 sm:pb-3">
+              <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Penerimaan Bahan Material PT RMI</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Tambah persediaan bahan baku yang datang dari vendor atau supplier.</p>
+            </div>
+            <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
+              <DisabledField label="Tanggal Penerimaan" type="date" />
+              <DisabledField label="Divisi / Lokasi Penerima" placeholder="Pilih lokasi penerima" />
+            </div>
+            <DisabledField label="Nama Bahan Material" placeholder="Pilih bahan material" />
+            <div className="grid gap-2.5 sm:grid-cols-3 sm:gap-4">
+              <DisabledField label="Stok Sekarang" placeholder="—" />
+              <DisabledField label="Jumlah Masuk (+)" type="number" placeholder="Jumlah" />
+              <DisabledField label="Satuan" placeholder="Satuan" />
+            </div>
+            <button
+              type="button"
+              disabled
+              className="h-9 w-full cursor-not-allowed rounded-lg bg-red-600 text-xs font-bold text-white opacity-50 sm:h-11 sm:w-auto sm:rounded-xl sm:px-6 sm:text-sm"
+            >
+              Simpan Penerimaan
+            </button>
+          </section>
         )}
 
         {activeTab === "bom" && (
-        <section className={`${panelClass} space-y-4`}>
-          <div>
-            <p className="text-base font-extrabold text-zinc-900">Formula BOM (Resep)</p>
-            <p className="mt-1 text-xs text-zinc-500">Kebutuhan material untuk setiap produk.</p>
-          </div>
-          <EmptyTable
-            columns={["Produk", "Bahan Material", "Kebutuhan", "Satuan"]}
-            message="Formula BOM belum tersedia."
-          />
-        </section>
+          <section className={`${panelClass} space-y-3 sm:space-y-4`}>
+            <div>
+              <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Formula BOM (Resep)</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Kebutuhan material untuk setiap produk.</p>
+            </div>
+            <EmptyTable
+              columns={["Produk", "Bahan Material", "Kebutuhan", "Satuan"]}
+              message="Formula BOM belum tersedia."
+            />
+          </section>
         )}
 
         {activeTab === "stok" && (
-        <section className={`${panelClass} space-y-4`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-base font-extrabold text-zinc-900">Stok & Riwayat Data</p>
-              <p className="mt-1 text-xs text-zinc-500">Pantau perubahan stok dan aktivitas produksi.</p>
+          <section className={`${panelClass} space-y-3 sm:space-y-4`}>
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Stok & Riwayat Data</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Pantau perubahan stok dan aktivitas produksi.</p>
+              </div>
+              <input
+                type="search"
+                aria-label="Cari riwayat"
+                placeholder="Pencarian belum tersedia"
+                disabled
+                className="h-9 rounded-lg border border-zinc-200 bg-zinc-100 px-2.5 text-xs text-zinc-500 sm:h-10 sm:w-64 sm:rounded-xl sm:px-3 sm:text-sm"
+              />
             </div>
-            <input
-              type="search"
-              aria-label="Cari riwayat"
-              placeholder="Pencarian belum tersedia"
-              disabled
-              className="h-10 rounded-xl border border-zinc-200 bg-zinc-100 px-3 text-sm text-zinc-500 sm:w-64"
+            <EmptyTable
+              columns={["Tanggal", "Barang", "Stok Awal", "Masuk", "Keluar", "Sisa", "Tujuan"]}
+              message="Riwayat transaksi belum tersedia."
             />
-          </div>
-          <EmptyTable
-            columns={["Tanggal", "Barang", "Stok Awal", "Masuk", "Keluar", "Sisa", "Tujuan"]}
-            message="Riwayat transaksi belum tersedia."
-          />
-        </section>
+          </section>
         )}
       </main>
 
       <nav
         aria-label="Navigasi produksi mobile"
-        className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-red-600 bg-zinc-950 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-red-600 bg-zinc-950 px-1.5 pt-1.5 pb-[max(0.35rem,env(safe-area-inset-bottom))] shadow-2xl sm:hidden"
       >
-        <div className="grid grid-cols-4 gap-1 text-center text-[11px]">
+        <div className="grid grid-cols-4 gap-0.5 text-center text-[10px]">
           {TABS.map((tab) => {
             const active = activeTab === tab.id;
             const mobileLabel = {
@@ -286,11 +299,11 @@ function ProduksiHome() {
                 type="button"
                 onClick={() => selectTab(tab.id)}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+                className={`flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-md py-1 transition-colors ${
                   active ? "font-extrabold text-red-500" : "font-medium text-zinc-500 hover:text-zinc-300"
                 }`}
               >
-                <FontAwesomeIcon icon={tab.icon} className="text-lg" />
+                <FontAwesomeIcon icon={tab.icon} className="text-base" />
                 <span>{mobileLabel}</span>
               </button>
             );
