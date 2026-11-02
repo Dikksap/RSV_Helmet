@@ -7,7 +7,24 @@ import {
   deleteItem,
   bulkUpdateItems,
   DivisiTidakDikenalError,
+  getItemImagePath,
+  setItemImagePath,
 } from "../../model/item/item.js";
+import {
+  InvalidImageError,
+  removeStoredImage,
+  resolveStoredImagePath,
+  saveOptimizedImage,
+} from "../../lib/imageStorage.js";
+
+function presentItem<T extends { id: number; imagePath: string | null; updatedAt?: Date | string }>(row: T) {
+  const { imagePath, ...item } = row;
+  const version = row.updatedAt instanceof Date ? row.updatedAt.getTime() : row.updatedAt;
+  return {
+    ...item,
+    imageUrl: imagePath ? `/api/items/${row.id}/image${version ? `?v=${encodeURIComponent(version)}` : ""}` : null,
+  };
+}
 
 function parseId(raw: string) {
   const id = Number(raw);
@@ -80,7 +97,7 @@ export async function listItemsHandler(req: Request, res: Response) {
       aktif: aktifFilter,
       jenis: typeof jenis === "string" && jenis.trim() ? jenis.trim() : undefined,
     });
-    res.status(200).json(rows);
+    res.status(200).json(rows.map(presentItem));
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data item", error });
   }
@@ -93,7 +110,7 @@ export async function getItemDetail(req: Request, res: Response) {
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
     const row = await getItemById(id);
     if (!row) return res.status(404).json({ message: "Item tidak ditemukan" });
-    res.status(200).json(row);
+    res.status(200).json(presentItem(row));
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data item", error });
   }
@@ -105,7 +122,7 @@ export async function createItemHandler(req: Request, res: Response) {
     const parsed = parseBody(req.body);
     if ("error" in parsed) return res.status(400).json({ message: parsed.error });
     const row = await createItem(parsed);
-    res.status(201).json(row);
+    res.status(201).json(presentItem(row));
   } catch (error: any) {
     if (error?.code === "P2002") return res.status(409).json({ message: "Kode item sudah dipakai" });
     if (error?.code === "P2003") return res.status(400).json({ message: "Divisi tidak ditemukan" });
@@ -151,7 +168,7 @@ export async function updateItemHandler(req: Request, res: Response) {
       data.isActive = isActive;
     }
     const row = await updateItem(id, data);
-    res.status(200).json(row);
+    res.status(200).json(presentItem(row));
   } catch (error: any) {
     if (error?.code === "P2025") return res.status(404).json({ message: "Item tidak ditemukan" });
     if (error?.code === "P2002") return res.status(409).json({ message: "Kode item sudah dipakai" });
@@ -170,6 +187,90 @@ export async function deleteItemHandler(req: Request, res: Response) {
   } catch (error: any) {
     if (error?.code === "P2025") return res.status(404).json({ message: "Item tidak ditemukan" });
     res.status(500).json({ message: "Gagal menghapus item", error });
+  }
+}
+
+// GET /api/items/:id/image — gambar item boleh ditampilkan di katalog publik.
+export async function getItemImageHandler(req: Request, res: Response) {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
+    const imagePath = await getItemImagePath(id);
+    if (!imagePath) return res.status(404).json({ message: "Gambar item tidak ditemukan" });
+    res.set({ "Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff" });
+    res.type("image/webp").sendFile(resolveStoredImagePath(imagePath), (error) => {
+      if (!error || res.headersSent) return;
+      if ("code" in error && error.code === "ENOENT") {
+        res.status(404).json({ message: "File gambar item tidak ditemukan" });
+        return;
+      }
+      console.error("Gagal mengirim gambar item:", error);
+      res.status(500).json({ message: "Gagal mengambil gambar item" });
+    });
+  } catch (error) {
+    console.error("Gagal mengambil gambar item:", error);
+    res.status(500).json({ message: "Gagal mengambil gambar item" });
+  }
+}
+
+export async function uploadItemImageHandler(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
+  if (!req.file) return res.status(400).json({ message: "Pilih gambar untuk diunggah" });
+
+  let newPath: string | null = null;
+  try {
+    newPath = await saveOptimizedImage(req.file.buffer, "items");
+    const oldPath = await getItemImagePath(id);
+    await setItemImagePath(id, newPath);
+    try {
+      await removeStoredImage(oldPath);
+    } catch (error) {
+      console.error("Gambar item lama gagal dibersihkan:", error);
+    }
+    return res.status(200).json({
+      message: "Gambar item berhasil diperbarui",
+      imageUrl: `/api/items/${id}/image?v=${Date.now()}`,
+    });
+  } catch (error) {
+    if (newPath) {
+      try {
+        await removeStoredImage(newPath);
+      } catch (cleanupError) {
+        console.error("Gambar item yang gagal disimpan tidak dapat dibersihkan:", cleanupError);
+      }
+    }
+    if (error instanceof InvalidImageError) {
+      return res.status(400).json({ message: error.message });
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return res.status(404).json({ message: "Item tidak ditemukan" });
+    }
+    console.error("Gagal menyimpan gambar item:", error);
+    return res.status(500).json({ message: "Gagal menyimpan gambar item" });
+  }
+}
+
+export async function deleteItemImageHandler(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
+  try {
+    const oldPath = await getItemImagePath(id);
+    if (oldPath === null) {
+      const itemExists = await getItemById(id);
+      if (!itemExists) return res.status(404).json({ message: "Item tidak ditemukan" });
+      return res.status(200).json({ message: "Item tidak memiliki gambar" });
+    }
+    await setItemImagePath(id, null);
+    try {
+      await removeStoredImage(oldPath);
+    } catch (error) {
+      console.error("File gambar item gagal dibersihkan:", error);
+    }
+    return res.status(200).json({ message: "Gambar item berhasil dihapus" });
+  } catch (error) {
+    console.error("Gagal menghapus gambar item:", error);
+    return res.status(500).json({ message: "Gagal menghapus gambar item" });
   }
 }
 

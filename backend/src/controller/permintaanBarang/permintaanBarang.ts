@@ -190,13 +190,14 @@ export async function listPermintaanHandler(req: Request, res: Response) {
     const approver = parseOptionalIdQuery(req.query.divisiApproverId, "divisiApproverId");
     if ("error" in approver) return res.status(400).json({ message: approver.error });
     const batas = getBatasDivisi(req.access);
-    if (!batas.admin) {
+    const lintasDivisi = batas.admin || req.access?.role === "gudang";
+    if (!lintasDivisi) {
       if (!batas.divisiId) return res.status(403).json({ message: "Akun belum terhubung ke divisi" });
       if (approver.value !== undefined && approver.value !== batas.divisiId) {
         return res.status(403).json({ message: "Anda hanya dapat melihat permintaan divisi sendiri" });
       }
     }
-    const divisiApproverId = batas.admin ? approver.value : (batas.divisiId ?? undefined);
+    const divisiApproverId = lintasDivisi ? approver.value : (batas.divisiId ?? undefined);
     let sumber: SumberPermintaanBarang | undefined;
     if (req.query.sumber !== undefined && req.query.sumber !== "") {
       const parsed = parseEnum(req.query.sumber, SUMBER, null);
@@ -227,7 +228,7 @@ export async function getPermintaanHandler(req: Request, res: Response) {
     const row = await getPermintaanById(id);
     if (!row) return res.status(404).json({ message: "Permintaan tidak ditemukan" });
     const batas = getBatasDivisi(req.access);
-    if (!batas.admin) {
+    if (!batas.admin && req.access?.role !== "gudang") {
       if (!batas.divisiId) return res.status(403).json({ message: "Akun belum terhubung ke divisi" });
       if (row.divisiApproverId !== batas.divisiId) {
         return res.status(404).json({ message: "Permintaan tidak ditemukan" });
@@ -293,7 +294,7 @@ export async function setApprovalHandler(req: Request, res: Response) {
     if (items !== undefined) {
       if (!Array.isArray(items)) return res.status(400).json({ message: "Field 'items' harus array" });
       for (const raw of items) {
-        const row = (raw ?? {}) as { id?: unknown; jumlahDisetujui?: unknown };
+        const row = (raw ?? {}) as { id?: unknown; jumlahDisetujui?: unknown; sumberLocationId?: unknown };
         const itemId = Number(row.id);
         const jumlah = Number(row.jumlahDisetujui);
         if (!Number.isInteger(itemId) || itemId <= 0) {
@@ -302,7 +303,15 @@ export async function setApprovalHandler(req: Request, res: Response) {
         if (!Number.isInteger(jumlah) || jumlah < 0) {
           return res.status(400).json({ message: "items[].jumlahDisetujui harus bilangan bulat >= 0" });
         }
-        keputusan.push({ id: itemId, jumlahDisetujui: jumlah });
+        let sumberLocationId: number | null = null;
+        if (row.sumberLocationId !== undefined && row.sumberLocationId !== null && row.sumberLocationId !== "") {
+          const locationId = Number(row.sumberLocationId);
+          if (!Number.isInteger(locationId) || locationId <= 0) {
+            return res.status(400).json({ message: "items[].sumberLocationId harus angka bulat positif" });
+          }
+          sumberLocationId = locationId;
+        }
+        keputusan.push({ id: itemId, jumlahDisetujui: jumlah, sumberLocationId });
       }
     }
 

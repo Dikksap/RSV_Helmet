@@ -7,6 +7,8 @@ vi.mock("../src/model/user/user.js", () => ({
   findUserByEmail: vi.fn(),
   getUserRole: vi.fn(),
   getUserById: vi.fn(),
+  getUserAvatarPath: vi.fn(),
+  setUserAvatarPath: vi.fn(),
   findUserByIdWithPassword: vi.fn(),
   updateUser: vi.fn(),
 }));
@@ -32,7 +34,14 @@ import {
   requirePermission,
   requireRole,
 } from "../src/middleware/auth.js";
-import { findUserByEmail, findUserByIdWithPassword, getUserById, getUserRole, updateUser } from "../src/model/user/user.js";
+import {
+  findUserByEmail,
+  findUserByIdWithPassword,
+  getUserAvatarPath,
+  getUserById,
+  getUserRole,
+  updateUser,
+} from "../src/model/user/user.js";
 import { getRoleAccess } from "../src/model/role/role.js";
 import { signToken, verifyToken, type TokenPayload } from "../src/lib/jwt.js";
 import redis from "../src/lib/redis.js";
@@ -40,6 +49,7 @@ import redis from "../src/lib/redis.js";
 const mockedFindUserByEmail = vi.mocked(findUserByEmail);
 const mockedGetUserRole = vi.mocked(getUserRole);
 const mockedGetUserById = vi.mocked(getUserById);
+const mockedGetUserAvatarPath = vi.mocked(getUserAvatarPath);
 const mockedFindUserByIdWithPassword = vi.mocked(findUserByIdWithPassword);
 const mockedUpdateUser = vi.mocked(updateUser);
 const mockedGetRoleAccess = vi.mocked(getRoleAccess);
@@ -96,6 +106,7 @@ beforeEach(() => {
   mockedRedis.setex.mockResolvedValue("OK");
   mockedRedis.exists.mockResolvedValue(0);
   mockedGetUserRole.mockResolvedValue("admin");
+  mockedGetUserAvatarPath.mockResolvedValue(null);
   mockedGetUserById.mockResolvedValue({
     id: 1,
     name: "Admin",
@@ -172,6 +183,7 @@ describe("POST /api/auth/login", () => {
       role: "admin",
       divisiId: null,
       divisi: null,
+      avatarUrl: null,
     });
     expect(res.body.user.password).toBeUndefined();
 
@@ -562,6 +574,7 @@ describe("GET /api/auth/me", () => {
       role: "admin",
       divisiId: null,
       divisi: null,
+      avatarUrl: null,
     });
     expect(res.body.permissions).toEqual(["BARANG_LIHAT", "ROLE_KELOLA"]);
     expect(res.body.statusView).toBeNull();
@@ -627,5 +640,15 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(200);
     expect(res.body.user.role).toBe("gudang");
     expect(res.body.statusView).toEqual(["FINISHGOOD", "RETUR"]);
+  });
+
+  it("membatasi pembacaan avatar ke sesi yang sedang login", async () => {
+    const anonymous = await request(app).get("/api/auth/me/avatar");
+    expect(anonymous.status).toBe(401);
+
+    const token = signToken({ id: 1, email: "admin@example.com", name: "Admin", role: "admin" });
+    const noAvatar = await request(app).get("/api/auth/me/avatar").set("Authorization", `Bearer ${token}`);
+    expect(noAvatar.status).toBe(404);
+    expect(mockedGetUserAvatarPath).toHaveBeenCalledWith(1);
   });
 });

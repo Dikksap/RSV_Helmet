@@ -3,7 +3,10 @@ import express from "express";
 import request from "supertest";
 
 vi.mock("../src/model/gudang/gudang.js", () => ({
+  createGudang: vi.fn(),
+  deactivateGudang: vi.fn(),
   listGudang: vi.fn(),
+  updateGudang: vi.fn(),
 }));
 
 const adminAccess = { role: "admin", permissions: ["BARANG_LIHAT"], statusView: null };
@@ -13,6 +16,7 @@ vi.mock("../src/middleware/auth.js", async (importOriginal) => {
   return {
     ...actual,
     authenticate: (_req: any, _res: any, next: any) => next(),
+    adminOnly: (_req: any, _res: any, next: any) => next(),
     authorize: (req: any, _res: any, next: any) => {
       req.access = adminAccess;
       next();
@@ -21,9 +25,17 @@ vi.mock("../src/middleware/auth.js", async (importOriginal) => {
 });
 
 import gudangRouter from "../src/routes/gudang.js";
-import { listGudang } from "../src/model/gudang/gudang.js";
+import {
+  createGudang,
+  deactivateGudang,
+  listGudang,
+  updateGudang,
+} from "../src/model/gudang/gudang.js";
 
 const mockedListGudang = vi.mocked(listGudang);
+const mockedCreateGudang = vi.mocked(createGudang);
+const mockedUpdateGudang = vi.mocked(updateGudang);
+const mockedDeactivateGudang = vi.mocked(deactivateGudang);
 const app = express();
 app.use(express.json());
 app.use("/api/gudang", gudangRouter);
@@ -45,16 +57,48 @@ describe("warehouse lookup API", () => {
     expect(mockedListGudang).toHaveBeenCalledWith(null);
   });
 
-  it.each([
-    ["GET", "/api/gudang/1"],
-    ["POST", "/api/gudang"],
-    ["PUT", "/api/gudang/1"],
-    ["DELETE", "/api/gudang/1"],
-  ])("does not expose retired warehouse-admin endpoint %s %s", async (method, path) => {
-    const response = method === "GET" ? await request(app).get(path)
-      : method === "POST" ? await request(app).post(path)
-        : method === "PUT" ? await request(app).put(path)
-          : await request(app).delete(path);
-    expect(response.status).toBe(404);
+  it("creates a warehouse using normalized values", async () => {
+    mockedCreateGudang.mockResolvedValue({
+      id: 2, kode: "WH2", name: "Gudang Dua", isActive: true,
+    } as any);
+
+    const response = await request(app)
+      .post("/api/gudang")
+      .send({ kode: " wh2 ", name: " Gudang Dua " });
+
+    expect(response.status).toBe(201);
+    expect(mockedCreateGudang).toHaveBeenCalledWith({ kode: "WH2", name: "Gudang Dua", isActive: undefined });
+  });
+
+  it("rejects incomplete warehouse data", async () => {
+    const response = await request(app).post("/api/gudang").send({ kode: "WH3" });
+
+    expect(response.status).toBe(400);
+    expect(mockedCreateGudang).not.toHaveBeenCalled();
+  });
+
+  it("updates warehouse details", async () => {
+    mockedUpdateGudang.mockResolvedValue({
+      id: 1, kode: "WH1", name: "Gudang Satu", isActive: true,
+    } as any);
+
+    const response = await request(app)
+      .put("/api/gudang/1")
+      .send({ name: " Gudang Satu " });
+
+    expect(response.status).toBe(200);
+    expect(mockedUpdateGudang).toHaveBeenCalledWith(1, { name: "Gudang Satu" });
+  });
+
+  it("deactivates instead of physically deleting a warehouse", async () => {
+    mockedDeactivateGudang.mockResolvedValue({
+      id: 1, kode: "WH1", name: "Gudang Satu", isActive: false,
+    } as any);
+
+    const response = await request(app).delete("/api/gudang/1");
+
+    expect(response.status).toBe(200);
+    expect(response.body.gudang.isActive).toBe(false);
+    expect(mockedDeactivateGudang).toHaveBeenCalledWith(1);
   });
 });

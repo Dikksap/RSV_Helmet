@@ -3,6 +3,13 @@ import bcrypt from "bcryptjs";
 import { findUserByEmail, findUserByIdWithPassword, getUserById, updateUser } from "../../model/user/user.js";
 import { signToken } from "../../lib/jwt.js";
 import { revokeToken } from "../../lib/tokenBlacklist.js";
+import {
+  InvalidImageError,
+  removeStoredImage,
+  resolveStoredImagePath,
+  saveOptimizedImage,
+} from "../../lib/imageStorage.js";
+import { getUserAvatarPath, setUserAvatarPath } from "../../model/user/user.js";
 
 export async function login(req: Request, res: Response) {
   try {
@@ -40,6 +47,7 @@ export async function login(req: Request, res: Response) {
         role: user.role,
         divisiId: user.divisiId ?? null,
         divisi: user.divisi ?? null,
+        avatarUrl: user.avatarPath ? "/api/auth/me/avatar" : null,
       },
     });
   } catch (error) {
@@ -70,6 +78,7 @@ export async function me(req: Request, res: Response) {
         role: user.role,
         divisiId: user.divisiId ?? null,
         divisi: user.divisi ?? null,
+        avatarUrl: (await getUserAvatarPath(id)) ? "/api/auth/me/avatar" : null,
       },
       permissions: req.access?.permissions ?? [],
       statusView: req.access?.statusView ?? null,
@@ -122,7 +131,11 @@ export async function updateMe(req: Request, res: Response) {
       ...(password !== undefined ? { password } : {}),
     });
 
-    res.status(200).json({ message: "Profil diperbarui", user });
+    const avatarPath = await getUserAvatarPath(id);
+    res.status(200).json({
+      message: "Profil diperbarui",
+      user: { ...user, avatarUrl: avatarPath ? "/api/auth/me/avatar" : null },
+    });
   } catch (error: any) {
     if (error?.code === "P2002") {
       return res.status(409).json({ message: "Email sudah terdaftar" });
@@ -131,6 +144,81 @@ export async function updateMe(req: Request, res: Response) {
       return res.status(404).json({ message: "User tidak ditemukan" });
     }
     res.status(500).json({ message: "Gagal memperbarui profil", error });
+  }
+}
+
+// GET /api/auth/me/avatar — file hanya untuk sesi pengguna yang sedang login.
+export async function getMyAvatar(req: Request, res: Response) {
+  try {
+    const avatarPath = await getUserAvatarPath(req.user!.id);
+    if (!avatarPath) return res.status(404).json({ message: "Avatar belum diunggah" });
+    res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+    res.type("image/webp").sendFile(resolveStoredImagePath(avatarPath), (error) => {
+      if (!error || res.headersSent) return;
+      if ("code" in error && error.code === "ENOENT") {
+        res.status(404).json({ message: "File avatar tidak ditemukan" });
+        return;
+      }
+      console.error("Gagal mengirim gambar avatar:", error);
+      res.status(500).json({ message: "Gagal mengambil gambar avatar" });
+    });
+  } catch (error) {
+    console.error("Gagal mengambil gambar avatar:", error);
+    res.status(500).json({ message: "Gagal mengambil gambar avatar" });
+  }
+}
+
+// POST /api/auth/me/avatar — setiap avatar dinormalisasi menjadi WebP.
+export async function uploadMyAvatar(req: Request, res: Response) {
+  if (!req.file) return res.status(400).json({ message: "Pilih gambar untuk diunggah" });
+  let newPath: string | null = null;
+  try {
+    newPath = await saveOptimizedImage(req.file.buffer, "avatars");
+    const userId = req.user!.id;
+    const oldPath = await getUserAvatarPath(userId);
+    await setUserAvatarPath(userId, newPath);
+    try {
+      await removeStoredImage(oldPath);
+    } catch (error) {
+      console.error("Avatar lama gagal dibersihkan:", error);
+    }
+    return res.status(200).json({
+      message: "Avatar berhasil diperbarui",
+      avatarUrl: "/api/auth/me/avatar",
+    });
+  } catch (error) {
+    if (newPath) {
+      try {
+        await removeStoredImage(newPath);
+      } catch (cleanupError) {
+        console.error("Gambar avatar yang gagal disimpan tidak dapat dibersihkan:", cleanupError);
+      }
+    }
+    if (error instanceof InvalidImageError) {
+      return res.status(400).json({ message: error.message });
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      return res.status(404).json({ message: "Akun tidak ditemukan" });
+    }
+    console.error("Gagal menyimpan avatar:", error);
+    return res.status(500).json({ message: "Gagal menyimpan avatar" });
+  }
+}
+
+export async function deleteMyAvatar(req: Request, res: Response) {
+  try {
+    const userId = req.user!.id;
+    const oldPath = await getUserAvatarPath(userId);
+    await setUserAvatarPath(userId, null);
+    try {
+      await removeStoredImage(oldPath);
+    } catch (error) {
+      console.error("File avatar lama gagal dibersihkan:", error);
+    }
+    return res.status(200).json({ message: "Avatar berhasil dihapus" });
+  } catch (error) {
+    console.error("Gagal menghapus avatar:", error);
+    return res.status(500).json({ message: "Gagal menghapus avatar" });
   }
 }
 

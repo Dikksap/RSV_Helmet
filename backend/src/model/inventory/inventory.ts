@@ -1,5 +1,6 @@
 import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { createHash } from "node:crypto";
+import { syncItemStok } from "../stokItem/stokItem.js";
 
 export class InventoryError extends Error {
   constructor(
@@ -304,6 +305,104 @@ export async function listInventoryMovements(filters: {
   });
 }
 
+export async function getItemStockAtLocation(
+  tx: PrismaTransactionClient,
+  itemId: number,
+  locationId: number,
+): Promise<number> {
+  const row = await tx.stockBalance.aggregate({
+    where: { itemId, locationId, batchId: null },
+    _sum: { quantity: true },
+  });
+  return Number(row._sum.quantity ?? 0);
+}
+
+/** Transfer satu lot stok (lot 0 untuk stok non-WIP). Total Item.stok tidak berubah. */
+export async function transferItemStock(
+  tx: PrismaTransactionClient,
+  input: {
+    itemId: number;
+    fromLocationId: number;
+    toLocationId: number;
+    quantity: number;
+    idempotencyKey: string;
+    sourceType: string;
+    sourceId: string;
+    reason?: string | null;
+    userId?: number | null;
+  },
+) {
+  return postInventoryMovementInTransaction(tx, {
+    ...input,
+    type: "TRANSFER",
+    syncItemStok: true,
+  });
+}
+
+/**
+ * Konsumsi stok di satu lokasi lintas lot (termasuk lot 0 dan WIP lama).
+ * Setiap potongan lot menjadi satu movement; total Item.stok turun sekali.
+ */
+export async function consumeItemAtLocation(
+  tx: PrismaTransactionClient,
+  input: {
+    itemId: number;
+    locationId: number;
+    quantity: number;
+    idempotencyKey: string;
+    sourceType: string;
+    sourceId: string;
+    reason?: string | null;
+    userId?: number | null;
+    occurredAt?: Date;
+    produksiHarianId?: number | null;
+    movementType?: "PRODUCTION" | "TRANSFER";
+  },
+) {
+  const rows = await tx.stockBalance.findMany({
+    where: {
+      itemId: input.itemId,
+      locationId: input.locationId,
+      batchId: null,
+      quantity: { gt: 0 },
+    },
+    select: { id: true, pemakaianMaterialItemId: true, quantity: true },
+    orderBy: { id: "asc" },
+  });
+  const tersedia = rows.reduce((total, row) => total + Number(row.quantity), 0);
+  if (tersedia + 0.000001 < input.quantity) {
+    throw new InventoryError(
+      "INSUFFICIENT_STOCK",
+      `Saldo stok item ${input.itemId} di lokasi ${input.locationId} tidak cukup (tersedia ${tersedia})`,
+    );
+  }
+
+  let sisa = input.quantity;
+  for (const row of rows) {
+    if (sisa <= 0.000001) break;
+    const pakai = Math.min(Number(row.quantity), sisa);
+    await postInventoryMovementInTransaction(tx, {
+      itemId: input.itemId,
+      ...(row.pemakaianMaterialItemId != null
+        ? { pemakaianMaterialItemId: row.pemakaianMaterialItemId }
+        : {}),
+      ...(input.produksiHarianId != null ? { produksiHarianId: input.produksiHarianId } : {}),
+      fromLocationId: input.locationId,
+      type: input.movementType ?? "PRODUCTION",
+      quantity: pakai,
+      idempotencyKey: `${input.idempotencyKey}:${row.id}`,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      reason: input.reason ?? null,
+      userId: input.userId ?? null,
+      occurredAt: input.occurredAt,
+      syncItemStok: true,
+    });
+    sisa -= pakai;
+  }
+  return tersedia - input.quantity;
+}
+
 export async function getInventoryBalances(filters: {
   itemId?: number;
   barangId?: number;
@@ -345,6 +444,24 @@ export async function getInventoryBalances(filters: {
         quantity,
       };
     });
+}
+
+export async function getWarehouseItemBalances(itemIds: number[]) {
+  const ids = [...new Set(itemIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (ids.length === 0) return {};
+
+  const rows = await prisma.stockBalance.findMany({
+    where: {
+      itemId: { in: ids },
+      location: { type: "WAREHOUSE", isActive: true },
+    },
+    select: { itemId: true, quantity: true },
+  });
+  const balances: Record<number, number> = Object.fromEntries(ids.map((id) => [id, 0]));
+  for (const row of rows) {
+    if (row.itemId !== null) balances[row.itemId] = (balances[row.itemId] ?? 0) + Number(row.quantity);
+  }
+  return balances;
 }
 
 const stockAdjustmentInclude = {
@@ -567,6 +684,7 @@ export async function approveStockAdjustment(
       sourceId: String(adjustment.id),
       reason: adjustment.reason,
       userId: reviewerId,
+      syncItemStok: true,
     });
     await tx.stockAdjustment.update({
       where: { id: adjustment.id },
@@ -654,6 +772,7 @@ export type InventoryMovementInput = {
   toLocationId?: number | null;
   pemakaianMaterialItemId?: number | null;
   hasilProduksiHarianId?: number | null;
+  produksiHarianId?: number | null;
   type:
     | "OPENING"
     | "PRODUCTION"
@@ -672,6 +791,8 @@ export type InventoryMovementInput = {
   reason?: string | null;
   userId?: number | null;
   occurredAt?: Date;
+  /** Perbarui Item.stok untuk pergerakan satu arah. Transfer tidak mengubah total. */
+  syncItemStok?: boolean;
 };
 
 export async function postInventoryMovement(input: InventoryMovementInput) {
@@ -910,6 +1031,7 @@ async function createMovement(
       toLocationId: input.toLocationId ?? null,
       pemakaianMaterialItemId: input.pemakaianMaterialItemId ?? null,
       hasilProduksiHarianId: input.hasilProduksiHarianId ?? null,
+      produksiHarianId: input.produksiHarianId ?? null,
       type: input.type,
       quantity: input.quantity,
       idempotencyKey: input.idempotencyKey,
@@ -937,6 +1059,17 @@ async function createMovement(
       where: { balanceKey: row.balanceKey },
       data: { quantity: { increment: delta } },
     });
+  }
+
+  if (input.syncItemStok && input.itemId != null) {
+    const oneWay = (input.fromLocationId == null) !== (input.toLocationId == null);
+    if (oneWay) {
+      await syncItemStok(
+        tx,
+        input.itemId,
+        input.toLocationId != null ? input.quantity : -input.quantity,
+      );
+    }
   }
   return movement;
 }

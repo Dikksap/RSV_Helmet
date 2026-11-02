@@ -27,6 +27,7 @@ services:
       DB_NAME: express_api
 
       REDIS_URL: redis://redis:6379
+      UPLOADS_DIR: /app/uploads
 
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET di .env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
@@ -38,6 +39,8 @@ services:
         condition: service_healthy
 
     restart: unless-stopped
+    volumes:
+      - uploads_data:/app/uploads
 
     networks:
       - app
@@ -114,3 +117,4 @@ networks:
 volumes:
   mariadb_data:
   redis_data:
+  uploads_data:

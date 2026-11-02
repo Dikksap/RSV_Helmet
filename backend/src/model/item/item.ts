@@ -31,6 +31,22 @@ export async function getItemById(id: number) {
   });
 }
 
+export async function getItemImagePath(id: number): Promise<string | null> {
+  const item = await prisma.item.findUnique({
+    where: { id },
+    select: { imagePath: true },
+  });
+  return item?.imagePath ?? null;
+}
+
+export async function setItemImagePath(id: number, imagePath: string | null): Promise<void> {
+  await prisma.item.update({
+    where: { id },
+    data: { imagePath },
+    select: { id: true },
+  });
+}
+
 export async function createItem(data: {
   kode: string;
   nama: string;

@@ -1,0 +1,5 @@
+ALTER TABLE `User`
+  ADD COLUMN `avatarPath` VARCHAR(255) NULL;
+
+ALTER TABLE `Item`
+  ADD COLUMN `imagePath` VARCHAR(255) NULL;

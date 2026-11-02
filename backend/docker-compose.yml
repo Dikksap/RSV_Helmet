@@ -20,6 +20,7 @@ services:
       DATABASE_URL: mysql://root:rootpassword@db:3306/express_api
 
       REDIS_URL: redis://redis:6379
+      UPLOADS_DIR: /app/uploads
 
       # Chromium milik prisma-erd-generator menolak jalan sebagai root di
       # container, jadi ERD hanya digenerate di host.
@@ -37,6 +38,7 @@ services:
 
       # Generated Prisma tetap di container
       - /app/generated
+      - ./uploads:/app/uploads
 
     depends_on:
       db:

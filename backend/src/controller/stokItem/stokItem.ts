@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { getItemById } from "../../model/item/item.js";
 import { catatMutasi, getSaldo, getSaldoBulk, getRingkasanBulk, listMutasiItem, lockItem, StokKurangError } from "../../model/stokItem/stokItem.js";
+import { getWarehouseItemBalances } from "../../model/inventory/inventory.js";
 import prisma from "../../lib/prisma.js";
 import { TipeStokItem } from "../../../generated/prisma/enums.js";
 
@@ -119,6 +120,23 @@ export async function getSaldoBulkHandler(req: Request, res: Response) {
     res.status(200).json({ saldo: await getSaldoBulk(parsed) });
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil saldo item", error });
+  }
+}
+
+// POST /api/items/stok-saldo-gudang body: { ids: number[] } -> aggregate balance in active warehouses only.
+export async function getSaldoGudangBulkHandler(req: Request, res: Response) {
+  try {
+    const { ids } = (req.body ?? {}) as { ids?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 200) {
+      return res.status(400).json({ message: "Field 'ids' harus array 1-200 id" });
+    }
+    const parsed = ids.map(Number);
+    if (parsed.some((id) => !Number.isInteger(id) || id <= 0)) {
+      return res.status(400).json({ message: "Field 'ids' harus berisi angka bulat positif" });
+    }
+    res.status(200).json({ saldo: await getWarehouseItemBalances(parsed) });
+  } catch (error) {
+    res.status(500).json({ message: "Gagal mengambil saldo item di gudang", error });
   }
 }
 

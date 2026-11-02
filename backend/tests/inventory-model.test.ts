@@ -18,6 +18,7 @@ vi.mock("../src/lib/prisma.js", () => ({ default: prismaMock }));
 
 import {
   getInventoryBalances,
+  getWarehouseItemBalances,
   listInventoryMovements,
   listUnmappedLegacyItemBalances,
   postInventoryMovement,
@@ -49,6 +50,38 @@ describe("getInventoryBalances", () => {
         (where.locationId === undefined || row.locationId === where.locationId),
       )),
     );
+  });
+
+  describe("getWarehouseItemBalances", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("menjumlah saldo item hanya dari gudang aktif dan memberi nol untuk item tanpa saldo", async () => {
+      prismaMock.stockBalance.findMany.mockResolvedValue([
+        { itemId: 12, quantity: 7 },
+        { itemId: 12, quantity: 3 },
+        { itemId: 18, quantity: 4 },
+      ] as never);
+
+      await expect(getWarehouseItemBalances([12, 18, 19, 12])).resolves.toEqual({
+        12: 10,
+        18: 4,
+        19: 0,
+      });
+      expect(prismaMock.stockBalance.findMany).toHaveBeenCalledWith({
+        where: {
+          itemId: { in: [12, 18, 19] },
+          location: { type: "WAREHOUSE", isActive: true },
+        },
+        select: { itemId: true, quantity: true },
+      });
+    });
+
+    it("tidak menjalankan query jika daftar item kosong", async () => {
+      await expect(getWarehouseItemBalances([])).resolves.toEqual({});
+      expect(prismaMock.stockBalance.findMany).not.toHaveBeenCalled();
+    });
   });
 
   it("menghitung saldo neto lokasi dari mutasi masuk dan keluar", async () => {

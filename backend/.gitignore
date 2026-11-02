@@ -4,6 +4,7 @@ node_modules/
 .vercel/
 dist/
 generated/
+uploads/
 
 /generated/prisma
 .agents/

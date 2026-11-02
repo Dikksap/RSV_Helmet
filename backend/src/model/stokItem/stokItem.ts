@@ -11,7 +11,26 @@ export type StokMutasiInput = {
   keterangan?: string | null;
   userId?: number | null;
   tanggal?: Date;
+  syncStok?: boolean;
 };
+
+/** Ubah stok total item. Negatif di bawah nol membatalkan transaksi pemanggil. */
+export async function syncItemStok(
+  tx: PrismaTransactionClient,
+  itemId: number,
+  delta: number,
+): Promise<number> {
+  const item = await tx.item.update({
+    where: { id: itemId },
+    data: { stok: { increment: delta } },
+    select: { stok: true },
+  });
+  const saldo = Number(item.stok);
+  if (saldo < -0.000001) {
+    throw new StokKurangError(itemId, saldo - delta);
+  }
+  return saldo;
+}
 
 export class StokKurangError extends Error {
   readonly code = "STOK_KURANG";
@@ -94,7 +113,7 @@ export async function getRingkasanBulk(
 }
 
 export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasiInput) {
-  return tx.stokItemMutasi.create({
+  const mutasi = await tx.stokItemMutasi.create({
     data: {
       itemId: input.itemId,
       tipe: input.tipe,
@@ -107,6 +126,14 @@ export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasi
       ...(input.tanggal ? { tanggal: input.tanggal } : {}),
     },
   });
+  if (input.syncStok !== false) {
+    await syncItemStok(
+      tx,
+      input.itemId,
+      input.tipe === TipeStokItem.MASUK ? input.jumlah : -input.jumlah,
+    );
+  }
+  return mutasi;
 }
 
 function awalHari(tanggal: Date): Date {

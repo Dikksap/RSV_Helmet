@@ -123,6 +123,7 @@ model User {
   name      String
   email     String   @unique
   password  String
+  avatarPath String? @db.VarChar(255)
   role      String   @default("user")
   divisiId  Int?
   createdAt DateTime @default(now())
@@ -155,6 +156,7 @@ model User {
   stockAdjustmentsRequested StockAdjustment[]    @relation("StockAdjustmentRequester")
   stockAdjustmentsApproved  StockAdjustment[]    @relation("StockAdjustmentApprover")
   stockAdjustmentsReviewed StockAdjustment[]     @relation("StockAdjustmentReviewer")
+  produksiHarian           ProduksiHarian[]
 
   @@index([role], map: "User_role_fkey")
   @@index([divisiId], map: "User_divisiId_fkey")
@@ -273,6 +275,7 @@ model Divisi {
   users                   User[]
   pemakaianMaterials      PemakaianMaterial[]
   hasilProduksiHarian     HasilProduksiHarian[]
+  produksiHarian          ProduksiHarian[]
   permintaanPeminta       PermintaanBarang[]       @relation("PermintaanPeminta")
   permintaanApprover      PermintaanBarang[]       @relation("PermintaanApprover")
   wipTransferAsal         WipTransfer[]            @relation("WipTransferAsal")
@@ -290,10 +293,12 @@ model Item {
   id        Int      @id @default(autoincrement())
   kode      String   @unique
   nama      String
+  imagePath String?  @db.VarChar(255)
   divisiId  Int?
   defaultInventoryLocationId Int?
   unit      String   @default("pcs")
   jenis     String?
+  stok      Decimal  @default(0) @db.Decimal(18, 6)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -316,6 +321,7 @@ model Item {
   wipStocktakeLines        WipStocktakeLine[]
   wipRejects               WipReject[]
   wipRejectRepairOutputs   WipRejectRepairAttempt[]       @relation("WipRejectRepairOutput")
+  produksiHarianItems      ProduksiHarianItem[]
 
   @@index([divisiId], map: "Item_divisiId_fkey")
   @@index([defaultInventoryLocationId], map: "Item_defaultInventoryLocationId_fkey")
@@ -338,6 +344,20 @@ model Gudang {
   mutasiKeluar       RiwayatMutasiGudang[] @relation("MutasiGudangAsal")
   mutasiMasuk        RiwayatMutasiGudang[] @relation("MutasiGudangTujuan")
   inventoryLocations InventoryLocation[]
+  jenisItems         GudangJenisItem[]
+}
+
+// Jenis item yang boleh disimpan di sebuah gudang. Tanpa baris = semua jenis.
+model GudangJenisItem {
+  id        Int      @id @default(autoincrement())
+  gudangId  Int
+  jenis     String   @db.VarChar(50)
+  createdAt DateTime @default(now())
+
+  gudang Gudang @relation(fields: [gudangId], references: [id], onDelete: Cascade)
+
+  @@unique([gudangId, jenis])
+  @@index([jenis])
 }
 
 // Riwayat perpindahan lokasi barang. Append-only: tidak ada
@@ -1182,6 +1202,53 @@ model HasilProduksiPemakaian {
   @@index([pemakaianMaterialItemId], map: "HasilProduksiPemakaian_pemakaianMaterialItemId_fkey")
 }
 
+enum TipeProduksiHarian {
+  BAHAN
+  HASIL
+}
+
+// Produksi harian baru: konsumsi bahan dari lokasi sumber, output ke gudang.
+model ProduksiHarian {
+  id               Int      @id @default(autoincrement())
+  nomor            String   @unique
+  tanggalProduksi  DateTime @default(now())
+  divisiId         Int
+  tujuanLocationId Int
+  userId           Int?
+  keterangan       String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  divisi         Divisi            @relation(fields: [divisiId], references: [id], onDelete: Restrict)
+  tujuanLocation InventoryLocation @relation("ProduksiHarianTujuan", fields: [tujuanLocationId], references: [id], onDelete: Restrict)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items          ProduksiHarianItem[]
+  movements      InventoryMovement[]
+
+  @@index([tanggalProduksi])
+  @@index([divisiId, tanggalProduksi])
+  @@index([tujuanLocationId])
+}
+
+model ProduksiHarianItem {
+  id                  Int                 @id @default(autoincrement())
+  produksiHarianId    Int
+  itemId              Int
+  tipe                TipeProduksiHarian
+  jumlah              Decimal             @db.Decimal(18, 6)
+  sumberLocationId    Int?
+  keterangan          String?             @db.Text
+  createdAt           DateTime            @default(now())
+
+  produksiHarian ProduksiHarian     @relation(fields: [produksiHarianId], references: [id], onDelete: Cascade)
+  item           Item               @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  sumberLocation InventoryLocation? @relation("ProduksiHarianSumber", fields: [sumberLocationId], references: [id], onDelete: Restrict)
+
+  @@index([produksiHarianId])
+  @@index([itemId])
+  @@index([sumberLocationId])
+}
+
 enum InventoryLocationType {
   WAREHOUSE
   DIVISION
@@ -1309,6 +1376,8 @@ model InventoryLocation {
   defaultForItems       Item[]               @relation("ItemDefaultInventoryLocation")
   stockBalances         StockBalance[]
   stockAdjustments      StockAdjustment[]
+  produksiHarianTujuan  ProduksiHarian[]     @relation("ProduksiHarianTujuan")
+  produksiHarianSumber  ProduksiHarianItem[] @relation("ProduksiHarianSumber")
 
   @@index([type, isActive])
 }
@@ -1322,6 +1391,7 @@ model InventoryMovement {
   toLocationId            Int?
   pemakaianMaterialItemId Int?
   hasilProduksiHarianId   Int?
+  produksiHarianId        Int?
   type                    InventoryMovementType
   quantity                Decimal               @db.Decimal(18, 6)
   idempotencyKey          String                @unique
@@ -1341,6 +1411,7 @@ model InventoryMovement {
   toLocation            InventoryLocation?     @relation("InventoryMovementDestination", fields: [toLocationId], references: [id], onDelete: Restrict)
   pemakaianMaterialItem PemakaianMaterialItem? @relation(fields: [pemakaianMaterialItemId], references: [id], onDelete: Restrict)
   hasilProduksiHarian   HasilProduksiHarian?   @relation(fields: [hasilProduksiHarianId], references: [id], onDelete: Restrict)
+  produksiHarian        ProduksiHarian?        @relation(fields: [produksiHarianId], references: [id], onDelete: Restrict)
   user                  User?                  @relation("InventoryMovementCreatedBy", fields: [userId], references: [id], onDelete: SetNull)
   reversalOf            InventoryMovement?     @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
   reversedBy            InventoryMovement?     @relation("InventoryMovementReversal")
@@ -1356,6 +1427,7 @@ model InventoryMovement {
   @@index([toLocationId, barangId, occurredAt])
   @@index([pemakaianMaterialItemId])
   @@index([hasilProduksiHarianId])
+  @@index([produksiHarianId])
   @@index([sourceType, sourceId])
 }
 

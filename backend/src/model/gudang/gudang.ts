@@ -1,7 +1,27 @@
 import prisma from "../../lib/prisma.js";
 import { statusScopeFilter } from "../barang/barang.status.js";
 
-const countBarang = { _count: { select: { barang: true } } };
+export type GudangInput = {
+  kode: string;
+  name: string;
+  isActive?: boolean;
+};
+
+const countBarang = {
+  _count: { select: { barang: true } },
+  jenisItems: { select: { jenis: true }, orderBy: { jenis: "asc" as const } },
+};
+
+const warehouseSelect = {
+  id: true,
+  kode: true,
+  name: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+  _count: { select: { barang: true } },
+  jenisItems: { select: { jenis: true }, orderBy: { jenis: "asc" as const } },
+} as const;
 
 /** Hitung ulang _count.barang sesuai scope visibilitas status pemanggil. */
 async function recountByScope<T extends { id: number; _count: { barang: number } }>(
@@ -25,4 +45,88 @@ export async function listGudang(statusScope?: string[] | null) {
     include: countBarang,
   });
   return recountByScope(rows, statusScope);
+}
+
+export async function createGudang(input: GudangInput) {
+  return prisma.$transaction(async (tx) => {
+    const gudang = await tx.gudang.create({
+      data: {
+        kode: input.kode,
+        name: input.name,
+        isActive: input.isActive ?? true,
+      },
+      select: { id: true, kode: true, name: true, isActive: true },
+    });
+    await tx.inventoryLocation.create({
+      data: {
+        code: `WH-${gudang.id}`,
+        name: gudang.name,
+        type: "WAREHOUSE",
+        gudangId: gudang.id,
+        isActive: gudang.isActive,
+      },
+    });
+    return tx.gudang.findUniqueOrThrow({
+      where: { id: gudang.id },
+      select: warehouseSelect,
+    });
+  });
+}
+
+export async function updateGudang(id: number, input: Partial<GudangInput>) {
+  return prisma.$transaction(async (tx) => {
+    const gudang = await tx.gudang.update({
+      where: { id },
+      data: input,
+      select: { id: true, kode: true, name: true, isActive: true },
+    });
+    const location = await tx.inventoryLocation.findUnique({
+      where: { gudangId: id },
+      select: { id: true },
+    });
+    if (location) {
+      await tx.inventoryLocation.update({
+        where: { id: location.id },
+        data: { name: gudang.name, isActive: gudang.isActive },
+      });
+    } else {
+      await tx.inventoryLocation.create({
+        data: {
+          code: `WH-${gudang.id}`,
+          name: gudang.name,
+          type: "WAREHOUSE",
+          gudangId: gudang.id,
+          isActive: gudang.isActive,
+        },
+      });
+    }
+    return tx.gudang.findUniqueOrThrow({
+      where: { id },
+      select: warehouseSelect,
+    });
+  });
+}
+
+export async function deactivateGudang(id: number) {
+  return updateGudang(id, { isActive: false });
+}
+
+export async function setGudangJenis(gudangId: number, jenis: string[]) {
+  return prisma.$transaction(async (tx) => {
+    const gudang = await tx.gudang.findUnique({
+      where: { id: gudangId },
+      select: { id: true },
+    });
+    if (!gudang) return null;
+    await tx.gudangJenisItem.deleteMany({ where: { gudangId } });
+    if (jenis.length > 0) {
+      await tx.gudangJenisItem.createMany({
+        data: jenis.map((value) => ({ gudangId, jenis: value })),
+      });
+    }
+    return tx.gudang.findUnique({
+      where: { id: gudangId },
+      select: { id: true, kode: true, name: true, jenisItems: { select: { jenis: true } } },
+    });
+  });
 }

@@ -64,6 +64,22 @@ export async function findUserByIdWithPassword(id: number) {
   return prisma.user.findUnique({ where: { id } });
 }
 
+export async function getUserAvatarPath(id: number): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { avatarPath: true },
+  });
+  return user?.avatarPath ?? null;
+}
+
+export async function setUserAvatarPath(id: number, avatarPath: string | null): Promise<void> {
+  await prisma.user.update({
+    where: { id },
+    data: { avatarPath },
+    select: { id: true },
+  });
+}
+
 export async function createUser(data: {
   name: string;
   email: string;

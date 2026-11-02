@@ -129,9 +129,17 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 | `/api/users` | `user.ts` |
 | `/api/variant-produk` | `variant-produk.ts` |
 
+### Gambar profil dan item
+
+- `POST /api/auth/me/avatar` dan `DELETE /api/auth/me/avatar` mengelola avatar milik pengguna yang sedang login. `GET /api/auth/me/avatar` memerlukan autentikasi dan hanya menyajikan avatar sesi tersebut.
+- `POST /api/items/:id/image` dan `DELETE /api/items/:id/image` memerlukan permission `KELOLA_ITEM`. `GET /api/items/:id/image` bersifat publik mengikuti akses katalog item.
+- Unggahan menerima JPEG, PNG, atau WebP sampai 5 MB. Backend memvalidasi isi gambar, membatasi dimensi, menghapus metadata melalui normalisasi, dan menyimpan hasil WebP maksimal 1200 × 1200 piksel.
+- File disimpan di direktori `UPLOADS_DIR` (default `uploads/`) dan hanya path relatif yang dicatat pada database. Docker development memakai `backend/uploads`; production memakai volume persisten `uploads_data`. Cadangkan volume ini bersama database karena keduanya menyimpan bagian berbeda dari data gambar.
+- Sebelum menjalankan versi yang memakai fitur gambar, terapkan migration database melalui `npx prisma migrate deploy`.
+
 ### API inventory dan quality yang masih aktif
 
-Endpoint UI eksklusif yang dihapus: seluruh `/api/shipments`, endpoint saldo/lokasi/mutasi pada `/api/inventory` (hanya workflow `/adjustments` yang dipertahankan untuk persetujuan supervisor), seluruh `/api/hasil-produksi-harian`, seluruh `/api/wip-transfer`, `GET /api/quality/daily-report`, `POST /api/quality/final-inspections`, seluruh `/api/quality/wip-flow` dan `/api/quality/wip-stocktake`, `GET /api/quality/variants`, `PUT /api/quality/routings`, serta endpoint detail/CRUD `/api/gudang/:id` dan penulisan `/api/gudang`. Skema, tabel, data historis, dan migration terkait sengaja dipertahankan. Helper `src/model/inventory/inventory.ts` tetap digunakan internal untuk posting ledger dan validasi saldo; API `/api/mutasi-gudang` dan `GET /api/gudang` juga tetap tersedia untuk workflow gudang aktif dan pilihan gudang pada mutasi.
+Endpoint UI eksklusif yang dihapus: seluruh `/api/shipments`, endpoint saldo/lokasi/mutasi pada `/api/inventory` (hanya workflow `/adjustments` yang dipertahankan untuk persetujuan supervisor), seluruh `/api/hasil-produksi-harian`, seluruh `/api/wip-transfer`, `GET /api/quality/daily-report`, `POST /api/quality/final-inspections`, seluruh `/api/quality/wip-flow` dan `/api/quality/wip-stocktake`, `GET /api/quality/variants`, serta `PUT /api/quality/routings`. Skema, tabel, data historis, dan migration terkait sengaja dipertahankan. Helper `src/model/inventory/inventory.ts` tetap digunakan internal untuk posting ledger dan validasi saldo; API `/api/mutasi-gudang` dan endpoint gudang untuk workflow aktif tetap tersedia.
 
 API quality yang masih aktif hanya menyediakan workflow reject/rework serta `GET /api/quality/routings`. Reject/rework dipertahankan sebagai workflow QC/admin bersama yang juga digunakan halaman Quality Control aktif; tidak ada prefix quality tersendiri untuk Divisi. Endpoint baca routing dipertahankan karena Work Order tahap aktif menggunakannya untuk memilih tahap. Penulisan konfigurasi routing, final-inspection mandiri, laporan QC harian, laporan WIP, dan opname WIP tidak lagi diekspos.
 

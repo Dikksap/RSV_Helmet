@@ -8,7 +8,7 @@ import {
   petakanItemHandler,
   deletePermintaanHandler,
 } from "../controller/permintaanBarang/permintaanBarang.js";
-import { authenticate, adminOnly, authorize, requirePermission } from "../middleware/auth.js";
+import { authenticate, adminOnly, authorize, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -20,8 +20,8 @@ router.use(authenticate);
 router.get("/", authorize, listPermintaanHandler);
 router.get("/:id", authorize, getPermintaanHandler);
 router.put("/:id", adminOnly, updatePermintaanHandler);
-router.patch("/:id/approval", authorize, requirePermission("KELOLA_ITEM"), setApprovalHandler);
-router.patch("/:id/items/:barangItemId", authorize, requirePermission("KELOLA_ITEM"), petakanItemHandler);
+router.patch("/:id/approval", authorize, requireRole("admin", "gudang"), setApprovalHandler);
+router.patch("/:id/items/:barangItemId", authorize, requireRole("admin", "gudang"), petakanItemHandler);
 router.delete("/:id", adminOnly, deletePermintaanHandler);
 
 export default router;
