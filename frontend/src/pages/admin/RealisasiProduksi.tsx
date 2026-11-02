@@ -35,6 +35,7 @@ export default function RealisasiProduksi(){
   const [jadwalFg,setJadwalFg]=useState<RealisasiRow[]>([]);
   const [jadwalTahap,setJadwalTahap]=useState<RealisasiStageRow[]>([]);
   const [expanded,setExpanded]=useState<Record<string,boolean>>({});
+  const [rekapBySize,setRekapBySize]=useState(false);
   const [loadingOrder,setLoadingOrder]=useState(false);
   const [loading,setLoading]=useState(false);
   const [loadingJadwal,setLoadingJadwal]=useState(false);
@@ -90,10 +91,20 @@ export default function RealisasiProduksi(){
 
   const rekapRows=useMemo(()=>{
     if(!orderData) return [];
-    const agg=new Map<number,{baik:number;reject:number}>();
-    for(const x of rekapAll){ const cur=agg.get(x.variantId)??{baik:0,reject:0}; cur.baik+=x.qty; cur.reject+=x.reject??0; agg.set(x.variantId,cur); }
-    return orderData.summary.items.map(it=>{ const a=agg.get(it.variantId)??{baik:0,reject:0}; const target=it.qty; const pct=target>0?(a.baik/target)*100:a.baik>0?100:0; return { variantId:it.variantId, item:`${it.variant.product.nama} ${it.variant.style.nama} ${it.variant.color.nama}`, size:it.variant.size.nama, target, baik:a.baik, reject:a.reject, pct }; });
-  },[orderData,rekapAll]);
+    if(rekapBySize){
+      const agg=new Map<number,{baik:number;reject:number}>();
+      for(const x of rekapAll){ const cur=agg.get(x.variantId)??{baik:0,reject:0}; cur.baik+=x.qty; cur.reject+=x.reject??0; agg.set(x.variantId,cur); }
+      return orderData.summary.items.map(it=>{ const a=agg.get(it.variantId)??{baik:0,reject:0}; const target=it.qty; const pct=target>0?(a.baik/target)*100:a.baik>0?100:0; return { variantId:it.variantId, item:`${it.variant.product.nama} ${it.variant.style.nama} ${it.variant.color.nama}`, size:it.variant.size.nama, target, baik:a.baik, reject:a.reject, pct }; });
+    }
+    const groupKey=(it:any)=>`${it.variant.product.id}:${it.variant.style.id}:${it.variant.color.id}`;
+    const targetAgg=new Map<string,{item:string;target:number}>();
+    const idToGroup=new Map<number,string>();
+    for(const it of orderData.summary.items){ const k=groupKey(it); idToGroup.set(it.variantId,k); const cur=targetAgg.get(k)??{item:`${it.variant.product.nama} ${it.variant.style.nama} ${it.variant.color.nama}`,target:0}; cur.target+=it.qty; targetAgg.set(k,cur); }
+    const baikAgg=new Map<string,{baik:number;reject:number}>();
+    for(const x of rekapAll){ const k=idToGroup.get(x.variantId); if(!k) continue; const cur=baikAgg.get(k)??{baik:0,reject:0}; cur.baik+=x.qty; cur.reject+=x.reject??0; baikAgg.set(k,cur); }
+    let i=0;
+    return [...targetAgg.entries()].map(([k,v])=>{ const a=baikAgg.get(k)??{baik:0,reject:0}; const pct=v.target>0?(a.baik/v.target)*100:a.baik>0?100:0; return { variantId:++i, item:v.item, size:"Semua size", target:v.target, baik:a.baik, reject:a.reject, pct }; });
+  },[orderData,rekapAll,rekapBySize]);
   const rekapTotals=useMemo(()=>{ let target=0,baik=0,reject=0; for(const r of rekapRows){ target+=r.target; baik+=r.baik; reject+=r.reject; } return {target,baik,reject,pct:target>0?(baik/target)*100:0}; },[rekapRows]);
 
   const jadwalRows=useMemo(():JadwalRow[]=>{
@@ -189,7 +200,7 @@ export default function RealisasiProduksi(){
       {notice && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-700">{notice}</p>}
       {ordersLoaded && orders.length===0 && !error && <p role="status" className="rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-[#6B7280]">Belum ada plan produksi berstatus AKTIF.</p>}
       {tab==="jadwal" && <JadwalTab jadwalRows={jadwalRows} jadwalTotals={jadwalTotals} awal={awal} akhir={akhir} setAwal={setAwal} setAkhir={setAkhir} loadingOrder={loadingOrder} loadingJadwal={loadingJadwal} expanded={expanded} setExpanded={setExpanded} saving={saving} today={today} statusOf={statusOf} gotoInput={gotoInput} autofill={autofill} />}
-      {tab==="rekap" && <RekapTab rekapRows={rekapRows} rekapTotals={rekapTotals} loadingRekap={loadingRekap} loadingOrder={loadingOrder} />}
+      {tab==="rekap" && <RekapTab rekapRows={rekapRows} rekapTotals={rekapTotals} loadingRekap={loadingRekap} loadingOrder={loadingOrder} bySize={rekapBySize} setBySize={setRekapBySize} />}
       {tab==="input" && <InputTab tanggal={tanggal} setTanggal={setTanggal} rows={rows} inputs={inputs} setInputs={setInputs} rejectInputs={rejectInputs} setRejectInputs={setRejectInputs} rencanaTahap={rencanaTahap} tahapInputs={tahapInputs} setTahapInputs={setTahapInputs} tahapRejectInputs={tahapRejectInputs} setTahapRejectInputs={setTahapRejectInputs} totals={totals} dayStatus={dayStatus} loading={loading} saving={saving} locked={locked} onToggleLock={()=>setLockOverride(l=>!(l??tanggal<today))} statusOf={statusOf} save={save} />}
     </div>
   );

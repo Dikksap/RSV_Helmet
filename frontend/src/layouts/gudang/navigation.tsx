@@ -30,7 +30,7 @@ export const GUDANG_WAREHOUSE: NavGroup = {
   label: "Warehouse",
   icon: faArchive,
   children: [
-    { to: "/gudang/item", label: "Stock Material", icon: faTags, end: true },
+    { to: "/gudang/item", label: "Master Item & Material", icon: faTags, end: true },
     { to: "/gudang/stok-opname", label: "Opname Stok", icon: faClipboardCheck, end: true },
   ],
 };

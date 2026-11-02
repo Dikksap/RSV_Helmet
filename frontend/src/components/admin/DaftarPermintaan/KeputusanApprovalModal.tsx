@@ -55,6 +55,7 @@ export default function KeputusanApprovalModal({
   const aktor = useMemo<ApprovalActor>(() => {
     const user = getUser();
     return {
+      role: user?.role,
       isAdmin: user?.role === "admin",
       punyaKelolaItem: hasPermission("KELOLA_ITEM"),
       divisiId: user?.divisiId ?? null,
@@ -180,14 +181,14 @@ export default function KeputusanApprovalModal({
       masalahApprove(
         record,
         rows.map((row) => row.item),
-        aktor.isAdmin,
+        aktor.isAdmin || aktor.role === "gudang",
         true,
       ),
-    [record, rows, aktor.isAdmin],
+    [record, rows, aktor],
   );
   const tidakBerhak = bolehApprove(record, aktor)
     ? null
-    : "Anda tidak berhak menyetujui permintaan untuk divisi ini.";
+    : "Hanya role gudang atau admin yang dapat menyetujui permintaan.";
   const blokir =
     tidakBerhak !== null ||
     masalahMapping !== null ||

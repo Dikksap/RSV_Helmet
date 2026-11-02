@@ -1,7 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFloppyDisk, faIdBadge, faKey } from "@fortawesome/free-solid-svg-icons";
-import { getUser, getUserPermissions, updateProfile } from "../api/auth";
+import {
+  faFloppyDisk,
+  faIdBadge,
+  faImage,
+  faKey,
+  faTrash,
+  faUpload,
+} from "@fortawesome/free-solid-svg-icons";
+import {
+  deleteProfileAvatar,
+  getProfileAvatar,
+  getUser,
+  getUserPermissions,
+  updateProfile,
+  uploadProfileAvatar,
+} from "../api/auth";
 import { inputCls, labelCls } from "../components/admin/VariantProduk/constants";
 
 const primaryBtn =
@@ -29,9 +43,38 @@ export default function Profil() {
   const [newPassword, setNewPassword] = useState("");
   const [konfirmasi, setKonfirmasi] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarReload, setAvatarReload] = useState(0);
+  const [savingAvatar, setSavingAvatar] = useState(false);
 
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    void getProfileAvatar()
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = blob ? URL.createObjectURL(blob) : null;
+        setAvatarUrl(objectUrl);
+      })
+      .catch((reason: unknown) => {
+        if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat avatar.");
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [avatarReload]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -75,6 +118,59 @@ export default function Profil() {
     }
   };
 
+  const pilihAvatar = (file: File | undefined) => {
+    setError(null);
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Format gambar harus JPEG, PNG, atau WebP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Ukuran gambar maksimal 5 MB.");
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const simpanAvatar = async () => {
+    if (!avatarFile) return;
+    setSavingAvatar(true);
+    setError(null);
+    try {
+      await uploadProfileAvatar(avatarFile);
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      setUser((current) => current ? { ...current, avatarUrl: "/api/auth/me/avatar" } : current);
+      setAvatarReload((value) => value + 1);
+      flash("Foto profil diperbarui.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Gagal mengunggah foto profil.");
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  const hapusAvatar = async () => {
+    if (!window.confirm("Hapus foto profil?")) return;
+    setSavingAvatar(true);
+    setError(null);
+    try {
+      await deleteProfileAvatar();
+      setAvatarUrl(null);
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      setUser((current) => current ? { ...current, avatarUrl: null } : current);
+      flash("Foto profil dihapus.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Gagal menghapus foto profil.");
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  const gambarProfil = avatarPreview ?? avatarUrl;
+
   return (
     <div className="space-y-6">
       <header className="max-w-2xl">
@@ -93,6 +189,63 @@ export default function Profil() {
           <h2 id="profil-info" className="flex items-center gap-2 text-lg font-semibold text-[#1E3A5F]">
             <FontAwesomeIcon icon={faIdBadge} className="h-4 w-4 text-[#00A8E8]" /> Informasi Akun
           </h2>
+
+          <div className="mt-5 flex flex-wrap items-center gap-4">
+            {gambarProfil ? (
+              <img src={gambarProfil} alt="Foto profil" className="h-20 w-20 rounded-full border border-slate-200 object-cover" />
+            ) : (
+              <div className="grid h-20 w-20 place-items-center rounded-full bg-sky-50 text-2xl text-sky-700">
+                <FontAwesomeIcon icon={faImage} />
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className={`${primaryBtn} cursor-pointer`}>
+                <FontAwesomeIcon icon={faUpload} className="h-4 w-4" />
+                {avatarFile ? "Pilih gambar lain" : "Pilih foto"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={savingAvatar}
+                  onChange={(event) => {
+                    pilihAvatar(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {avatarFile && (
+                  <>
+                    <button type="button" className={primaryBtn} disabled={savingAvatar} onClick={() => void simpanAvatar()}>
+                      {savingAvatar ? "Menyimpan..." : "Simpan foto"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      disabled={savingAvatar}
+                      onClick={() => {
+                        setAvatarFile(null);
+                        setAvatarPreview(null);
+                      }}
+                    >
+                      Batalkan pilihan
+                    </button>
+                  </>
+                )}
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    disabled={savingAvatar}
+                    onClick={() => void hapusAvatar()}
+                  >
+                    <FontAwesomeIcon icon={faTrash} /> Hapus
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-[#6B7280]">JPEG, PNG, atau WebP · maksimal 5 MB</p>
+            </div>
+          </div>
 
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between gap-4 border-b border-slate-100 pb-3">

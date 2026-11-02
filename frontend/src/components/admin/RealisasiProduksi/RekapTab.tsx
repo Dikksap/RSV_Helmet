@@ -1,10 +1,17 @@
 interface Row { variantId:number; item:string; size:string; target:number; baik:number; reject:number; pct:number; }
 
-export default function RekapTab({ rekapRows, rekapTotals, loadingRekap, loadingOrder }: { rekapRows: Row[]; rekapTotals: { target:number; baik:number; reject:number; pct:number }; loadingRekap:boolean; loadingOrder:boolean }) {
+export default function RekapTab({ rekapRows, rekapTotals, loadingRekap, loadingOrder, bySize, setBySize }: { rekapRows: Row[]; rekapTotals: { target:number; baik:number; reject:number; pct:number }; loadingRekap:boolean; loadingOrder:boolean; bySize:boolean; setBySize:(v:boolean)=>void }) {
   return (
     <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
-      <div className="border-b border-slate-100 p-4">
+      <div className="flex items-center justify-between border-b border-slate-100 p-4">
         <h3 className="font-semibold text-[#1E3A5F]">Rekap Realisasi Produksi <span className="font-normal text-xs text-[#6B7280]">· akumulasi semua tanggal</span></h3>
+        <button type="button" onClick={()=>setBySize(!bySize)} className="flex items-center gap-2 text-xs font-medium text-[#1E3A5F]">
+          <span>Tanpa size</span>
+          <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${bySize?"bg-[#00A8E8]":"bg-slate-300"}`}>
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${bySize?"translate-x-4":"translate-x-0.5"}`} />
+          </span>
+          <span>Per size</span>
+        </button>
       </div>
       {loadingRekap || loadingOrder ? (<p className="animate-pulse p-6 text-[15px] text-[#6B7280]">Memuat rekap...</p>) : rekapRows.length===0 ? (<p className="p-6 text-center text-[#6B7280]">Belum ada item pada order ini.</p>) : (
         <div className="overflow-x-auto">

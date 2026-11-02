@@ -26,6 +26,7 @@ export interface User {
   role: string;
   divisiId?: number | null;
   divisi?: { id: number; nama: string } | null;
+  avatarUrl?: string | null;
 }
 
 export interface LoginResponse {
@@ -67,6 +68,7 @@ export async function logout(token: string): Promise<void> {
 }
 
 const PERM_KEY = "rsv_auth_permissions";
+const AVATAR_CACHE_PREFIX = "rsv_auth_avatar_";
 
 export interface ProfileUpdate {
   name?: string;
@@ -97,6 +99,102 @@ export async function updateProfile(body: ProfileUpdate): Promise<User> {
   return user;
 }
 
+async function profileAvatarRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = getToken();
+  const response = await authFetch(path, {
+    ...init,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers ?? {}),
+    },
+  });
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error("Sesi telah berakhir. Silakan login ulang.");
+  }
+  return response;
+}
+
+export async function getProfileAvatar(): Promise<Blob | null> {
+  const user = getUser();
+  const cacheKey = user ? `${AVATAR_CACHE_PREFIX}${user.id}` : null;
+  if (cacheKey) {
+    const cachedAvatar = localStorage.getItem(cacheKey);
+    if (cachedAvatar) {
+      try {
+        const cachedResponse = await fetch(cachedAvatar);
+        if (!cachedResponse.ok) throw new Error("Cache avatar lokal tidak valid.");
+        return await cachedResponse.blob();
+      } catch (error) {
+        localStorage.removeItem(cacheKey);
+        console.error("Gagal membaca cache avatar lokal:", error);
+      }
+    }
+  }
+
+  const response = await profileAvatarRequest("/auth/me/avatar");
+  if (response.status === 404) {
+    if (cacheKey) localStorage.removeItem(cacheKey);
+    return null;
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(getHttpErrorMessage(response.status, payload?.message, "Gagal mengambil avatar"));
+  }
+  const blob = await response.blob();
+  if (cacheKey) {
+    try {
+      const dataUrl = await blobToDataUrl(blob);
+      localStorage.setItem(cacheKey, dataUrl);
+    } catch (error) {
+      console.error("Gagal menyimpan cache avatar lokal:", error);
+    }
+  }
+  return blob;
+}
+
+export async function uploadProfileAvatar(file: File): Promise<void> {
+  const form = new FormData();
+  form.append("image", file);
+  const response = await profileAvatarRequest("/auth/me/avatar", { method: "POST", body: form });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(getHttpErrorMessage(response.status, payload?.message, "Gagal mengunggah avatar"));
+  }
+  updateStoredAvatarUrl("/api/auth/me/avatar");
+}
+
+export async function deleteProfileAvatar(): Promise<void> {
+  const response = await profileAvatarRequest("/auth/me/avatar", { method: "DELETE" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(getHttpErrorMessage(response.status, payload?.message, "Gagal menghapus avatar"));
+  }
+  updateStoredAvatarUrl(null);
+}
+
+function updateStoredAvatarUrl(avatarUrl: string | null): void {
+  const user = getUser();
+  if (user) {
+    localStorage.removeItem(`${AVATAR_CACHE_PREFIX}${user.id}`);
+    localStorage.setItem(USER_KEY, JSON.stringify({ ...user, avatarUrl }));
+  }
+  window.dispatchEvent(new Event("rsv:auth-updated"));
+  window.dispatchEvent(new Event("rsv:avatar-updated"));
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Hasil cache avatar bukan data URL."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Gagal membaca gambar avatar."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function checkSession(): Promise<string | null> {
   const token = getToken();
   if (!token) return null;
@@ -107,6 +205,7 @@ export async function checkSession(): Promise<string | null> {
     const { user, permissions } = (await response.json()) as { user: User; permissions?: string[] };
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     localStorage.setItem(PERM_KEY, JSON.stringify(permissions ?? []));
+    window.dispatchEvent(new Event("rsv:auth-updated"));
     return user.role;
   } catch {
     return getUser()?.role ?? null;
@@ -134,9 +233,12 @@ const USER_KEY = "rsv_auth_user";
 export function setAuth(token: string, user: User) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  window.dispatchEvent(new Event("rsv:auth-updated"));
 }
 
 export function clearAuth() {
+  const user = getUser();
+  if (user) localStorage.removeItem(`${AVATAR_CACHE_PREFIX}${user.id}`);
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(PERM_KEY);

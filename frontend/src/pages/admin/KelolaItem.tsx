@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPen, faTrash, faCirclePlus, faMagnifyingGlass, faFileExport, faFileImport } from "@fortawesome/free-solid-svg-icons";
+import { faPen, faTrash, faCirclePlus, faMagnifyingGlass, faFileExport, faFileImport, faImage } from "@fortawesome/free-solid-svg-icons";
 import {
-  getItems, createItem, updateItem, deleteItem, bulkUpdateItems,
+  getItem, getItemImageUrl, getItems, createItem, updateItem, deleteItem, bulkUpdateItems,
+  deleteItemImage, uploadItemImage,
   type Item,
 } from "../../api/item";
 import { getDivisi, type Divisi } from "../../api/divisi";
-import { getSaldoBulk, getRingkasanBulkStok, type RingkasanStokItem } from "../../api/stokItem";
+import { getSaldoGudangBulk, getRingkasanBulkStok, type RingkasanStokItem } from "../../api/stokItem";
 import { Modal } from "../../components/admin/VariantProduk/Modal";
 import { inputCls, labelCls } from "../../components/admin/VariantProduk/constants";
 import { ItemImportModal } from "../../components/admin/KelolaItem/ItemImportModal";
@@ -55,6 +56,7 @@ export default function KelolaItem() {
   const [rows, setRows] = useState<Item[]>([]);
   const [divisi, setDivisi] = useState<Divisi[]>([]);
   const [modal, setModal] = useState(emptyModal);
+  const [imageBusy, setImageBusy] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [saldo, setSaldo] = useState<Record<number, number>>({});
   const [saldoLoading, setSaldoLoading] = useState(false);
@@ -82,7 +84,7 @@ export default function KelolaItem() {
     setRingkasanLoading(true);
     try {
       const [hasilSaldo, hasilRingkasan] = await Promise.allSettled([
-        getSaldoBulk(ids),
+        getSaldoGudangBulk(ids),
         getRingkasanBulkStok(ids, {
           ...(f.dari ? { dari: f.dari } : {}),
           ...(f.sampai ? { sampai: f.sampai } : {}),
@@ -280,6 +282,48 @@ export default function KelolaItem() {
   const openAdd = () => setModal({ ...emptyModal, open: true });
   const openEdit = (r: Item) => setModal({ open: true, editing: r, kode: r.kode, nama: r.nama, divisiId: r.divisiId ? String(r.divisiId) : "", unit: r.unit, jenis: r.jenis ?? "", isActive: r.isActive, busy: false });
 
+  const changeItemImage = async (file: File | undefined) => {
+    const item = modal.editing;
+    if (!file || !item) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      window.alert("Format gambar harus JPEG, PNG, atau WebP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert("Ukuran gambar maksimal 5 MB.");
+      return;
+    }
+    setImageBusy(true);
+    try {
+      await uploadItemImage(item.id, file);
+      const updated = await getItem(item.id);
+      setModal((current) => ({ ...current, editing: updated }));
+      await load();
+      flash("Gambar item diperbarui.");
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Gagal mengunggah gambar item.");
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const removeItemImage = async () => {
+    const item = modal.editing;
+    if (!item?.imageUrl || !window.confirm(`Hapus gambar item "${item.nama}"?`)) return;
+    setImageBusy(true);
+    try {
+      await deleteItemImage(item.id);
+      const updated = await getItem(item.id);
+      setModal((current) => ({ ...current, editing: updated }));
+      await load();
+      flash("Gambar item dihapus.");
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Gagal menghapus gambar item.");
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
   const handleExport = () => {
     const data = filtered.length > 0 ? filtered : rows;
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -287,7 +331,7 @@ export default function KelolaItem() {
       ? `${(periode.dari || "awal").replace(/-/g, "")}-${(periode.sampai || "akhir").replace(/-/g, "")}`
       : "semua-tanggal";
     downloadCsv(`item-${stamp}-${rentang}.csv`, [
-      ["kode", "nama", "divisi", "unit", "jenis", "masuk", "keluar", "net_periode", "stok", "aktif"],
+      ["kode", "nama", "divisi", "unit", "jenis", "masuk_legacy", "keluar_legacy", "net_legacy_periode", "stok_gudang_aktif", "aktif"],
       ...data.map((r) => [r.kode, r.nama, r.divisi?.nama ?? "", r.unit, r.jenis ?? "", ringkasan[r.id]?.masuk ?? "—", ringkasan[r.id]?.keluar ?? "—", ringkasan[r.id]?.net ?? "—", saldo[r.id] ?? "—", r.isActive ? "aktif" : "nonaktif"]),
     ]);
     flash(`Export ${data.length} item ke CSV.`);
@@ -299,8 +343,10 @@ export default function KelolaItem() {
       <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div className="max-w-2xl space-y-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#00A8E8] sm:text-xs">Master</p>
-          <h1 className="text-xl font-bold tracking-tight text-[#1E3A5F] sm:text-3xl">Stock Material</h1>
-          <p className="text-xs text-[#6B7280] sm:text-sm">Master item untuk pilihan permintaan barang.</p>
+          <h1 className="text-xl font-bold tracking-tight text-[#1E3A5F] sm:text-3xl">Master Item & Material</h1>
+          <p className="text-xs text-[#6B7280] sm:text-sm">
+            Katalog item untuk transaksi dan permintaan barang. Untuk melihat jumlah stok di setiap gudang, buka menu Warehouse → Stok per Gudang.
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <button type="button" onClick={openAdd} className={`${primaryBtn} col-span-2 sm:col-span-1`}>
@@ -369,7 +415,9 @@ export default function KelolaItem() {
                   <button type="button" onClick={resetPeriode} className={secondaryBtn}>Reset periode</button>
                 )}
               </div>
-              <p className="text-[11px] text-[#6B7280] sm:pb-2.5 sm:text-right sm:text-xs">Masuk/Keluar/Net: {labelPeriode}. Stok: saldo aktual.</p>
+              <p className="text-[11px] text-[#6B7280] sm:pb-2.5 sm:text-right sm:text-xs">
+                Masuk/Keluar/Net: mutasi legacy ({labelPeriode}). Stok Gudang: total di gudang aktif, tidak termasuk divisi/WIP.
+              </p>
             </div>
             {periodeError && <p role="alert" className="mt-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444] sm:mt-3 sm:px-4 sm:py-3 sm:text-sm">{periodeError}</p>}
             <p className="mt-2 text-[11px] text-[#6B7280] sm:mt-3 sm:text-xs">{filtered.length}/{rows.length} tampil{selected.size > 0 ? ` · ${selected.size} dipilih` : ""}</p>
@@ -431,7 +479,7 @@ export default function KelolaItem() {
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total masuk pada periode terpilih">Masuk</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total keluar pada periode terpilih">Keluar</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Masuk dikurangi keluar pada periode terpilih">Net</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Saldo aktual saat ini">Stok</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total saldo StockBalance pada semua gudang aktif. Tidak termasuk saldo divisi/WIP.">Stok Gudang</th>
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Unit</th>
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Status</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider">Aksi</th>
@@ -453,7 +501,18 @@ export default function KelolaItem() {
                       </td>
                       <td className="px-3.5 py-3 tabular-nums text-[#6B7280]">{i + 1}</td>
                       <td className="px-5 py-3 font-mono text-xs font-semibold text-[#1E3A5F] sm:text-sm">{r.kode}</td>
-                      <td className="px-5 py-3 font-medium text-[#1F2937]">{r.nama}</td>
+                      <td className="px-5 py-3 font-medium text-[#1F2937]">
+                        <span className="flex items-center gap-2">
+                          {r.imageUrl ? (
+                            <img src={getItemImageUrl(r.imageUrl)} alt="" className="h-9 w-9 rounded-lg border border-slate-200 object-cover" loading="lazy" />
+                          ) : (
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-400" aria-label="Belum ada gambar">
+                              <FontAwesomeIcon icon={faImage} />
+                            </span>
+                          )}
+                          {r.nama}
+                        </span>
+                      </td>
                       <td className="px-5 py-3 text-[#6B7280]">{r.jenis ?? <span className="italic">—</span>}</td>
                       <td className="px-5 py-3 text-[#6B7280]">{r.divisi?.nama ?? <span className="italic">—</span>}</td>
                       <td className="px-5 py-3 text-right tabular-nums text-[#0E7A55]">{ringkasanLoading ? "…" : (ringkasan[r.id]?.masuk.toLocaleString("id-ID") ?? "—")}</td>
@@ -495,14 +554,24 @@ export default function KelolaItem() {
                       aria-label={`Lihat stok ${r.nama}`}
                       className={`block w-full text-left ${FOCUS}`}
                     >
-                      <span className="block truncate text-xs font-bold text-[#1E3A5F]">
-                        {i + 1}. {r.nama}
+                      <span className="flex items-center gap-2">
+                        {r.imageUrl ? (
+                          <img src={getItemImageUrl(r.imageUrl)} alt="" className="h-10 w-10 shrink-0 rounded-lg border border-slate-200 object-cover" loading="lazy" />
+                        ) : (
+                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-400">
+                            <FontAwesomeIcon icon={faImage} />
+                          </span>
+                        )}
+                        <span className="block truncate text-xs font-bold text-[#1E3A5F]">
+                          {i + 1}. {r.nama}
+                        </span>
                       </span>
                       <span className="mt-0.5 block truncate font-mono text-[11px] text-slate-500">
                         {r.kode} · {r.divisi?.nama ?? "—"}{r.jenis ? ` · ${r.jenis}` : ""}
                       </span>
                       <span className="mt-1 flex flex-wrap items-center gap-1.5">
                         <span className="tabular-nums text-xs font-bold text-[#1E3A5F]">
+                          Stok gudang{" "}
                           {saldoLoading ? "…" : (saldo[r.id]?.toLocaleString("id-ID") ?? "—")}{" "}
                           <span className="text-[10px] font-medium text-slate-400">{r.unit}</span>
                         </span>
@@ -531,6 +600,51 @@ export default function KelolaItem() {
       {modal.open && (
         <Modal title={`${modal.editing ? "Edit" : "Tambah"} Item`} onClose={() => setModal(emptyModal)}>
           <div className="space-y-3 sm:space-y-4">
+            {modal.editing && (
+              <section className="rounded-lg border border-slate-200 p-3">
+                <p className="mb-2 text-sm font-semibold text-[#1E3A5F]">Gambar item</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  {modal.editing.imageUrl ? (
+                    <img
+                      src={getItemImageUrl(modal.editing.imageUrl)}
+                      alt={`Gambar ${modal.editing.nama}`}
+                      className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-20 w-20 place-items-center rounded-lg bg-slate-50 text-xl text-slate-400">
+                      <FontAwesomeIcon icon={faImage} />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <label className={`${secondaryBtn} cursor-pointer`}>
+                      <FontAwesomeIcon icon={faImage} />
+                      {modal.editing.imageUrl ? "Ganti gambar" : "Pilih gambar"}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        disabled={imageBusy}
+                        onChange={(event) => {
+                          void changeItemImage(event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {modal.editing.imageUrl && (
+                      <button
+                        type="button"
+                        disabled={imageBusy}
+                        onClick={() => void removeItemImage()}
+                        className="block rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {imageBusy ? "Memproses..." : "Hapus gambar"}
+                      </button>
+                    )}
+                    <p className="text-xs text-[#6B7280]">JPEG, PNG, atau WebP · maksimal 5 MB</p>
+                  </div>
+                </div>
+              </section>
+            )}
             <label className={labelCls}><span className="text-xs sm:text-sm">Kode *</span><input className={`${inputCls} py-2 font-mono text-xs sm:text-sm`} placeholder="cth: BRG-001" value={modal.kode} onChange={(e) => setModal((m) => ({ ...m, kode: e.target.value }))} /></label>
             <label className={labelCls}><span className="text-xs sm:text-sm">Nama *</span><input className={`${inputCls} py-2 text-xs sm:text-sm`} placeholder="cth: Baut M8" value={modal.nama} onChange={(e) => setModal((m) => ({ ...m, nama: e.target.value }))} /></label>
             <label className={labelCls}><span className="text-xs sm:text-sm">Divisi</span>

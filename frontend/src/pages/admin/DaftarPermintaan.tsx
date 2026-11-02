@@ -594,6 +594,7 @@ export default function DaftarPermintaan({
   const user = getUser();
   const isAdmin = user?.role === "admin";
   const aktor: ApprovalActor = {
+    role: user?.role,
     isAdmin,
     punyaKelolaItem: hasPermission("KELOLA_ITEM"),
     divisiId: user?.divisiId ?? null,
@@ -806,7 +807,7 @@ export default function DaftarPermintaan({
   const bisaApprove = (record: PermintaanBarangRecord) =>
     bolehApprove(record, aktor);
   const alasanApprove = (record: PermintaanBarangRecord) =>
-    isAdmin ? null : masalahApprove(record, record.items, false, false);
+    masalahApprove(record, record.items, bisaApprove(record), false);
 
   const toggleExpanded = (id: number) => {
     setSelectedId((current) => (current === id ? null : id));

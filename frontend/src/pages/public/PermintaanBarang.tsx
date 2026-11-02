@@ -56,7 +56,7 @@ function PermintaanBarang() {
     setMasterState("loading");
     getItems({ aktif: true })
       .then((rows) => {
-        setMasterItem(rows.filter((item) => item.jenis !== "SM"));
+        setMasterItem(rows);
         setMasterState("ready");
       })
       .catch(() => {

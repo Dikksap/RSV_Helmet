@@ -7,6 +7,7 @@ export interface Gudang {
   kode: string;
   name: string;
   isActive: boolean;
+  jenisItems?: { jenis: string }[];
   _count?: { barang: number };
 }
 

@@ -1,18 +1,33 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faArrowRotateRight,
   faBoxesStacked,
-  faCalculator,
-  faCalendarCheck,
-  faCircleCheck,
+  faBoxOpen,
+  faCalendarDays,
+  faCheck,
   faFlask,
   faIndustry,
+  faSpinner,
   faTruckRampBox,
-  faUserPen,
+  faTriangleExclamation,
   faWarehouse,
 } from "@fortawesome/free-solid-svg-icons";
-import { Link } from "react-router-dom";
 import { getUser } from "../../api/auth";
+import { getItems, type Item } from "../../api/item";
+import {
+  createPenerimaanBahan,
+  createProduksiHarian,
+  getBomPreview,
+  getLokasiProduksi,
+  getOpsiProduksi,
+  listProduksiHarian,
+  type BomPreview,
+  type Lokasi,
+  type OpsiProduksi,
+  type ProduksiList,
+  type ProduksiRecord,
+} from "../../api/produksiHarian";
 
 const TABS = [
   { id: "produksi", label: "Catat Hasil Produksi", icon: faIndustry },
@@ -23,295 +38,684 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-const kpis = [
-  { label: "Varian Produk", icon: faBoxesStacked, accent: "border-zinc-900", tone: "text-zinc-900" },
-  { label: "Total Hasil Produksi", icon: faCircleCheck, accent: "border-red-600", tone: "text-red-600" },
-  { label: "Bahan Terpakai (BOM)", icon: faFlask, accent: "border-zinc-700", tone: "text-zinc-800" },
-  { label: "Jenis Bahan Material", icon: faWarehouse, accent: "border-red-800", tone: "text-red-800" },
-];
+const todayISO = () => new Date().toLocaleDateString("en-CA");
+const n = (value: number | string | null | undefined) => Number(value ?? 0);
+const fmt = (value: number | string | null | undefined) =>
+  n(value).toLocaleString("id-ID", { maximumFractionDigits: 6 });
+const inputCls =
+  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/20 disabled:bg-slate-100";
+const labelCls = "mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500";
+const cardCls = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5";
 
-const panelClass = "rounded-xl border border-zinc-200 bg-white p-3.5 shadow-sm sm:rounded-2xl sm:p-6";
-const fieldClass =
-  "mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-zinc-100 px-2.5 text-xs text-zinc-500 disabled:cursor-not-allowed sm:h-10 sm:rounded-xl sm:px-3 sm:text-sm";
-
-function PendingNotice() {
-  return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 sm:rounded-xl sm:p-3.5 sm:text-sm">
-      <FontAwesomeIcon icon={faCalendarCheck} className="mt-0.5 shrink-0 text-amber-700" />
-      <p>
-        Halaman ini masih dalam tahap tampilan. Pencatatan dan data produksi belum dihubungkan ke backend.
-      </p>
-    </div>
-  );
+function namaLokasi(lokasi: Lokasi) {
+  if (lokasi.type === "DIVISION") return lokasi.divisi?.nama ?? lokasi.name;
+  return lokasi.gudang?.name ?? lokasi.name;
 }
 
-function DisabledField({ label, type = "text", placeholder }: { label: string; type?: string; placeholder?: string }) {
-  return (
-    <label className="block text-[11px] font-semibold text-zinc-700 sm:text-xs">
-      {label}
-      <input type={type} placeholder={placeholder} disabled className={fieldClass} />
-    </label>
-  );
+function jenisLokasi(lokasi: Lokasi) {
+  return lokasi.type === "DIVISION" ? "Divisi" : "Gudang";
 }
 
-function EmptyTable({ columns, message }: { columns: string[]; message: string }) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 sm:rounded-xl">
-      <div className="hidden overflow-x-auto sm:block">
-        <table className="w-full min-w-[480px] text-left text-xs sm:text-sm">
-          <thead className="bg-zinc-900 text-[10px] uppercase tracking-wide text-zinc-300 sm:text-xs">
-            <tr>
-              {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap px-3 py-2.5 font-semibold sm:px-4 sm:py-3">{column}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td colSpan={columns.length} className="px-3 py-8 text-center text-xs text-zinc-500 sm:px-4 sm:py-10 sm:text-sm">
-                {message}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p className="px-3 py-6 text-center text-xs text-zinc-500 sm:hidden">{message}</p>
-    </div>
-  );
+function pesan(error: unknown) {
+  return error instanceof Error ? error.message : "Terjadi kesalahan.";
 }
 
-function ProduksiHome() {
-  const [activeTab, setActiveTab] = useState<TabId>("produksi");
+export default function ProduksiHome() {
   const user = getUser();
-  const selectTab = (id: TabId) => {
-    setActiveTab(id);
-    window.scrollTo(0, 0);
+  const [tab, setTab] = useState<TabId>("produksi");
+  const [opsi, setOpsi] = useState<OpsiProduksi | null>(null);
+  const [lokasi, setLokasi] = useState<Lokasi[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [riwayat, setRiwayat] = useState<ProduksiList | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [tanggal, setTanggal] = useState(todayISO());
+  const [divisiId, setDivisiId] = useState(String(user?.divisiId ?? ""));
+  const [outputItemId, setOutputItemId] = useState("");
+  const [jumlah, setJumlah] = useState("");
+  const [tujuanLocationId, setTujuanLocationId] = useState("");
+  const [keterangan, setKeterangan] = useState("");
+  const [preview, setPreview] = useState<BomPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sumber, setSumber] = useState<Record<number, string>>({});
+  const [savingProduksi, setSavingProduksi] = useState(false);
+
+  const [receiptTanggal, setReceiptTanggal] = useState(todayISO());
+  const [receiptItemId, setReceiptItemId] = useState("");
+  const [receiptLocationId, setReceiptLocationId] = useState("");
+  const [receiptJumlah, setReceiptJumlah] = useState("");
+  const [receiptKeterangan, setReceiptKeterangan] = useState("");
+  const [savingReceipt, setSavingReceipt] = useState(false);
+  const [cariStok, setCariStok] = useState("");
+
+  const muatData = async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    setRefreshing(quiet);
+    try {
+      const [opsiData, lokasiData, itemData, history] = await Promise.all([
+        getOpsiProduksi(),
+        getLokasiProduksi(),
+        getItems({ aktif: true }),
+        listProduksiHarian({ page: 1, limit: 20 }),
+      ]);
+      setOpsi(opsiData);
+      setLokasi(lokasiData);
+      setItems(itemData);
+      setRiwayat(history);
+      setLoadError(null);
+      if (!divisiId) {
+        const awal = user?.divisiId ? String(user.divisiId) : String(opsiData.divisions[0]?.id ?? "");
+        setDivisiId(awal);
+      }
+      if (!tujuanLocationId) setTujuanLocationId(String(opsiData.warehouses[0]?.id ?? ""));
+      if (!receiptLocationId) setReceiptLocationId(String(opsiData.warehouses[0]?.id ?? ""));
+    } catch (error) {
+      setLoadError(pesan(error));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
-  const today = new Intl.DateTimeFormat("id-ID", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date());
+
+  useEffect(() => {
+    void muatData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- muat sekali saat mount
+  }, []);
+
+  useEffect(() => {
+    if (!outputItemId || !jumlah || n(jumlah) <= 0 || !divisiId) {
+      setPreview(null);
+      return;
+    }
+    let aktif = true;
+    const timer = window.setTimeout(() => {
+      setPreviewLoading(true);
+      getBomPreview(Number(outputItemId), n(jumlah), Number(divisiId))
+        .then((data) => {
+          if (!aktif) return;
+          setPreview(data);
+          const defaults: Record<number, string> = {};
+          for (const line of data.lines) {
+            const div = line.stok.find((row) => row.locationId === data.divisionLocationId && row.quantity >= line.jumlah);
+            const pilihan = div ?? line.stok[0];
+            if (pilihan) defaults[line.itemId] = String(pilihan.locationId);
+          }
+          setSumber(defaults);
+        })
+        .catch((error) => {
+          if (aktif) {
+            setPreview(null);
+            setNotice({ tone: "error", text: pesan(error) });
+          }
+        })
+        .finally(() => {
+          if (aktif) setPreviewLoading(false);
+        });
+    }, 300);
+    return () => {
+      aktif = false;
+      window.clearTimeout(timer);
+    };
+  }, [outputItemId, jumlah, divisiId]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  const outputTerpilih = useMemo(
+    () => opsi?.outputs.find((row) => String(row.item.id) === outputItemId) ?? null,
+    [opsi, outputItemId],
+  );
+
+  const lokasiBahan = useMemo(() => {
+    const cari = (locationId: number) => lokasi.find((row) => row.id === locationId);
+    return (lineItemId: number) => {
+      const line = preview?.lines.find((row) => row.itemId === lineItemId);
+      const ids = new Set((line?.stok ?? []).filter((row) => row.quantity > 0).map((row) => row.locationId));
+      if (preview?.divisionLocationId) ids.add(preview.divisionLocationId);
+      return [...ids]
+        .map(cari)
+        .filter((row): row is Lokasi => Boolean(row))
+        .sort((a, b) => {
+          const qa = line?.stok.find((row) => row.locationId === a.id)?.quantity ?? 0;
+          const qb = line?.stok.find((row) => row.locationId === b.id)?.quantity ?? 0;
+          return qb - qa;
+        });
+    };
+  }, [lokasi, preview]);
+
+  const bisaSimpanProduksi =
+    Boolean(divisiId && outputItemId && n(jumlah) > 0 && tujuanLocationId) &&
+    Boolean(preview && preview.lines.length > 0) &&
+    (preview?.lines.every((line) => Boolean(sumber[line.itemId])) ?? false) &&
+    !savingProduksi;
+
+  const simpanProduksi = async () => {
+    if (!bisaSimpanProduksi || !preview) return;
+    setSavingProduksi(true);
+    setNotice(null);
+    try {
+      const hasil = await createProduksiHarian({
+        tanggalProduksi: tanggal,
+        divisiId: Number(divisiId),
+        outputItemId: Number(outputItemId),
+        jumlah: n(jumlah),
+        tujuanLocationId: Number(tujuanLocationId),
+        keterangan: keterangan.trim() || undefined,
+        bahan: preview.lines.map((line) => ({
+          itemId: line.itemId,
+          sumberLocationId: Number(sumber[line.itemId]),
+        })),
+      });
+      setNotice({ tone: "ok", text: `Produksi ${hasil.nomor} tersimpan. Stok bahan berkurang dan hasil masuk gudang.` });
+      setJumlah("");
+      setKeterangan("");
+      setPreview(null);
+      setSumber({});
+      await muatData(true);
+    } catch (error) {
+      setNotice({ tone: "error", text: pesan(error) });
+    } finally {
+      setSavingProduksi(false);
+    }
+  };
+
+  const bisaSimpanReceipt =
+    Boolean(receiptItemId && receiptLocationId && n(receiptJumlah) > 0) && !savingReceipt;
+
+  const simpanReceipt = async () => {
+    if (!bisaSimpanReceipt) return;
+    setSavingReceipt(true);
+    setNotice(null);
+    try {
+      const data = await createPenerimaanBahan({
+        tanggal: receiptTanggal,
+        itemId: Number(receiptItemId),
+        locationId: Number(receiptLocationId),
+        jumlah: n(receiptJumlah),
+        keterangan: receiptKeterangan.trim() || undefined,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      setNotice({
+        tone: "ok",
+        text: `Penerimaan ${data.item.kode} - ${data.item.nama} tersimpan. Stok total sekarang ${fmt(data.item.stok)}.`,
+      });
+      setReceiptJumlah("");
+      setReceiptKeterangan("");
+      await muatData(true);
+    } catch (error) {
+      setNotice({ tone: "error", text: pesan(error) });
+    } finally {
+      setSavingReceipt(false);
+    }
+  };
+
+  const itemsStok = useMemo(() => {
+    const q = cariStok.trim().toLowerCase();
+    return items
+      .filter((item) => !q || item.kode.toLowerCase().includes(q) || item.nama.toLowerCase().includes(q) || (item.jenis ?? "").toLowerCase().includes(q))
+      .sort((a, b) => n(b.stok) - n(a.stok));
+  }, [items, cariStok]);
+
+  if (loading) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center text-slate-500">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <FontAwesomeIcon icon={faSpinner} spin /> Memuat produksi harian...
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-zinc-100 text-zinc-800">
-      <header className="sticky top-0 z-30 overflow-hidden border-b-2 border-red-600 bg-zinc-900 text-white shadow-md sm:border-b-4">
-        <div className="flex flex-col gap-2.5 border-b border-zinc-800 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <div className="flex items-center gap-2.5">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-red-600 text-xs font-black sm:h-10 sm:w-10 sm:rounded-xl sm:text-base">
-              RMI
-            </span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-extrabold tracking-wider sm:text-sm">PT. RMI</p>
-              <p className="text-[10px] font-medium tracking-wide text-zinc-400 sm:text-[11px]">RSV MANUFACTURE INDONESIA</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#00A8E8]">Produksi</p>
+              <h1 className="mt-1 text-xl font-extrabold text-[#1E3A5F] sm:text-2xl">Produksi Harian</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                Catat bahan keluar, hasil masuk gudang, dan penerimaan bahan. BOM otomatis hanya dari subassembly.
+              </p>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
-            <div className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-200 sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs">
-              <FontAwesomeIcon icon={faIndustry} className="text-red-500" />
-              <span className="text-zinc-400">Divisi:</span>
-              <span>{user?.divisi?.nama ?? "Tanpa divisi"}</span>
-            </div>
-            <div className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-200 sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs">
-              <FontAwesomeIcon icon={faCalendarCheck} className="text-red-500" />
-              <time>{today}</time>
-            </div>
-            <Link
-              to="/profil"
-              className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-red-600 hover:text-white sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs"
-            >
-              <FontAwesomeIcon icon={faUserPen} className="text-red-500" />
-              Profil
-            </Link>
-          </div>
-        </div>
-        <nav aria-label="Menu produksi" className="hidden overflow-x-auto bg-zinc-950 px-2 sm:flex sm:px-4">
-          {TABS.map((tab) => (
             <button
-              key={tab.id}
               type="button"
-              onClick={() => selectTab(tab.id)}
-              aria-current={activeTab === tab.id ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs font-bold transition-colors sm:px-4 sm:text-sm ${
-                activeTab === tab.id
-                  ? "border-red-600 text-red-400"
-                  : "border-transparent text-zinc-400 hover:text-white"
+              onClick={() => void muatData(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <FontAwesomeIcon icon={faArrowRotateRight} spin={refreshing} /> Refresh
+            </button>
+          </div>
+        </header>
+
+        {loadError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" /> {loadError}
+          </div>
+        )}
+        {notice && (
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm ${
+              notice.tone === "ok"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            <FontAwesomeIcon icon={notice.tone === "ok" ? faCheck : faTriangleExclamation} className="mr-2" />
+            {notice.text}
+          </div>
+        )}
+
+        <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+          {TABS.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => setTab(row.id)}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition sm:px-4 ${
+                tab === row.id ? "bg-[#1E3A5F] text-white shadow" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <FontAwesomeIcon icon={tab.icon} />
-              {tab.label}
+              <FontAwesomeIcon icon={row.icon} /> {row.label}
             </button>
           ))}
         </nav>
-      </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 space-y-3.5 px-3 py-3.5 pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:px-6 sm:py-6 sm:pb-8">
-        <PendingNotice />
-
-        <section aria-label="Ringkasan produksi" className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-          {kpis.map((kpi) => (
-            <article
-              key={kpi.label}
-              className={`flex items-center justify-between gap-1.5 rounded-xl border border-zinc-200 border-l-4 ${kpi.accent} bg-white p-2.5 shadow-sm sm:rounded-2xl sm:p-4`}
-            >
-              <div className="min-w-0">
-                <p className="text-[9px] font-bold uppercase leading-tight tracking-wide text-zinc-400 sm:text-xs sm:leading-snug">
-                  {kpi.label}
-                </p>
-                <p className={`mt-0.5 text-[11px] font-bold leading-tight sm:mt-1 sm:text-sm sm:leading-snug ${kpi.tone}`}>
-                  Belum tersedia
-                </p>
-              </div>
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-zinc-100 text-[11px] text-zinc-700 sm:h-10 sm:w-10 sm:rounded-xl sm:text-base">
-                <FontAwesomeIcon icon={kpi.icon} />
-              </span>
-            </article>
-          ))}
-        </section>
-
-        {activeTab === "produksi" && (
-          <section className="grid grid-cols-1 items-start gap-3.5 sm:gap-5 lg:grid-cols-12">
-            <div className={`${panelClass} min-w-0 space-y-3 sm:space-y-4 md:mx-auto md:w-full md:max-w-2xl lg:col-span-5 lg:mx-0 lg:max-w-none`}>
-              <div className="border-b border-zinc-100 pb-2.5 sm:pb-3">
-                <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Input Produksi Harian PT RMI</p>
-                <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Catat hasil produksi dan pemakaian material berdasarkan BOM.</p>
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
-                <DisabledField label="Tanggal Produksi" type="date" />
-                <DisabledField label="Divisi Produksi" placeholder="Pilih divisi produksi" />
-              </div>
-              <DisabledField label="Produk Hasil Produksi" placeholder="Pilih produk jadi" />
-              <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
-                <DisabledField label="Jumlah Hasil Produksi" type="number" placeholder="Jumlah" />
-                <DisabledField label="Satuan Produk" placeholder="Satuan" />
-              </div>
-              <div className="rounded-lg border-l-4 border-red-600 bg-zinc-900 p-3 text-white sm:rounded-xl sm:p-4">
-                <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-red-300 sm:text-xs">
-                  <FontAwesomeIcon icon={faCalculator} />
-                  Kalkulasi Bahan Material (BOM)
+        {tab === "produksi" && (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+            <section className={cardCls}>
+              <h2 className="text-sm font-extrabold text-[#1E3A5F]">Data Produksi</h2>
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className={labelCls}>Tanggal</span>
+                    <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} className={inputCls} />
+                  </label>
+                  <label>
+                    <span className={labelCls}>Divisi Produksi</span>
+                    <select
+                      value={divisiId}
+                      onChange={(e) => setDivisiId(e.target.value)}
+                      disabled={user?.role !== "admin"}
+                      className={inputCls}
+                    >
+                      <option value="">Pilih divisi</option>
+                      {opsi?.divisions.map((row) => (
+                        <option key={row.id} value={row.id}>{row.nama}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
-                <p className="mt-1 text-[11px] text-zinc-400 sm:mt-2 sm:text-xs">
-                  Kalkulasi akan ditampilkan setelah data produk dan BOM tersedia.
+
+                <label>
+                  <span className={labelCls}>Item Hasil Produksi</span>
+                  <select value={outputItemId} onChange={(e) => setOutputItemId(e.target.value)} className={inputCls}>
+                    <option value="">Pilih item hasil (harus punya subassembly/BOM)</option>
+                    {opsi?.outputs.map((row) => (
+                      <option key={row.item.id} value={row.item.id}>
+                        {row.item.kode} — {row.item.nama} (BOM {row.bom?.version ?? "-"})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className={labelCls}>Jumlah Hasil</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      value={jumlah}
+                      onChange={(e) => setJumlah(e.target.value)}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelCls}>Gudang Tujuan Hasil</span>
+                    <select value={tujuanLocationId} onChange={(e) => setTujuanLocationId(e.target.value)} className={inputCls}>
+                      <option value="">Pilih gudang</option>
+                      {opsi?.warehouses.map((row) => (
+                        <option key={row.id} value={row.id}>{row.gudang?.name ?? row.name} ({row.code})</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <label>
+                  <span className={labelCls}>Keterangan</span>
+                  <textarea
+                    value={keterangan}
+                    onChange={(e) => setKeterangan(e.target.value)}
+                    rows={2}
+                    placeholder="Opsional"
+                    className={inputCls}
+                  />
+                </label>
+
+                {outputTerpilih && (
+                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    BOM <span className="font-bold text-slate-700">{outputTerpilih.bom?.nama ?? "-"}</span> versi{" "}
+                    <span className="font-bold text-slate-700">{outputTerpilih.bom?.version ?? "-"}</span>.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className={cardCls}>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Bahan Dibutuhkan</h2>
+                {previewLoading && <FontAwesomeIcon icon={faSpinner} spin className="text-slate-400" />}
+              </div>
+              {!outputItemId || n(jumlah) <= 0 ? (
+                <p className="mt-6 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
+                  Pilih item hasil dan isi jumlah untuk menghitung BOM.
                 </p>
+              ) : preview && preview.lines.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {preview?.lines.map((line) => {
+                    const pilihan = lokasiBahan(line.itemId);
+                    const stokSumber = line.stok.find((row) => String(row.locationId) === sumber[line.itemId]);
+                    return (
+                      <div key={line.itemId} className="rounded-xl border border-slate-200 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-bold text-slate-700">{line.kode} — {line.nama}</p>
+                            <p className="text-xs text-slate-500">
+                              Butuh {fmt(line.jumlah)} {line.unit ?? ""} · Total stok {fmt(items.find((item) => item.id === line.itemId)?.stok)}
+                            </p>
+                          </div>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${stokSumber && stokSumber.quantity >= line.jumlah ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                            {stokSumber ? `${fmt(stokSumber.quantity)} di sumber` : "Pilih sumber"}
+                          </span>
+                        </div>
+                        <select
+                          value={sumber[line.itemId] ?? ""}
+                          onChange={(e) => setSumber((prev) => ({ ...prev, [line.itemId]: e.target.value }))}
+                          className={`${inputCls} mt-2`}
+                        >
+                          <option value="">Pilih lokasi sumber</option>
+                          {pilihan.map((lok) => {
+                            const qty = line.stok.find((row) => row.locationId === lok.id)?.quantity ?? 0;
+                            return (
+                              <option key={lok.id} value={lok.id}>
+                                {jenisLokasi(lok)} · {namaLokasi(lok)} — stok {fmt(qty)}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => void simpanProduksi()}
+                    disabled={!bisaSimpanProduksi}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A5F] px-4 py-3 text-sm font-bold text-white hover:bg-[#152c49] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {savingProduksi ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faIndustry} />}
+                    {savingProduksi ? "Menyimpan..." : "Simpan Produksi"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-6 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
+                  BOM tidak ditemukan. Pastikan item hasil punya subassembly dengan BOM aktif.
+                </p>
+              )}
+            </section>
+          </div>
+        )}
+
+        {tab === "material" && (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section className={cardCls}>
+              <h2 className="text-sm font-extrabold text-[#1E3A5F]">Penerimaan Bahan</h2>
+              <p className="mt-1 text-xs text-slate-500">Menambah stok di lokasi tujuan dan stok total item.</p>
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className={labelCls}>Tanggal</span>
+                    <input type="date" value={receiptTanggal} onChange={(e) => setReceiptTanggal(e.target.value)} className={inputCls} />
+                  </label>
+                  <label>
+                    <span className={labelCls}>Jumlah Masuk</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      value={receiptJumlah}
+                      onChange={(e) => setReceiptJumlah(e.target.value)}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span className={labelCls}>Item</span>
+                  <select value={receiptItemId} onChange={(e) => setReceiptItemId(e.target.value)} className={inputCls}>
+                    <option value="">Pilih item</option>
+                    {items.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.kode} — {item.nama} (stok {fmt(item.stok)} {item.unit})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className={labelCls}>Lokasi Tujuan</span>
+                  <select value={receiptLocationId} onChange={(e) => setReceiptLocationId(e.target.value)} className={inputCls}>
+                    <option value="">Pilih lokasi</option>
+                    {lokasi.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {jenisLokasi(row)} · {namaLokasi(row)} ({row.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className={labelCls}>Keterangan</span>
+                  <textarea
+                    value={receiptKeterangan}
+                    onChange={(e) => setReceiptKeterangan(e.target.value)}
+                    rows={2}
+                    placeholder="Opsional"
+                    className={inputCls}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void simpanReceipt()}
+                  disabled={!bisaSimpanReceipt}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#00A8E8] px-4 py-3 text-sm font-bold text-white hover:bg-[#0090c7] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {savingReceipt ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faTruckRampBox} />}
+                  {savingReceipt ? "Menyimpan..." : "Simpan Penerimaan"}
+                </button>
               </div>
-              <DisabledField label="Tujuan Pengiriman / Output Barang" placeholder="Tujuan output barang" />
-              <button
-                type="button"
-                disabled
-                className="h-9 w-full cursor-not-allowed rounded-lg bg-red-600 text-xs font-bold text-white opacity-50 sm:h-11 sm:rounded-xl sm:text-sm"
-              >
-                Simpan Produksi
-              </button>
-            </div>
-            <div className={`${panelClass} min-w-0 space-y-3 sm:space-y-4 lg:col-span-7`}>
-              <div>
-                <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Monitoring Material PT RMI</p>
-                <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Ringkasan stok material yang digunakan dalam produksi.</p>
+            </section>
+
+            <section className={cardCls}>
+              <h2 className="text-sm font-extrabold text-[#1E3A5F]">Stok Total Item</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Ini jumlah seluruh lokasi, bukan saldo per gudang. Lihat rincian per gudang melalui Admin → Warehouse → Stok per Gudang.
+              </p>
+              <div className="mt-3">
+                <input
+                  value={cariStok}
+                  onChange={(e) => setCariStok(e.target.value)}
+                  placeholder="Cari kode, nama, atau jenis..."
+                  className={inputCls}
+                />
               </div>
-              <EmptyTable
-                columns={["Bahan Material", "Gudang", "Sisa Stok", "Status"]}
-                message="Data stok material belum tersedia."
-              />
-            </div>
-          </section>
-        )}
-
-        {activeTab === "material" && (
-          <section className={`${panelClass} space-y-3 sm:space-y-4 md:mx-auto md:w-full md:max-w-2xl`}>
-            <div className="border-b border-zinc-100 pb-2.5 sm:pb-3">
-              <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Penerimaan Bahan Material PT RMI</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Tambah persediaan bahan baku yang datang dari vendor atau supplier.</p>
-            </div>
-            <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
-              <DisabledField label="Tanggal Penerimaan" type="date" />
-              <DisabledField label="Divisi / Lokasi Penerima" placeholder="Pilih lokasi penerima" />
-            </div>
-            <DisabledField label="Nama Bahan Material" placeholder="Pilih bahan material" />
-            <div className="grid gap-2.5 sm:grid-cols-3 sm:gap-4">
-              <DisabledField label="Stok Sekarang" placeholder="—" />
-              <DisabledField label="Jumlah Masuk (+)" type="number" placeholder="Jumlah" />
-              <DisabledField label="Satuan" placeholder="Satuan" />
-            </div>
-            <button
-              type="button"
-              disabled
-              className="h-9 w-full cursor-not-allowed rounded-lg bg-red-600 text-xs font-bold text-white opacity-50 sm:h-11 sm:w-auto sm:rounded-xl sm:px-6 sm:text-sm"
-            >
-              Simpan Penerimaan
-            </button>
-          </section>
-        )}
-
-        {activeTab === "bom" && (
-          <section className={`${panelClass} space-y-3 sm:space-y-4`}>
-            <div>
-              <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Formula BOM (Resep)</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Kebutuhan material untuk setiap produk.</p>
-            </div>
-            <EmptyTable
-              columns={["Produk", "Bahan Material", "Kebutuhan", "Satuan"]}
-              message="Formula BOM belum tersedia."
-            />
-          </section>
-        )}
-
-        {activeTab === "stok" && (
-          <section className={`${panelClass} space-y-3 sm:space-y-4`}>
-            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-extrabold text-zinc-900 sm:text-base">Stok & Riwayat Data</p>
-                <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">Pantau perubahan stok dan aktivitas produksi.</p>
+              <div className="mt-3 max-h-[420px] overflow-y-auto rounded-xl border border-slate-100">
+                {itemsStok.slice(0, 50).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-0">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-slate-700">{item.kode} — {item.nama}</p>
+                      <p className="text-[11px] text-slate-400">{item.jenis ?? "Tanpa jenis"} · {item.unit}</p>
+                    </div>
+                    <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold tabular-nums text-slate-700">
+                      {fmt(item.stok)}
+                    </span>
+                  </div>
+                ))}
+                {itemsStok.length === 0 && <p className="px-3 py-6 text-center text-sm text-slate-400">Tidak ada item.</p>}
               </div>
-              <input
-                type="search"
-                aria-label="Cari riwayat"
-                placeholder="Pencarian belum tersedia"
-                disabled
-                className="h-9 rounded-lg border border-zinc-200 bg-zinc-100 px-2.5 text-xs text-zinc-500 sm:h-10 sm:w-64 sm:rounded-xl sm:px-3 sm:text-sm"
-              />
+            </section>
+          </div>
+        )}
+
+        {tab === "bom" && (
+          <section className={cardCls}>
+            <h2 className="text-sm font-extrabold text-[#1E3A5F]">Formula BOM Subassembly</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Hanya BOM subassembly yang dipakai produksi harian. BOM product variant tidak dipakai.
+            </p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Item Hasil</th>
+                    <th className="px-3 py-2">Subassembly</th>
+                    <th className="px-3 py-2">BOM</th>
+                    <th className="px-3 py-2 text-right">Stok</th>
+                    <th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {opsi?.outputs.map((row) => (
+                    <tr key={row.subassemblyId}>
+                      <td className="px-3 py-3">
+                        <p className="font-bold text-slate-700">{row.item.kode} — {row.item.nama}</p>
+                        <p className="text-xs text-slate-400">{row.item.jenis ?? "Tanpa jenis"} · {row.item.unit}</p>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">{row.subassemblyKode} — {row.subassemblyNama}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600">{row.bom?.nama ?? "-"} · v{row.bom?.version ?? "-"}</td>
+                      <td className="px-3 py-3 text-right text-xs font-bold tabular-nums text-slate-700">{fmt(row.item.stok)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOutputItemId(String(row.item.id));
+                            setTab("produksi");
+                          }}
+                          className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-[#1E3A5F] hover:bg-slate-50"
+                        >
+                          Pakai
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {opsi?.outputs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-400">
+                        Belum ada item dengan subassembly dan BOM aktif.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <EmptyTable
-              columns={["Tanggal", "Barang", "Stok Awal", "Masuk", "Keluar", "Sisa", "Tujuan"]}
-              message="Riwayat transaksi belum tersedia."
-            />
           </section>
         )}
-      </main>
 
-      <nav
-        aria-label="Navigasi produksi mobile"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-red-600 bg-zinc-950 px-1.5 pt-1.5 pb-[max(0.35rem,env(safe-area-inset-bottom))] shadow-2xl sm:hidden"
-      >
-        <div className="grid grid-cols-4 gap-0.5 text-center text-[10px]">
-          {TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            const mobileLabel = {
-              produksi: "Produksi",
-              material: "Bahan",
-              bom: "BOM",
-              stok: "Riwayat",
-            }[tab.id];
+        {tab === "stok" && (
+          <div className="space-y-4">
+            <section className={cardCls}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Stok Total Item</h2>
+                <input
+                  value={cariStok}
+                  onChange={(e) => setCariStok(e.target.value)}
+                  placeholder="Cari item..."
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm sm:w-64"
+                />
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {itemsStok.slice(0, 60).map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <p className="truncate text-xs font-bold text-slate-700">{item.kode} — {item.nama}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">{item.jenis ?? "Tanpa jenis"} · {item.unit}</p>
+                    <p className="mt-1 text-sm font-extrabold tabular-nums text-[#1E3A5F]">{fmt(item.stok)}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => selectTab(tab.id)}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-md py-1 transition-colors ${
-                  active ? "font-extrabold text-red-500" : "font-medium text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                <FontAwesomeIcon icon={tab.icon} className="text-base" />
-                <span>{mobileLabel}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+            <section className={cardCls}>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Riwayat Produksi</h2>
+                <span className="text-xs text-slate-400">{riwayat?.meta.total ?? 0} catatan</span>
+              </div>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Nomor</th>
+                      <th className="px-3 py-2">Tanggal</th>
+                      <th className="px-3 py-2">Divisi</th>
+                      <th className="px-3 py-2">Hasil</th>
+                      <th className="px-3 py-2">Tujuan</th>
+                      <th className="px-3 py-2 text-right">Bahan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {riwayat?.data.map((row: ProduksiRecord) => {
+                      const hasil = row.items.filter((item) => item.tipe === "HASIL");
+                      return (
+                        <tr key={row.id}>
+                          <td className="px-3 py-3 font-mono text-xs font-bold text-[#1E3A5F]">{row.nomor}</td>
+                          <td className="px-3 py-3 text-xs text-slate-600">
+                            {new Date(row.tanggalProduksi).toLocaleDateString("id-ID")}
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-600">{row.divisi?.nama ?? "-"}</td>
+                          <td className="px-3 py-3 text-xs text-slate-700">
+                            {hasil.map((item) => (
+                              <span key={item.id} className="block">
+                                {item.item.kode} · {fmt(item.jumlah)} {item.item.unit}
+                              </span>
+                            ))}
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-600">
+                            {row.tujuanLocation ? namaLokasi(row.tujuanLocation) : "-"}
+                          </td>
+                          <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-600">
+                            {row.items.filter((item) => item.tipe === "BAHAN").length}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {(!riwayat || riwayat.data.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-400">
+                          Belum ada produksi tercatat.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        )}
+
+        <footer className="flex flex-wrap items-center gap-2 pb-4 text-[11px] text-slate-400">
+          <FontAwesomeIcon icon={faWarehouse} />
+          <span>Output produksi selalu masuk gudang. Stok divisi hanya sumber bahan.</span>
+          <FontAwesomeIcon icon={faBoxOpen} className="ml-2" />
+          <span>{items.length} item master aktif.</span>
+          <FontAwesomeIcon icon={faCalendarDays} className="ml-2" />
+          <span>{tanggal}</span>
+        </footer>
+      </div>
     </div>
   );
 }
-
-export default ProduksiHome;

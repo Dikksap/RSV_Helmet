@@ -13,7 +13,8 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { checkSession, clearAuth, getToken, getUser, logout } from "../api/auth";
+import { checkSession, clearAuth, getProfileAvatar, getToken, getUser, logout } from "../api/auth";
+import type { User } from "../api/auth";
 
 import { NotificationCenter } from "./admin/NotificationCenter";
 import logoUrl from "../assets/logo.png";
@@ -203,9 +204,52 @@ function RoleLayout({
   const allowed = useMemo(() => allowedRoles ?? [role], [allowedRoles, role]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(() => getUser());
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
+  const [avatarRefresh, setAvatarRefresh] = useState(0);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(collapseKey(role)) === "1");
   const [hovered, setHovered] = useState(false);
   const effectiveCollapsed = collapsed && !hovered;
+
+  useEffect(() => {
+    const refreshUser = () => {
+      setUser(getUser());
+    };
+    const refreshAvatar = () => {
+      setAvatarSrc(null);
+      setAvatarRefresh((current) => current + 1);
+    };
+    window.addEventListener("rsv:auth-updated", refreshUser);
+    window.addEventListener("rsv:avatar-updated", refreshAvatar);
+    return () => {
+      window.removeEventListener("rsv:auth-updated", refreshUser);
+      window.removeEventListener("rsv:avatar-updated", refreshAvatar);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    if (!user?.avatarUrl) {
+      setAvatarSrc(null);
+      return () => {
+        active = false;
+      };
+    }
+    void getProfileAvatar()
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = blob ? URL.createObjectURL(blob) : null;
+        setAvatarSrc(objectUrl);
+      })
+      .catch((error: unknown) => {
+        if (active) console.error("Gagal memuat avatar header:", error);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [user?.avatarUrl, avatarRefresh]);
 
   const toggleCollapsed = () =>
     setCollapsed((c) => {
@@ -248,7 +292,6 @@ function RoleLayout({
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen, menuOpen]);
 
-  const user = getUser();
   const userName = user?.name ?? `${titleFallback} RSV`;
   const userRoleLabel = ROLE_LABELS[user?.role ?? ""] ?? (user?.role ?? titleFallback);
   const allItems = [...main, ...groups.flatMap((g) => g.children)];
@@ -345,9 +388,13 @@ function RoleLayout({
                   aria-expanded={menuOpen}
                   className={`flex items-center gap-2.5 rounded-full p-1 transition-colors hover:bg-slate-100 sm:pr-3 ${FOCUS}`}
                 >
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-[#1E3A5F] text-[11px] font-bold text-white">
-                    {initialsFromName(userName)}
-                  </span>
+                  {avatarSrc ? (
+                    <img src={avatarSrc} alt="" className="h-8 w-8 rounded-full object-cover" />
+                  ) : (
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-[#1E3A5F] text-[11px] font-bold text-white">
+                      {initialsFromName(userName)}
+                    </span>
+                  )}
                   <span className="hidden text-left leading-tight sm:block">
                     <span className="block max-w-[160px] truncate text-[13px] font-semibold text-[#0F1C2E]">{userName}</span>
                     <span className="block text-[11px] text-slate-500">{userRoleLabel}</span>

@@ -4,6 +4,7 @@ import type {
 } from "../../../api/permintaanBarang";
 
 export interface ApprovalActor {
+  role?: string;
   isAdmin: boolean;
   punyaKelolaItem: boolean;
   divisiId: number | null;
@@ -16,16 +17,10 @@ type DivisiPermintaan = Pick<
 >;
 
 export function bolehApprove(
-  record: Pick<PermintaanBarangRecord, "divisiApproverId">,
+  _record: Pick<PermintaanBarangRecord, "divisiApproverId">,
   actor: ApprovalActor,
 ): boolean {
-  if (actor.isAdmin) return true;
-
-  return (
-    actor.punyaKelolaItem &&
-    actor.divisiId !== null &&
-    record.divisiApproverId === actor.divisiId
-  );
+  return actor.isAdmin || actor.role === "gudang";
 }
 
 /**
@@ -34,9 +29,9 @@ export function bolehApprove(
  * pemetaan bisa dilakukan.
  */
 export function masalahApprove(
-  record: DivisiPermintaan,
+  _record: DivisiPermintaan,
   items: readonly ItemMapping[],
-  isAdmin: boolean,
+  boleh: boolean,
   cekMaster: boolean,
 ): string | null {
   if (cekMaster) {
@@ -46,23 +41,5 @@ export function masalahApprove(
     }
   }
 
-  if (isAdmin) return null;
-
-  const approverId = record.divisiApproverId;
-  if (approverId === null) {
-    return "Permintaan ini belum memiliki divisi approver; hanya admin yang dapat menyetujui.";
-  }
-
-  for (const item of items) {
-    if (item.itemId == null || !item.item) continue;
-
-    const divisiItem = item.item.divisiId;
-    const fallback =
-      divisiItem === null && record.divisiPemintaId === approverId;
-    if (!fallback && divisiItem !== approverId) {
-      return `Item "${item.nama}" tidak berasal dari divisi approver.`;
-    }
-  }
-
-  return null;
+  return boleh ? null : "Hanya role gudang atau admin yang dapat menyetujui permintaan.";
 }

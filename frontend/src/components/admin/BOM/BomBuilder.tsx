@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowsRotate, faChevronDown, faCopy, faFolderOpen, faGripVertical, faMagnifyingGlass, faPlus, faRotateLeft, faSave, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { getItems, type Item } from "../../../api/item";
 import { createBom, deleteBom, getBoms, updateBom, type Bom, type BomItemInput } from "../../../api/bom";
-import { createSubassembly, getSubassemblies } from "../../../api/subassembly";
+import { createSubassembly, getSubassemblies, updateSubassembly, type Subassembly } from "../../../api/subassembly";
 import { getProducts, type ProductVariant } from "../../../api/products";
 import { cloneNodes, countRows, depthOf, findNode, flatten, nid, normalizeNodes, replaceNodeItem, rp, sumTree, unitCost, type BomNode, type FlatRow } from "./bomTree";
 
@@ -32,10 +32,12 @@ interface SavedBlueprint extends Blueprint {
 }
 
 interface Draft {
+  outputType: "product" | "subassembly";
   name: string;
   code: string;
   version: string;
   productVariantId: number | null;
+  subassemblyItemId: number | null;
   qty: number;
   nodes: BomNode[];
   blueprints: Blueprint[];
@@ -44,10 +46,12 @@ interface Draft {
 const KEY = "rsv-bom-builder-v1";
 
 const initial: Draft = {
+  outputType: "product",
   name: "",
   code: "",
   version: "1.0",
   productVariantId: null,
+  subassemblyItemId: null,
   qty: 1,
   nodes: [],
   blueprints: [],
@@ -125,10 +129,12 @@ function loadDraft(): Draft {
     }) : [];
 
     return {
+      outputType: d.outputType === "subassembly" ? "subassembly" : "product",
       name: typeof d.name === "string" ? d.name : "",
       code: typeof d.code === "string" ? d.code : "",
       version: typeof d.version === "string" && d.version.trim() ? d.version : "1.0",
       productVariantId: Number.isInteger(d.productVariantId) && Number(d.productVariantId) > 0 ? Number(d.productVariantId) : null,
+      subassemblyItemId: Number.isInteger(d.subassemblyItemId) && Number(d.subassemblyItemId) > 0 ? Number(d.subassemblyItemId) : null,
       qty: typeof d.qty === "number" && Number.isFinite(d.qty) && d.qty >= 1 ? d.qty : 1,
       nodes: normalizeNodes(d.nodes),
       blueprints,
@@ -151,6 +157,7 @@ export function BomBuilder() {
   const [savedBoms, setSavedBoms] = useState<Bom[]>([]);
   const [loadingSavedBoms, setLoadingSavedBoms] = useState(true);
   const [items, setItems] = useState<Item[]>([]);
+  const [subassemblies, setSubassemblies] = useState<Subassembly[]>([]);
   const [variants, setVariants] = useState<VariantEntry[]>([]);
   const [variantSearch, setVariantSearch] = useState("");
   const [variantSelectOpen, setVariantSelectOpen] = useState(false);
@@ -183,8 +190,9 @@ export function BomBuilder() {
   }, [draft]);
 
   useEffect(() => {
-    void Promise.all([getItems({ aktif: true }), getProducts()]).then(([itemList, products]) => {
+    void Promise.all([getItems({ aktif: true }), getProducts(), getSubassemblies()]).then(([itemList, products, subassemblyList]) => {
       setItems(itemList);
+      setSubassemblies(subassemblyList);
       setVariants(products.flatMap((product) => product.variants.map((variant) => ({
         variant,
         productName: product.nama,
@@ -294,6 +302,13 @@ export function BomBuilder() {
   const shownItems = useMemo(() => filteredGroups.reduce((s, [, list]) => s + list.length, 0), [filteredGroups]);
 
   const selectedVariant = variants.find(({ variant }) => variant.id === draft.productVariantId);
+  const selectedOutputItem = items.find((item) => item.id === draft.subassemblyItemId);
+  const selectedSubassembly = subassemblies.find((row) => row.itemId === selectedOutputItem?.id);
+  const savedOutputBom = selectedSubassembly
+    ? savedBoms
+      .filter((bom) => bom.subassemblyId === selectedSubassembly.id)
+      .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id)[0]
+    : undefined;
   const replacingNode = replacingNodeId ? findNode(draft.nodes, replacingNodeId)?.node : undefined;
   const matchingReplacementItems = useMemo(() => {
     const term = replacementSearch.trim().toLocaleLowerCase();
@@ -381,7 +396,8 @@ export function BomBuilder() {
 
   const saveToDatabase = async () => {
     if (!draft.version.trim()) { flash("Versi BOM wajib diisi"); return; }
-    if (!selectedVariant) { flash("Pilih varian produk sebagai output BOM"); return; }
+    if (draft.outputType === "product" && !selectedVariant) { flash("Pilih varian produk sebagai output BOM"); return; }
+    if (draft.outputType === "subassembly" && !selectedOutputItem) { flash("Pilih item sebagai output BOM subassembly"); return; }
     if (!draft.nodes.length) { flash("BOM masih kosong"); return; }
 
     const validateNodes = (nodes: BomNode[]): string | null => {
@@ -444,15 +460,58 @@ export function BomBuilder() {
       };
 
       const bomItems = await buildItems(draft.nodes);
+      let output: { productVariantId: number } | { subassemblyId: number };
+      let outputName: string;
+      let outputCode: string | undefined;
+      if (draft.outputType === "product") {
+        if (!selectedVariant) throw new Error("Pilih varian produk sebagai output BOM");
+        output = { productVariantId: selectedVariant.variant.id };
+        outputName = variantLabel(selectedVariant);
+        outputCode = selectedVariant.variant.kodeVariant?.trim() || undefined;
+      } else {
+        if (!selectedOutputItem) throw new Error("Pilih item sebagai output BOM subassembly");
+        let outputSubassembly = subassemblies.find((row) => row.itemId === selectedOutputItem.id);
+        if (!outputSubassembly) {
+          const itemCode = selectedOutputItem.kode.trim();
+          const code = itemCode.length <= 30
+            && !subassemblies.some((row) => row.kode.toLocaleLowerCase() === itemCode.toLocaleLowerCase())
+            ? itemCode
+            : `ITEM-${selectedOutputItem.id}`;
+          if (subassemblies.some((row) => row.kode.toLocaleLowerCase() === code.toLocaleLowerCase())) {
+            throw new Error(`Kode subassembly ${code} sudah digunakan. Perbarui data subassembly terlebih dahulu.`);
+          }
+          outputSubassembly = await createSubassembly({
+            kode: code,
+            nama: selectedOutputItem.nama,
+            itemId: selectedOutputItem.id,
+            isActive: true,
+          });
+          subassemblies.push(outputSubassembly);
+        } else if (!outputSubassembly.isActive) {
+          const subassemblyId = outputSubassembly.id;
+          outputSubassembly = await updateSubassembly(subassemblyId, { isActive: true });
+          const index = subassemblies.findIndex((row) => row.id === subassemblyId);
+          if (index >= 0) subassemblies[index] = outputSubassembly;
+        }
+        if (!outputSubassembly) throw new Error("Subassembly untuk item hasil gagal disiapkan");
+        setSubassemblies([...subassemblies]);
+        output = { subassemblyId: outputSubassembly.id };
+        outputName = selectedOutputItem.nama;
+        outputCode = outputSubassembly.kode;
+      }
+
+      const outputId = "productVariantId" in output ? output.productVariantId : output.subassemblyId;
       const matchingBom = boms.find((bom) =>
         bom.version === draft.version.trim()
-        && bom.productVariantId === selectedVariant.variant.id,
+        && ("productVariantId" in output
+          ? bom.productVariantId === outputId
+          : bom.subassemblyId === outputId),
       );
       const body = {
-        nama: variantLabel(selectedVariant),
+        nama: outputName,
         version: draft.version.trim(),
         isActive: true,
-        productVariantId: selectedVariant.variant.id,
+        ...output,
         items: bomItems,
       };
       if (matchingBom) {
@@ -460,14 +519,17 @@ export function BomBuilder() {
       } else {
         await createBom({
           ...body,
-          ...(selectedVariant.variant.kodeVariant?.trim() ? { kode: selectedVariant.variant.kodeVariant.trim() } : {}),
+          ...(outputCode ? { kode: outputCode } : {}),
         });
       }
-      flash("BOM berhasil disimpan atau diperbarui di database");
+      flash(draft.outputType === "subassembly"
+        ? "BOM subassembly aktif berhasil disimpan. Item tersedia untuk produksi harian."
+        : "BOM berhasil disimpan atau diperbarui di database");
       try {
         await refreshSavedBoms();
+        setSubassemblies(await getSubassemblies());
       } catch (error) {
-        flash(`BOM tersimpan, tetapi daftar blueprint gagal diperbarui: ${error instanceof Error ? error.message : "Terjadi kesalahan"}`);
+        flash(`BOM tersimpan, tetapi daftar BOM/subassembly gagal diperbarui: ${error instanceof Error ? error.message : "Terjadi kesalahan"}`);
       }
     } catch (error) {
       flash(`Gagal menyimpan BOM: ${error instanceof Error ? error.message : "Terjadi kesalahan"}. Jika sebagian subassembly sudah dibuat, periksa kembali sebelum mencoba lagi.`);
@@ -790,7 +852,8 @@ export function BomBuilder() {
             <FontAwesomeIcon icon={faSave} className="h-4 w-4" /> Simpan sebagai blueprint
           </button>
           <button type="button" onClick={() => void saveToDatabase()} className={primaryBtn} disabled={saving}>
-            <FontAwesomeIcon icon={faSave} className="h-4 w-4" /> {saving ? "Menyimpan..." : "Simpan ke database"}
+            <FontAwesomeIcon icon={faSave} className="h-4 w-4" />
+            {saving ? "Menyimpan..." : draft.outputType === "subassembly" ? "Simpan BOM subassembly" : "Simpan ke database"}
           </button>
         </div>
       </header>
@@ -888,53 +951,121 @@ export function BomBuilder() {
         </aside>
 
         <section className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[14px] font-medium text-[#1F2937]">Jenis output BOM:</span>
+            {([
+              ["product", "Varian produk"],
+              ["subassembly", "Item / Subassembly"],
+            ] as const).map(([type, label]) => (
+              <button
+                key={type}
+                type="button"
+                aria-pressed={draft.outputType === type}
+                onClick={() => patch((d) => { d.outputType = type; })}
+                className={`rounded-lg border px-3 py-2 text-[13px] font-medium transition ${
+                  draft.outputType === type
+                    ? "border-[#00A8E8] bg-[#E6F6FD] text-[#006E99]"
+                    : "border-[#D1D5DB] bg-white text-[#6B7280] hover:bg-[#F5F7FA]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="relative grid gap-1 text-[14px] font-medium text-[#1F2937]">
-              <label htmlFor="bom-product-variant">Output varian produk / nama BOM</label>
-              <input
-                id="bom-product-variant"
-                className={inputCls}
-                role="combobox"
-                aria-autocomplete="list"
-                aria-expanded={variantSelectOpen}
-                aria-controls="bom-product-variant-options"
-                value={variantSelectOpen ? variantSearch : selectedVariant ? variantLabel(selectedVariant) : ""}
-                onFocus={() => { setVariantSearch(""); setVariantSelectOpen(true); }}
-                onChange={(e) => { setVariantSearch(e.target.value); setVariantSelectOpen(true); }}
-                placeholder="Cari dan pilih varian produk"
-                autoComplete="off"
-              />
-              {variantSelectOpen && (
-                <ul
-                  id="bom-product-variant-options"
-                  role="listbox"
-                  className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#D1D5DB] bg-white py-1 shadow-lg"
+            {draft.outputType === "product" ? (
+              <div className="relative grid gap-1 text-[14px] font-medium text-[#1F2937]">
+                <label htmlFor="bom-product-variant">Output varian produk</label>
+                <input
+                  id="bom-product-variant"
+                  className={inputCls}
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={variantSelectOpen}
+                  aria-controls="bom-product-variant-options"
+                  value={variantSelectOpen ? variantSearch : selectedVariant ? variantLabel(selectedVariant) : ""}
+                  onFocus={() => { setVariantSearch(""); setVariantSelectOpen(true); }}
+                  onChange={(e) => { setVariantSearch(e.target.value); setVariantSelectOpen(true); }}
+                  placeholder="Cari dan pilih varian produk"
+                  autoComplete="off"
+                />
+                {variantSelectOpen && (
+                  <ul
+                    id="bom-product-variant-options"
+                    role="listbox"
+                    className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#D1D5DB] bg-white py-1 shadow-lg"
+                  >
+                    {matchingVariants.length === 0 ? (
+                      <li className="px-3 py-2 text-[13px] font-normal text-[#6B7280]">Varian tidak ditemukan.</li>
+                    ) : matchingVariants.map((entry) => (
+                      <li key={entry.variant.id} role="option" aria-selected={entry.variant.id === draft.productVariantId}>
+                        <button
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-[13px] font-normal text-[#1F2937] hover:bg-[#E6F6FD]"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            patch((d) => {
+                              d.productVariantId = entry.variant.id;
+                              d.name = variantLabel(entry);
+                              d.code = entry.variant.kodeVariant ?? "";
+                            });
+                            setVariantSearch("");
+                            setVariantSelectOpen(false);
+                          }}
+                        >
+                          {variantLabel(entry)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-1 text-[14px] font-medium text-[#1F2937]">
+                <label htmlFor="bom-subassembly-item">Item hasil produksi</label>
+                <select
+                  id="bom-subassembly-item"
+                  className={inputCls}
+                  value={draft.subassemblyItemId ?? ""}
+                  onChange={(event) => {
+                    const itemId = Number(event.target.value) || null;
+                    const item = items.find((row) => row.id === itemId);
+                    patch((d) => {
+                      d.subassemblyItemId = itemId;
+                      if (item) {
+                        d.name = item.nama;
+                        d.code = item.kode;
+                      }
+                    });
+                  }}
                 >
-                  {matchingVariants.length === 0 ? (
-                    <li className="px-3 py-2 text-[13px] font-normal text-[#6B7280]">Varian tidak ditemukan.</li>
-                  ) : matchingVariants.map((entry) => (
-                    <li key={entry.variant.id} role="option" aria-selected={entry.variant.id === draft.productVariantId}>
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-[13px] font-normal text-[#1F2937] hover:bg-[#E6F6FD]"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          patch((d) => {
-                            d.productVariantId = entry.variant.id;
-                            d.name = variantLabel(entry);
-                            d.code = entry.variant.kodeVariant ?? "";
-                          });
-                          setVariantSearch("");
-                          setVariantSelectOpen(false);
-                        }}
-                      >
-                        {variantLabel(entry)}
-                      </button>
-                    </li>
+                  <option value="">Pilih item hasil</option>
+                  {items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.kode} — {item.nama}{subassemblies.some((row) => row.itemId === item.id) ? " · Subassembly" : ""}
+                    </option>
                   ))}
-                </ul>
-              )}
-            </div>
+                </select>
+                <p className="text-[12px] font-normal text-[#6B7280]">
+                  Subassembly akan dihubungkan dan diaktifkan otomatis saat BOM disimpan.
+                </p>
+                {savedOutputBom && (
+                  <button
+                    type="button"
+                    className={`${secondaryBtn} justify-self-start`}
+                    onClick={() => patch((d) => {
+                      d.nodes = nodesFromBom(savedOutputBom, savedBoms);
+                      d.name = savedOutputBom.nama;
+                      d.code = selectedOutputItem?.kode ?? "";
+                      d.version = savedOutputBom.version;
+                    })}
+                  >
+                    Muat BOM tersimpan · v{savedOutputBom.version}
+                  </button>
+                )}
+              </div>
+            )}
             <label className="grid gap-1 text-[14px] font-medium text-[#1F2937]">Versi
               <input className={inputCls} value={draft.version} onChange={(e) => patch((d) => { d.version = e.target.value; })} placeholder="1.0" />
             </label>

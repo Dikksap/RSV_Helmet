@@ -155,10 +155,10 @@ export const WAREHOUSE: NavGroup = {
     },
     {
       to: "/admin/item",
-      label: "Stock Material & item",
+      label: "Master Item & Material",
       icon: faTags,
       end: true,
-      description: "Master stok barang & bahan",
+      description: "Katalog data item; saldo per gudang ada di menu Lokasi",
     },
     {
       to: "/admin/stok-opname",
@@ -169,10 +169,10 @@ export const WAREHOUSE: NavGroup = {
     },
     {
       to: "/admin/lokasi",
-      label: "Lokasi",
+      label: "Stok per Gudang",
       icon: faLocationDot,
       end: true,
-      description: "Peta lokasi kantor & gudang",
+      description: "Lihat saldo item pada masing-masing gudang",
     },
   ],
 };

@@ -14,8 +14,11 @@ export interface Item {
   divisiId: number | null;
   unit: string;
   jenis: string | null;
+  stok?: number | string;
   isActive: boolean;
+  defaultInventoryLocationId?: number | null;
   divisi?: ItemDivisi | null;
+  imageUrl?: string | null;
 }
 
 export interface ItemListParams {
@@ -64,6 +67,36 @@ export const createItem = (body: { kode: string; nama: string; divisiId?: number
 
 export const updateItem = (id: number, body: { kode?: string; nama?: string; divisiId?: number | null; unit?: string; jenis?: string | null; isActive?: boolean }) =>
   request<Item>(`/items/${id}`, { method: "PUT", body: JSON.stringify(body) });
+
+export function getItemImageUrl(imageUrl: string): string {
+  return new URL(imageUrl, `${apiUrl.replace(/\/+$/, "")}/`).toString();
+}
+
+export async function uploadItemImage(id: number, file: File): Promise<void> {
+  const form = new FormData();
+  form.append("image", file);
+  const res = await fetch(`${apiUrl}/items/${id}/image`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+  if (!res.ok) {
+    let message = `Request failed: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.message === "string") message = body.message;
+    } catch { /* ignore */ }
+    if (res.status === 401) {
+      redirectToLogin();
+      throw new Error("Sesi telah berakhir. Silakan login ulang.");
+    }
+    throw new Error(message);
+  }
+}
+
+export async function deleteItemImage(id: number): Promise<void> {
+  await request<{ message: string }>(`/items/${id}/image`, { method: "DELETE" });
+}
 
 export const deleteItem = (id: number) =>
   request<{ message: string }>(`/items/${id}`, { method: "DELETE" });
