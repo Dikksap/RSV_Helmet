@@ -135,6 +135,13 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 - `POST /api/items/:id/image` dan `DELETE /api/items/:id/image` memerlukan permission `KELOLA_ITEM`. `GET /api/items/:id/image` bersifat publik mengikuti akses katalog item.
 - Unggahan menerima JPEG, PNG, atau WebP sampai 5 MB. Backend memvalidasi isi gambar, membatasi dimensi, menghapus metadata melalui normalisasi, dan menyimpan hasil WebP maksimal 1200 × 1200 piksel.
 - File disimpan di direktori `UPLOADS_DIR` (default `uploads/`) dan hanya path relatif yang dicatat pada database. Docker development memakai `backend/uploads`; production memakai volume persisten `uploads_data`. Cadangkan volume ini bersama database karena keduanya menyimpan bagian berbeda dari data gambar.
+- Container production menjalankan API sebagai user non-root `node`; `Dockerfile.production` menyiapkan direktori upload dengan kepemilikan yang sesuai untuk volume baru. Jika volume `uploads_data` sudah dibuat sebelum pengaturan ini, perbaiki kepemilikannya satu kali tanpa menghapus file:
+
+  ```sh
+  docker exec --user 0 rsv-backend-prod sh -c 'mkdir -p /app/uploads/avatars /app/uploads/items && chown node:node /app/uploads /app/uploads/avatars /app/uploads/items'
+  docker exec rsv-backend-prod sh -c 'test -w /app/uploads/avatars && test -w /app/uploads/items'
+  ```
+
 - Sebelum menjalankan versi yang memakai fitur gambar, terapkan migration database melalui `npx prisma migrate deploy`.
 
 ### API inventory dan quality yang masih aktif
