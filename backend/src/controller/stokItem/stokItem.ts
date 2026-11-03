@@ -1,7 +1,12 @@
 import type { Request, Response } from "express";
 import { getItemById } from "../../model/item/item.js";
 import { catatMutasi, getSaldo, getSaldoBulk, getRingkasanBulk, listMutasiItem, lockItem, StokKurangError } from "../../model/stokItem/stokItem.js";
-import { getWarehouseItemBalances } from "../../model/inventory/inventory.js";
+import {
+  getItemWarehouseBalances,
+  getWarehouseItemBalances,
+  InventoryError,
+  transferItemBetweenWarehouses,
+} from "../../model/inventory/inventory.js";
 import prisma from "../../lib/prisma.js";
 import { TipeStokItem } from "../../../generated/prisma/enums.js";
 
@@ -137,6 +142,84 @@ export async function getSaldoGudangBulkHandler(req: Request, res: Response) {
     res.status(200).json({ saldo: await getWarehouseItemBalances(parsed) });
   } catch (error) {
     res.status(500).json({ message: "Gagal mengambil saldo item di gudang", error });
+  }
+}
+
+// GET /api/items/:id/stok/gudang — saldo per gudang aktif dari StockBalance.
+export async function getItemWarehouseBalancesHandler(req: Request, res: Response) {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
+    const item = await getItemById(id);
+    if (!item) return res.status(404).json({ message: "Item tidak ditemukan" });
+    return res.status(200).json(await getItemWarehouseBalances(id));
+  } catch (error) {
+    return res.status(500).json({ message: "Gagal mengambil saldo item per gudang", error });
+  }
+}
+
+// POST /api/items/:id/stok/transfer — transfer stok item antargudang.
+export async function transferItemWarehouseHandler(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
+
+  const fromLocationId = parseId(String(req.body?.fromLocationId ?? ""));
+  const toLocationId = parseId(String(req.body?.toLocationId ?? ""));
+  const quantity =
+    typeof req.body?.quantity === "number" ||
+    (typeof req.body?.quantity === "string" && req.body.quantity.trim() !== "")
+      ? Number(req.body.quantity)
+      : Number.NaN;
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const idempotencyKey =
+    typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey.trim() : "";
+
+  if (!fromLocationId || !toLocationId) {
+    return res.status(400).json({ message: "fromLocationId dan toLocationId harus angka bulat positif" });
+  }
+  if (fromLocationId === toLocationId) {
+    return res.status(400).json({ message: "Gudang asal dan tujuan harus berbeda" });
+  }
+  const scaledQuantity = quantity * 1_000_000;
+  if (
+    !Number.isFinite(quantity) ||
+    quantity <= 0 ||
+    !Number.isSafeInteger(Math.round(scaledQuantity)) ||
+    Math.abs(scaledQuantity - Math.round(scaledQuantity)) > 1e-7
+  ) {
+    return res.status(400).json({ message: "quantity harus positif dengan maksimal 6 angka desimal" });
+  }
+  if (reason.length < 3 || reason.length > 500) {
+    return res.status(400).json({ message: "Alasan transfer wajib diisi (3-500 karakter)" });
+  }
+  if (!idempotencyKey || idempotencyKey.length > 128) {
+    return res.status(400).json({ message: "idempotencyKey wajib diisi dan maksimal 128 karakter" });
+  }
+  if (!req.user?.id) return res.status(401).json({ message: "Token tidak ditemukan" });
+
+  try {
+    const result = await transferItemBetweenWarehouses({
+      itemId: id,
+      fromLocationId,
+      toLocationId,
+      quantity,
+      idempotencyKey,
+      reason,
+      userId: req.user.id,
+    });
+    return res.status(201).json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof InventoryError) {
+      const status = error.code === "INSUFFICIENT_STOCK" || error.code === "IDEMPOTENCY_CONFLICT"
+        ? 409
+        : error.code === "ITEM_NOT_FOUND" || error.code === "LOCATION_NOT_FOUND"
+          ? 404
+          : error.code === "SCOPE_DENIED"
+            ? 403
+            : 400;
+      return res.status(status).json({ code: error.code, message: error.message });
+    }
+    return res.status(500).json({ message: "Gagal mentransfer stok item", error });
   }
 }
 

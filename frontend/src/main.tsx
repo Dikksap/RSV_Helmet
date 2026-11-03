@@ -34,6 +34,7 @@ import KelolaKaryawan from "./pages/admin/KelolaKaryawan.tsx";
 import KelolaDivisi from "./pages/admin/KelolaDivisi.tsx";
 import KelolaBatch from "./pages/admin/KelolaBatch.tsx";
 import Lokasi from "./pages/admin/Lokasi.tsx";
+import InventoryLedger from "./pages/admin/InventoryLedger.tsx";
 import KelolaItem from "./pages/admin/KelolaItem.tsx";
 import BOM from "./pages/admin/BOM.tsx";import StokItem from "./pages/admin/StokItem.tsx";
 import DaftarBOM from "./pages/admin/DaftarBOM.tsx";
@@ -84,6 +85,7 @@ const routes = (
       <Route path="/admin/divisi" element={<KelolaDivisi />} />
       <Route path="/admin/batch" element={<KelolaBatch />} />
       <Route path="/admin/lokasi" element={<Lokasi />} />
+      <Route path="/admin/ledger-lokasi" element={<InventoryLedger />} />
       <Route path="/admin/permintaan-barang" element={<DaftarPermintaan />} />
 <Route path="/admin/pemakaian-material" element={<PemakaianMaterial />} />
       <Route path="/admin/item" element={<KelolaItem />} />

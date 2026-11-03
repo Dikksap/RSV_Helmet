@@ -174,6 +174,13 @@ export const WAREHOUSE: NavGroup = {
       end: true,
       description: "Lihat saldo item pada masing-masing gudang",
     },
+    {
+      to: "/admin/ledger-lokasi",
+      label: "Ledger Lokasi",
+      icon: faDatabase,
+      end: true,
+      description: "Transfer, adjustment, dan riwayat stok inventory",
+    },
   ],
 };
 

@@ -5,8 +5,9 @@ const prismaMock = vi.hoisted(() => ({
   inventoryLocation: { findMany: vi.fn() },
   item: { findMany: vi.fn(), findUnique: vi.fn() },
   stokItemMutasi: { groupBy: vi.fn() },
-  stockBalance: { findMany: vi.fn() },
+  stockBalance: { findMany: vi.fn(), groupBy: vi.fn() },
   inventoryMovement: {
+    groupBy: vi.fn(),
     findMany: vi.fn(),
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -18,11 +19,15 @@ vi.mock("../src/lib/prisma.js", () => ({ default: prismaMock }));
 
 import {
   getInventoryBalances,
+  getInventoryItemSummary,
+  getInventoryItemTotals,
+  getItemWarehouseBalances,
   getWarehouseItemBalances,
   listInventoryMovements,
   listUnmappedLegacyItemBalances,
   postInventoryMovement,
   setItemDefaultInventoryLocation,
+  transferItemBetweenWarehouses,
 } from "../src/model/inventory/inventory.js";
 
 const balances = [
@@ -166,6 +171,131 @@ describe("getInventoryBalances", () => {
     await expect(getInventoryBalances({ barangId: 77 })).resolves.toEqual([
       { itemId: null, barangId: 77, locationId: 8, quantity: 1 },
     ]);
+  });
+});
+
+describe("item warehouse balances and transfer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns active warehouse locations with balances combined across lots", async () => {
+    prismaMock.inventoryLocation.findMany.mockResolvedValue([
+      { id: 3, code: "WH-3", name: "Gudang Raw", gudangId: 3 },
+      { id: 8, code: "WH-8", name: "Gudang Produksi", gudangId: 8 },
+    ] as never);
+    prismaMock.stockBalance.findMany.mockResolvedValue([
+      { locationId: 3, quantity: 7 },
+      { locationId: 3, quantity: 2.5 },
+    ] as never);
+
+    await expect(getItemWarehouseBalances(12)).resolves.toEqual([
+      { id: 3, code: "WH-3", name: "Gudang Raw", gudangId: 3, balance: 9.5 },
+      { id: 8, code: "WH-8", name: "Gudang Produksi", gudangId: 8, balance: 0 },
+    ]);
+  });
+
+  it("rejects a transfer that exceeds source warehouse balance", async () => {
+    const tx = {
+      $queryRaw: vi.fn(),
+      item: { findUnique: vi.fn().mockResolvedValue({ id: 12 }) },
+      inventoryMovement: { findMany: vi.fn().mockResolvedValue([]), findUnique: vi.fn(), create: vi.fn() },
+      inventoryLocation: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 3, type: "WAREHOUSE", isActive: true },
+          { id: 8, type: "WAREHOUSE", isActive: true },
+        ]),
+      },
+      stockBalance: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 1, batchId: null, pemakaianMaterialItemId: null, quantity: 1 },
+        ]),
+      },
+    };
+    prismaMock.$transaction.mockImplementation((operation) => operation(tx));
+
+    await expect(transferItemBetweenWarehouses({
+      itemId: 12,
+      fromLocationId: 3,
+      toLocationId: 8,
+      quantity: 2,
+      idempotencyKey: "transfer-001",
+      reason: "Pindah stok",
+      userId: 7,
+    })).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
+    expect(tx.inventoryMovement.create).not.toHaveBeenCalled();
+  });
+
+  it("transfers across stock lots without changing the item total", async () => {
+    const balancesByKey = new Map([
+      ["I:12:0:0:3", { id: 1, balanceKey: "I:12:0:0:3", itemId: 12, batchId: null, pemakaianMaterialItemId: null, locationId: 3, quantity: 3 }],
+      ["I:12:4:0:3", { id: 2, balanceKey: "I:12:4:0:3", itemId: 12, batchId: 4, pemakaianMaterialItemId: null, locationId: 3, quantity: 4 }],
+    ]);
+    const movements: Array<{ data: Record<string, unknown> }> = [];
+    const tx = {
+      $queryRaw: vi.fn(),
+      item: { findUnique: vi.fn().mockResolvedValue({ id: 12 }) },
+      inventoryMovement: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn(({ data }) => {
+          movements.push({ data });
+          return { id: movements.length, ...data };
+        }),
+      },
+      inventoryLocation: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 3, type: "WAREHOUSE", isActive: true },
+          { id: 8, type: "WAREHOUSE", isActive: true },
+        ]),
+      },
+      stockBalance: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 1, batchId: null, pemakaianMaterialItemId: null, quantity: 3 },
+          { id: 2, batchId: 4, pemakaianMaterialItemId: null, quantity: 4 },
+        ]),
+        findUnique: vi.fn(({ where }) => {
+          const row = balancesByKey.get(where.balanceKey);
+          return row ? { id: row.id } : null;
+        }),
+        create: vi.fn(({ data }) => {
+          const row = { ...data, id: balancesByKey.size + 1 };
+          balancesByKey.set(data.balanceKey, row);
+          return row;
+        }),
+        findUniqueOrThrow: vi.fn(({ where }) => {
+          const row = balancesByKey.get(where.balanceKey);
+          if (!row) throw new Error("Missing stock balance");
+          return row;
+        }),
+        update: vi.fn(({ where, data }) => {
+          const row = balancesByKey.get(where.balanceKey);
+          if (!row) throw new Error("Missing stock balance");
+          row.quantity += data.quantity.increment;
+          return row;
+        }),
+      },
+    };
+    prismaMock.$transaction.mockImplementation((operation) => operation(tx));
+
+    await expect(transferItemBetweenWarehouses({
+      itemId: 12,
+      fromLocationId: 3,
+      toLocationId: 8,
+      quantity: 5,
+      idempotencyKey: "transfer-lots",
+      reason: "Pindah stok",
+      userId: 7,
+    })).resolves.toEqual({ repeated: false, quantity: 5 });
+
+    expect(movements).toHaveLength(4);
+    expect(movements.map(({ data }) => data.batchId)).toEqual([null, null, 4, 4]);
+    expect([...balancesByKey.values()]
+      .filter((balance) => balance.locationId === 3)
+      .reduce((total, balance) => total + balance.quantity, 0)).toBe(2);
+    expect([...balancesByKey.values()]
+      .filter((balance) => balance.locationId === 8)
+      .reduce((total, balance) => total + balance.quantity, 0)).toBe(5);
   });
 });
 
@@ -382,5 +512,56 @@ describe("postInventoryMovement", () => {
     );
     expect(balancesByKey.get("I:12:0:0:3")?.quantity).toBe(6);
     expect(balancesByKey.get("I:12:0:0:8")?.quantity).toBe(4);
+  });
+});
+
+describe("getInventoryItemSummary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("merangkum gerakan masuk, keluar, dan net hanya pada gudang aktif dan periode terpilih", async () => {
+    prismaMock.inventoryLocation.findMany.mockResolvedValue([{ id: 3 }, { id: 8 }] as never);
+    prismaMock.inventoryMovement.groupBy
+      .mockResolvedValueOnce([{ itemId: 12, _sum: { quantity: 18 } }] as never)
+      .mockResolvedValueOnce([{ itemId: 12, _sum: { quantity: 7 } }] as never);
+
+    await expect(getInventoryItemSummary([12], {
+      from: new Date("2026-10-01T00:00:00Z"),
+      until: new Date("2026-11-01T00:00:00Z"),
+    })).resolves.toEqual({ 12: { masuk: 18, keluar: 7, net: 11 } });
+
+    expect(prismaMock.inventoryMovement.groupBy).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          itemId: { in: [12] },
+          toLocationId: { in: [3, 8] },
+          occurredAt: { gte: new Date("2026-10-01T00:00:00Z"), lt: new Date("2026-11-01T00:00:00Z") },
+        }),
+      }),
+    );
+  });
+});
+
+describe("getInventoryItemTotals", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("mengembalikan total StockBalance lintas lokasi aktif tanpa memakai Item.stok", async () => {
+    prismaMock.stockBalance.groupBy.mockResolvedValue([
+      { itemId: 12, _sum: { quantity: 18 } },
+    ] as never);
+
+    await expect(getInventoryItemTotals([12, 14])).resolves.toEqual({ 12: 18, 14: 0 });
+    expect(prismaMock.stockBalance.groupBy).toHaveBeenCalledWith({
+      by: ["itemId"],
+      where: {
+        itemId: { in: [12, 14] },
+        location: { isActive: true },
+      },
+      _sum: { quantity: true },
+    });
   });
 });

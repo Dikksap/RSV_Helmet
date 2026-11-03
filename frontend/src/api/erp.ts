@@ -40,6 +40,8 @@ export interface ErpMovement {
   fromLocation: { id: number; code: string; name: string; type: string } | null;
   toLocation: { id: number; code: string; name: string; type: string } | null;
   quantity: number | string;
+  occurredAt: string;
+  reason: string | null;
 }
 
 export interface ErpStockAdjustment {
@@ -403,7 +405,11 @@ export const reviewWipRejectRepair = (id: number, attemptId: number, body: {
 export const getQualityDailyReport = (date: string) =>
   request<QualityDailyReport>(`/quality/daily-report?date=${encodeURIComponent(date)}`);
 export const listErpBalances = () => request<ErpBalance[]>("/inventory/balances");
-export const listErpMovements = () => request<ErpMovement[]>("/inventory/movements?take=100");
+export const listErpMovements = (filters: { itemId?: number; take?: number } = {}) => {
+  const query = new URLSearchParams({ take: String(filters.take ?? 100) });
+  if (filters.itemId !== undefined) query.set("itemId", String(filters.itemId));
+  return request<ErpMovement[]>(`/inventory/movements?${query}`);
+};
 export const listErpStockAdjustments = () =>
   request<ErpStockAdjustment[]>("/inventory/adjustments");
 export const requestErpStockAdjustment = (body: {
@@ -434,6 +440,7 @@ export const postErpMovement = (body: {
   quantity: number;
   idempotencyKey: string;
   reason: string;
+  occurredAt?: string;
 }) => request("/inventory/movements", { method: "POST", body: JSON.stringify(body) });
 
 export const listProductionRoutings = () => request<ProductionRouting[]>("/quality/routings");

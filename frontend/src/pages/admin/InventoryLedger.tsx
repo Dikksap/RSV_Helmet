@@ -20,13 +20,16 @@ import {
   type ErpStockAdjustment,
   type ErpUnmappedLegacyItem,
 } from "../../api/erp";
-import { getUserPermissions } from "../../api/auth";
+import { getUser, getUserPermissions } from "../../api/auth";
 
 const inputClass = "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
 const buttonClass = "rounded-lg bg-[#00A8E8] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50";
 
 export default function InventoryLedger() {
   const permissions = getUserPermissions();
+  const currentUser = getUser();
+  const currentUserId = currentUser?.id;
+  const currentUserIsAdmin = currentUser?.role === "admin";
   const canMap = permissions.includes("INVENTORY_LOCATION_MANAGE");
   const canMove = permissions.includes("INVENTORY_MOVE");
   const canAdjust = permissions.includes("INVENTORY_ADJUST");
@@ -394,6 +397,9 @@ export default function InventoryLedger() {
                     <p className="mt-1 text-sm">Sistem {Number(adjustment.systemQuantity).toLocaleString("id-ID")} → fisik {Number(adjustment.physicalQuantity).toLocaleString("id-ID")} {adjustment.item.unit}</p>
                     <p className="text-sm text-slate-600">Selisih {Number(adjustment.difference).toLocaleString("id-ID")} · {adjustment.reason}</p>
                     <p className="text-xs text-slate-500">Diajukan {adjustment.requester.name} · {new Date(adjustment.requestedAt).toLocaleString("id-ID")}</p>
+                    {adjustment.status === "PENDING" && adjustment.requester.id === currentUserId && !currentUserIsAdmin && (
+                      <p className="mt-1 text-xs font-medium text-amber-800">Anda pengaju adjustment ini. Minta admin lain menyetujui.</p>
+                    )}
                     {adjustment.reviewNotes && <p className="mt-1 text-sm text-red-700">Catatan review: {adjustment.reviewNotes}</p>}
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${adjustment.status === "PENDING" ? "bg-amber-100 text-amber-800" : adjustment.status === "APPROVED" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
@@ -402,8 +408,8 @@ export default function InventoryLedger() {
                 </div>
                 {adjustment.status === "PENDING" && canApproveAdjustments && (
                   <div className="mt-3 flex gap-2">
-                    <button className={buttonClass} type="button" disabled={busy} onClick={() => void reviewAdjustment(adjustment.id, "approve")}>Setujui & posting</button>
-                    <button className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50" type="button" disabled={busy} onClick={() => void reviewAdjustment(adjustment.id, "reject")}>Tolak</button>
+                    <button className={buttonClass} type="button" disabled={busy || (adjustment.requester.id === currentUserId && !currentUserIsAdmin)} onClick={() => void reviewAdjustment(adjustment.id, "approve")}>Setujui & posting</button>
+                    <button className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50" type="button" disabled={busy || (adjustment.requester.id === currentUserId && !currentUserIsAdmin)} onClick={() => void reviewAdjustment(adjustment.id, "reject")}>Tolak</button>
                   </div>
                 )}
               </article>

@@ -188,11 +188,16 @@ export async function setApprovalPermintaan(
   id: number,
   approval: ApprovalPermintaan,
   items?: KeputusanItemInput[],
+  targetWarehouseId?: number,
 ): Promise<PermintaanBarangRecord> {
   const response = await fetch(`${apiUrl}/permintaan-barang/${id}/approval`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(items ? { approval, items } : { approval }),
+    body: JSON.stringify({
+      approval,
+      ...(items ? { items } : {}),
+      ...(targetWarehouseId !== undefined ? { targetWarehouseId } : {}),
+    }),
   });
   if (!response.ok) await parseError(response, "Gagal memperbarui status approval");
   return response.json() as Promise<PermintaanBarangRecord>;

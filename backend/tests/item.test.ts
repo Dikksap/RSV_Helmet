@@ -14,13 +14,26 @@ vi.mock("../src/model/item/item.js", () => ({
   },
 }));
 
+vi.mock("../src/model/inventory/inventory.js", () => ({
+  getItemWarehouseBalances: vi.fn(),
+  transferItemBetweenWarehouses: vi.fn(),
+  InventoryError: class InventoryError extends Error {
+    constructor(public readonly code: string, message: string) {
+      super(message);
+    }
+  },
+}));
+
 let currentAccess = { role: "user", permissions: ["BARANG_LIHAT", "KELOLA_ITEM"], statusView: null };
 
 vi.mock("../src/middleware/auth.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/middleware/auth.js")>();
   return {
     ...actual,
-    authenticate: (_req: any, _res: any, next: any) => next(),
+    authenticate: (req: any, _res: any, next: any) => {
+      req.user = { id: 7 };
+      next();
+    },
     adminOnly: (_req: any, _res: any, next: any) => next(),
     authorize: (req: any, _res: any, next: any) => {
       req.access = currentAccess;
@@ -42,6 +55,10 @@ import {
   deleteItem,
   bulkUpdateItems,
 } from "../src/model/item/item.js";
+import {
+  getItemWarehouseBalances,
+  transferItemBetweenWarehouses,
+} from "../src/model/inventory/inventory.js";
 
 const mocked = {
   listItems: vi.mocked(listItems),
@@ -50,6 +67,10 @@ const mocked = {
   updateItem: vi.mocked(updateItem),
   deleteItem: vi.mocked(deleteItem),
   bulkUpdateItems: vi.mocked(bulkUpdateItems),
+};
+const inventoryMocked = {
+  getItemWarehouseBalances: vi.mocked(getItemWarehouseBalances),
+  transferItemBetweenWarehouses: vi.mocked(transferItemBetweenWarehouses),
 };
 
 const app = express();
@@ -174,6 +195,75 @@ describe("PUT /api/items/:id", () => {
     const res = await request(app).put("/api/items/1").send({});
     expect(res.status).toBe(400);
     expect(mocked.updateItem).not.toHaveBeenCalled();
+  });
+
+  describe("item warehouse stock endpoints", () => {
+    it("lists active warehouse balances for an existing item", async () => {
+      mocked.getItemById.mockResolvedValue(sample as any);
+      inventoryMocked.getItemWarehouseBalances.mockResolvedValue([
+        { id: 3, code: "WH-3", name: "Gudang Raw", gudangId: 3, balance: 12 },
+      ]);
+
+      const response = await request(app).get("/api/items/1/stok/gudang");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: 3, code: "WH-3", name: "Gudang Raw", gudangId: 3, balance: 12 },
+      ]);
+      expect(inventoryMocked.getItemWarehouseBalances).toHaveBeenCalledWith(1);
+    });
+
+    it("rejects malformed or same source and destination before posting transfer", async () => {
+      __setItemTestAccess(["INVENTORY_MOVE"]);
+      const malformed = await request(app).post("/api/items/1/stok/transfer").send({
+        fromLocationId: 3,
+        toLocationId: 3,
+        quantity: 1,
+        idempotencyKey: "transfer-1",
+        reason: "Pindah stok",
+      });
+      const invalidQuantity = await request(app).post("/api/items/1/stok/transfer").send({
+        fromLocationId: 3,
+        toLocationId: 4,
+        quantity: 0.0000001,
+        idempotencyKey: "transfer-2",
+        reason: "Pindah stok",
+      });
+
+      expect(malformed.status).toBe(400);
+      expect(invalidQuantity.status).toBe(400);
+      expect(inventoryMocked.transferItemBetweenWarehouses).not.toHaveBeenCalled();
+    });
+
+    it("requires INVENTORY_MOVE and passes transfer details to the ledger service", async () => {
+      const denied = await request(app).post("/api/items/1/stok/transfer").send({});
+      expect(denied.status).toBe(403);
+
+      __setItemTestAccess(["INVENTORY_MOVE"]);
+      inventoryMocked.transferItemBetweenWarehouses.mockResolvedValue({
+        repeated: false,
+        quantity: 2,
+      });
+      const response = await request(app).post("/api/items/1/stok/transfer").send({
+        fromLocationId: 3,
+        toLocationId: 4,
+        quantity: 2,
+        idempotencyKey: "transfer-3",
+        reason: "Pindah stok",
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({ success: true, repeated: false, quantity: 2 });
+      expect(inventoryMocked.transferItemBetweenWarehouses).toHaveBeenCalledWith({
+        itemId: 1,
+        fromLocationId: 3,
+        toLocationId: 4,
+        quantity: 2,
+        idempotencyKey: "transfer-3",
+        reason: "Pindah stok",
+        userId: 7,
+      });
+    });
   });
 
   it("200 update parsial + divisiId null melepaskan divisi", async () => {

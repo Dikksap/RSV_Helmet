@@ -22,6 +22,14 @@ export interface StokItemResponse {
   };
 }
 
+export interface StokItemGudangBalance {
+  id: number;
+  code: string;
+  name: string;
+  gudangId: number | null;
+  balance: number;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${apiUrl}${path}`, {
     ...options,
@@ -77,7 +85,7 @@ export async function getRingkasanBulkStok(ids: number[], filter: StokRiwayatFil
   const uniq = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
   const hasil: Record<number, RingkasanStokItem> = {};
   for (let i = 0; i < uniq.length; i += 200) {
-    const res = await request<{ ringkasan: Record<number, RingkasanStokItem> }>("/items/stok-ringkasan", {
+    const res = await request<{ ringkasan: Record<number, RingkasanStokItem> }>("/inventory/items/summary", {
       method: "POST",
       body: JSON.stringify({
         ids: uniq.slice(i, i + 200),
@@ -124,6 +132,24 @@ export const tambahStokItem = (id: number, body: { jumlah: number; keterangan?: 
 
 export const catatKeluarItem = (id: number, body: { jumlah: number; keterangan?: string; tanggal?: string }) =>
   request<{ mutasi: StokMutasiRecord; saldo: number }>(`/items/${id}/stok/keluar`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const getItemGudangBalances = (id: number) =>
+  request<StokItemGudangBalance[]>(`/items/${id}/stok/gudang`);
+
+export const transferItemGudang = (
+  id: number,
+  body: {
+    fromLocationId: number;
+    toLocationId: number;
+    quantity: number;
+    idempotencyKey: string;
+    reason: string;
+  },
+) =>
+  request<{ success: boolean; repeated: boolean; quantity: number }>(`/items/${id}/stok/transfer`, {
     method: "POST",
     body: JSON.stringify(body),
   });

@@ -33,6 +33,7 @@ function createTransactionMock() {
     $queryRaw: vi.fn(),
     item: {
       findUnique: vi.fn().mockResolvedValue({ id: 7 }),
+      update: vi.fn().mockResolvedValue({ stok: 11 }),
     },
     inventoryLocation: {
       findUnique: vi.fn().mockResolvedValue({ id: 3, isActive: true }),
@@ -178,6 +179,20 @@ describe("StockAdjustment workflow", () => {
       approveStockAdjustment(adjustment.id, adjustment.requestedById),
     ).rejects.toMatchObject({ code: "ADJUSTMENT_SELF_APPROVAL" });
     expect(tx.inventoryMovement.create).not.toHaveBeenCalled();
+  });
+
+  it("allows an admin to approve their own adjustment", async () => {
+    const { tx, adjustment } = createTransactionMock();
+    tx.stockAdjustment.findUnique
+      .mockResolvedValueOnce({ id: adjustment.id, locationId: adjustment.locationId })
+      .mockResolvedValueOnce(adjustment);
+    tx.stockAdjustment.update.mockResolvedValue({ ...adjustment, status: "APPROVED" });
+    tx.stockAdjustment.findUniqueOrThrow.mockResolvedValue({ ...adjustment, status: "APPROVED" });
+
+    await expect(
+      approveStockAdjustment(adjustment.id, adjustment.requestedById, undefined, true),
+    ).resolves.toMatchObject({ status: "APPROVED" });
+    expect(tx.inventoryMovement.create).toHaveBeenCalled();
   });
 
   it("rejects a pending request with a reviewer and reason", async () => {

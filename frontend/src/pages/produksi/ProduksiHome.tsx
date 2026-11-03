@@ -9,18 +9,17 @@ import {
   faFlask,
   faIndustry,
   faSpinner,
-  faTruckRampBox,
   faTriangleExclamation,
   faWarehouse,
 } from "@fortawesome/free-solid-svg-icons";
 import { getUser } from "../../api/auth";
 import { getItems, type Item } from "../../api/item";
 import {
-  createPenerimaanBahan,
   createProduksiHarian,
   getBomPreview,
   getLokasiProduksi,
   getOpsiProduksi,
+  getStokGudang,
   listProduksiHarian,
   type BomPreview,
   type Lokasi,
@@ -31,7 +30,6 @@ import {
 
 const TABS = [
   { id: "produksi", label: "Catat Hasil Produksi", icon: faIndustry },
-  { id: "material", label: "Stok Bahan Masuk", icon: faTruckRampBox },
   { id: "bom", label: "Formula BOM", icon: faFlask },
   { id: "stok", label: "Stok & Riwayat Data", icon: faBoxesStacked },
 ] as const;
@@ -66,6 +64,7 @@ export default function ProduksiHome() {
   const [opsi, setOpsi] = useState<OpsiProduksi | null>(null);
   const [lokasi, setLokasi] = useState<Lokasi[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [stokGudang, setStokGudang] = useState<Record<number, number>>({});
   const [riwayat, setRiwayat] = useState<ProduksiList | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,35 +82,36 @@ export default function ProduksiHome() {
   const [sumber, setSumber] = useState<Record<number, string>>({});
   const [savingProduksi, setSavingProduksi] = useState(false);
 
-  const [receiptTanggal, setReceiptTanggal] = useState(todayISO());
-  const [receiptItemId, setReceiptItemId] = useState("");
-  const [receiptLocationId, setReceiptLocationId] = useState("");
-  const [receiptJumlah, setReceiptJumlah] = useState("");
-  const [receiptKeterangan, setReceiptKeterangan] = useState("");
-  const [savingReceipt, setSavingReceipt] = useState(false);
   const [cariStok, setCariStok] = useState("");
 
   const muatData = async (quiet = false) => {
     if (!quiet) setLoading(true);
     setRefreshing(quiet);
     try {
-      const [opsiData, lokasiData, itemData, history] = await Promise.all([
+      const [opsiData, lokasiData, itemData, history, gudangData] = await Promise.all([
         getOpsiProduksi(),
         getLokasiProduksi(),
         getItems({ aktif: true }),
         listProduksiHarian({ page: 1, limit: 20 }),
+        getStokGudang(),
       ]);
       setOpsi(opsiData);
       setLokasi(lokasiData);
       setItems(itemData);
       setRiwayat(history);
+      const totals: Record<number, number> = {};
+      for (const location of gudangData) {
+        for (const stock of location.items) {
+          totals[stock.itemId] = (totals[stock.itemId] ?? 0) + stock.quantity;
+        }
+      }
+      setStokGudang(totals);
       setLoadError(null);
       if (!divisiId) {
         const awal = user?.divisiId ? String(user.divisiId) : String(opsiData.divisions[0]?.id ?? "");
         setDivisiId(awal);
       }
       if (!tujuanLocationId) setTujuanLocationId(String(opsiData.warehouses[0]?.id ?? ""));
-      if (!receiptLocationId) setReceiptLocationId(String(opsiData.warehouses[0]?.id ?? ""));
     } catch (error) {
       setLoadError(pesan(error));
     } finally {
@@ -212,7 +212,7 @@ export default function ProduksiHome() {
           sumberLocationId: Number(sumber[line.itemId]),
         })),
       });
-      setNotice({ tone: "ok", text: `Produksi ${hasil.nomor} tersimpan. Stok bahan berkurang dan hasil masuk gudang.` });
+      setNotice({ tone: "ok", text: `Produksi ${hasil.nomor} tersimpan. Bahan otomatis dikonsumsi dari lokasi sumber dan hasil masuk gudang.` });
       setJumlah("");
       setKeterangan("");
       setPreview(null);
@@ -225,42 +225,12 @@ export default function ProduksiHome() {
     }
   };
 
-  const bisaSimpanReceipt =
-    Boolean(receiptItemId && receiptLocationId && n(receiptJumlah) > 0) && !savingReceipt;
-
-  const simpanReceipt = async () => {
-    if (!bisaSimpanReceipt) return;
-    setSavingReceipt(true);
-    setNotice(null);
-    try {
-      const data = await createPenerimaanBahan({
-        tanggal: receiptTanggal,
-        itemId: Number(receiptItemId),
-        locationId: Number(receiptLocationId),
-        jumlah: n(receiptJumlah),
-        keterangan: receiptKeterangan.trim() || undefined,
-        idempotencyKey: crypto.randomUUID(),
-      });
-      setNotice({
-        tone: "ok",
-        text: `Penerimaan ${data.item.kode} - ${data.item.nama} tersimpan. Stok total sekarang ${fmt(data.item.stok)}.`,
-      });
-      setReceiptJumlah("");
-      setReceiptKeterangan("");
-      await muatData(true);
-    } catch (error) {
-      setNotice({ tone: "error", text: pesan(error) });
-    } finally {
-      setSavingReceipt(false);
-    }
-  };
-
   const itemsStok = useMemo(() => {
     const q = cariStok.trim().toLowerCase();
     return items
       .filter((item) => !q || item.kode.toLowerCase().includes(q) || item.nama.toLowerCase().includes(q) || (item.jenis ?? "").toLowerCase().includes(q))
-      .sort((a, b) => n(b.stok) - n(a.stok));
-  }, [items, cariStok]);
+      .sort((a, b) => (stokGudang[b.id] ?? 0) - (stokGudang[a.id] ?? 0));
+  }, [items, cariStok, stokGudang]);
 
   if (loading) {
     return (
@@ -281,7 +251,7 @@ export default function ProduksiHome() {
               <p className="text-[11px] font-bold uppercase tracking-widest text-[#00A8E8]">Produksi</p>
               <h1 className="mt-1 text-xl font-extrabold text-[#1E3A5F] sm:text-2xl">Produksi Harian</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                Catat bahan keluar, hasil masuk gudang, dan penerimaan bahan. BOM otomatis hanya dari subassembly.
+                Catat hasil produksi; konsumsi bahan otomatis mengurangi stok lokasi sumber yang dipilih.
               </p>
             </div>
             <button
@@ -430,7 +400,7 @@ export default function ProduksiHome() {
                           <div>
                             <p className="text-sm font-bold text-slate-700">{line.kode} — {line.nama}</p>
                             <p className="text-xs text-slate-500">
-                              Butuh {fmt(line.jumlah)} {line.unit ?? ""} · Total stok {fmt(items.find((item) => item.id === line.itemId)?.stok)}
+                              Butuh {fmt(line.jumlah)} {line.unit ?? ""} · Total stok gudang {fmt(stokGudang[line.itemId] ?? 0)}
                             </p>
                           </div>
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${stokSumber && stokSumber.quantity >= line.jumlah ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
@@ -474,105 +444,6 @@ export default function ProduksiHome() {
           </div>
         )}
 
-        {tab === "material" && (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <section className={cardCls}>
-              <h2 className="text-sm font-extrabold text-[#1E3A5F]">Penerimaan Bahan</h2>
-              <p className="mt-1 text-xs text-slate-500">Menambah stok di lokasi tujuan dan stok total item.</p>
-              <div className="mt-4 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label>
-                    <span className={labelCls}>Tanggal</span>
-                    <input type="date" value={receiptTanggal} onChange={(e) => setReceiptTanggal(e.target.value)} className={inputCls} />
-                  </label>
-                  <label>
-                    <span className={labelCls}>Jumlah Masuk</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.000001"
-                      value={receiptJumlah}
-                      onChange={(e) => setReceiptJumlah(e.target.value)}
-                      placeholder="0"
-                      className={inputCls}
-                    />
-                  </label>
-                </div>
-                <label>
-                  <span className={labelCls}>Item</span>
-                  <select value={receiptItemId} onChange={(e) => setReceiptItemId(e.target.value)} className={inputCls}>
-                    <option value="">Pilih item</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.kode} — {item.nama} (stok {fmt(item.stok)} {item.unit})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span className={labelCls}>Lokasi Tujuan</span>
-                  <select value={receiptLocationId} onChange={(e) => setReceiptLocationId(e.target.value)} className={inputCls}>
-                    <option value="">Pilih lokasi</option>
-                    {lokasi.map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {jenisLokasi(row)} · {namaLokasi(row)} ({row.code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span className={labelCls}>Keterangan</span>
-                  <textarea
-                    value={receiptKeterangan}
-                    onChange={(e) => setReceiptKeterangan(e.target.value)}
-                    rows={2}
-                    placeholder="Opsional"
-                    className={inputCls}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void simpanReceipt()}
-                  disabled={!bisaSimpanReceipt}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#00A8E8] px-4 py-3 text-sm font-bold text-white hover:bg-[#0090c7] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {savingReceipt ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faTruckRampBox} />}
-                  {savingReceipt ? "Menyimpan..." : "Simpan Penerimaan"}
-                </button>
-              </div>
-            </section>
-
-            <section className={cardCls}>
-              <h2 className="text-sm font-extrabold text-[#1E3A5F]">Stok Total Item</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Ini jumlah seluruh lokasi, bukan saldo per gudang. Lihat rincian per gudang melalui Admin → Warehouse → Stok per Gudang.
-              </p>
-              <div className="mt-3">
-                <input
-                  value={cariStok}
-                  onChange={(e) => setCariStok(e.target.value)}
-                  placeholder="Cari kode, nama, atau jenis..."
-                  className={inputCls}
-                />
-              </div>
-              <div className="mt-3 max-h-[420px] overflow-y-auto rounded-xl border border-slate-100">
-                {itemsStok.slice(0, 50).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-0">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-slate-700">{item.kode} — {item.nama}</p>
-                      <p className="text-[11px] text-slate-400">{item.jenis ?? "Tanpa jenis"} · {item.unit}</p>
-                    </div>
-                    <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold tabular-nums text-slate-700">
-                      {fmt(item.stok)}
-                    </span>
-                  </div>
-                ))}
-                {itemsStok.length === 0 && <p className="px-3 py-6 text-center text-sm text-slate-400">Tidak ada item.</p>}
-              </div>
-            </section>
-          </div>
-        )}
-
         {tab === "bom" && (
           <section className={cardCls}>
             <h2 className="text-sm font-extrabold text-[#1E3A5F]">Formula BOM Subassembly</h2>
@@ -599,7 +470,7 @@ export default function ProduksiHome() {
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-600">{row.subassemblyKode} — {row.subassemblyNama}</td>
                       <td className="px-3 py-3 text-xs text-slate-600">{row.bom?.nama ?? "-"} · v{row.bom?.version ?? "-"}</td>
-                      <td className="px-3 py-3 text-right text-xs font-bold tabular-nums text-slate-700">{fmt(row.item.stok)}</td>
+                      <td className="px-3 py-3 text-right text-xs font-bold tabular-nums text-slate-700">{fmt(stokGudang[row.item.id] ?? 0)}</td>
                       <td className="px-3 py-3 text-right">
                         <button
                           type="button"
@@ -644,7 +515,7 @@ export default function ProduksiHome() {
                   <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                     <p className="truncate text-xs font-bold text-slate-700">{item.kode} — {item.nama}</p>
                     <p className="mt-0.5 text-[11px] text-slate-400">{item.jenis ?? "Tanpa jenis"} · {item.unit}</p>
-                    <p className="mt-1 text-sm font-extrabold tabular-nums text-[#1E3A5F]">{fmt(item.stok)}</p>
+                    <p className="mt-1 text-sm font-extrabold tabular-nums text-[#1E3A5F]">{fmt(stokGudang[item.id] ?? 0)}</p>
                   </div>
                 ))}
               </div>

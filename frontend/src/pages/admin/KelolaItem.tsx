@@ -158,10 +158,6 @@ export default function KelolaItem() {
     void refreshAngka(rows.map((it) => it.id), berikutnya);
   };
 
-  const labelPeriode = periode.dari || periode.sampai
-    ? `Periode ${periode.dari || "awal"}–${periode.sampai || "akhir"}`
-    : "Semua tanggal";
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const jf = jenisFilter.trim().toLowerCase();
@@ -416,7 +412,7 @@ export default function KelolaItem() {
                 )}
               </div>
               <p className="text-[11px] text-[#6B7280] sm:pb-2.5 sm:text-right sm:text-xs">
-                Masuk/Keluar/Net: mutasi legacy ({labelPeriode}). Stok Gudang: total di gudang aktif, tidak termasuk divisi/WIP.
+                Stok, Masuk, Keluar, dan Net dihitung dari InventoryMovement pada gudang aktif; Net adalah Masuk dikurangi Keluar dalam periode terpilih.
               </p>
             </div>
             {periodeError && <p role="alert" className="mt-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444] sm:mt-3 sm:px-4 sm:py-3 sm:text-sm">{periodeError}</p>}
@@ -476,10 +472,10 @@ export default function KelolaItem() {
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Nama</th>
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Jenis</th>
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Divisi</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total masuk pada periode terpilih">Masuk</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total keluar pada periode terpilih">Keluar</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Masuk dikurangi keluar pada periode terpilih">Net</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total saldo StockBalance pada semua gudang aktif. Tidak termasuk saldo divisi/WIP.">Stok Gudang</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Jumlah gerakan masuk gudang pada periode terpilih">Masuk</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Jumlah gerakan keluar gudang pada periode terpilih">Keluar</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Gerakan masuk dikurangi gerakan keluar pada periode terpilih">Net</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider" title="Total StockBalance dari ledger InventoryMovement pada semua gudang aktif. Tidak termasuk divisi/WIP. Buka Stok untuk rincian per gudang dan transfer.">Stok Gudang</th>
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Unit</th>
                     <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider">Status</th>
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider">Aksi</th>
@@ -570,7 +566,7 @@ export default function KelolaItem() {
                         {r.kode} · {r.divisi?.nama ?? "—"}{r.jenis ? ` · ${r.jenis}` : ""}
                       </span>
                       <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="tabular-nums text-xs font-bold text-[#1E3A5F]">
+                        <span title="Total StockBalance dari ledger InventoryMovement pada semua gudang aktif." className="tabular-nums text-xs font-bold text-[#1E3A5F]">
                           Stok gudang{" "}
                           {saldoLoading ? "…" : (saldo[r.id]?.toLocaleString("id-ID") ?? "—")}{" "}
                           <span className="text-[10px] font-medium text-slate-400">{r.unit}</span>

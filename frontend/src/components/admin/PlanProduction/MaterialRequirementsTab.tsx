@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxesStacked, faDownload } from "@fortawesome/free-solid-svg-icons";
 import { getBoms, type Bom, type BomItem } from "../../../api/bom";
 import type { ProductionOrderSummary } from "../../../api/productionOrders";
-import { getSaldoBulk } from "../../../api/stokItem";
+import { getSaldoGudangBulk } from "../../../api/stokItem";
 
 interface Props {
   detail: ProductionOrderSummary;
@@ -382,7 +382,7 @@ export default function MaterialRequirementsTab({ detail }: Props) {
         for (const bom of result) collectItemIds(bom.items);
 
         try {
-          const balances = await getSaldoBulk([...itemIds]);
+          const balances = await getSaldoGudangBulk([...itemIds]);
           if (!active) return;
           setStock(balances.saldo);
           setStockError(null);

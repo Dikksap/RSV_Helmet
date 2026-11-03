@@ -10,7 +10,16 @@ import {
   getItemImageHandler,
   uploadItemImageHandler,
 } from "../controller/item/item.js";
-import { tambahStokHandler, keluarStokHandler, getStokItemHandler, getSaldoBulkHandler, getSaldoGudangBulkHandler, getRingkasanBulkHandler } from "../controller/stokItem/stokItem.js";
+import {
+  tambahStokHandler,
+  keluarStokHandler,
+  getStokItemHandler,
+  getSaldoBulkHandler,
+  getSaldoGudangBulkHandler,
+  getRingkasanBulkHandler,
+  getItemWarehouseBalancesHandler,
+  transferItemWarehouseHandler,
+} from "../controller/stokItem/stokItem.js";
 import { authenticate, authorize, requirePermission } from "../middleware/auth.js";
 import { receiveImage } from "../lib/imageStorage.js";
 
@@ -32,8 +41,10 @@ router.post("/:id/image", authorize, requirePermission("KELOLA_ITEM"), receiveIm
 router.delete("/:id/image", authorize, requirePermission("KELOLA_ITEM"), deleteItemImageHandler);
 
 router.get("/:id/stok", authorize, requirePermission("KELOLA_ITEM", "BARANG_LIHAT"), getStokItemHandler);
+router.get("/:id/stok/gudang", authorize, requirePermission("KELOLA_ITEM", "BARANG_LIHAT"), getItemWarehouseBalancesHandler);
 router.post("/:id/stok", authorize, requirePermission("KELOLA_ITEM"), tambahStokHandler);
 router.post("/:id/stok/keluar", authorize, requirePermission("KELOLA_ITEM"), keluarStokHandler);
+router.post("/:id/stok/transfer", authorize, requirePermission("INVENTORY_MOVE"), transferItemWarehouseHandler);
 router.post("/stok-saldo", authorize, requirePermission("KELOLA_ITEM", "BARANG_LIHAT"), getSaldoBulkHandler);
 router.post("/stok-saldo-gudang", authorize, requirePermission("KELOLA_ITEM", "BARANG_LIHAT"), getSaldoGudangBulkHandler);
 router.post("/stok-ringkasan", authorize, requirePermission("KELOLA_ITEM", "BARANG_LIHAT"), getRingkasanBulkHandler);

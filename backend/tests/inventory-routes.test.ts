@@ -10,10 +10,20 @@ vi.mock("../src/middleware/auth.js", () => ({
 }));
 
 vi.mock("../src/controller/inventory/inventory.js", () => ({
+  getInventoryBalancesHandler: (_req: any, res: any) => res.json([]),
+  getInventoryItemSummaryHandler: (_req: any, res: any) => res.json({ ringkasan: {} }),
+  getInventoryItemTotalsHandler: (_req: any, res: any) => res.json({ stok: {} }),
+  getInventoryLocationsHandler: (_req: any, res: any) => res.json([]),
+  getInventoryMovementsHandler: (_req: any, res: any) => res.json([]),
+  listUnmappedLegacyItemsHandler: (_req: any, res: any) => res.json([]),
+  mapDivisionLocationHandler: (_req: any, res: any) => res.sendStatus(201),
+  mapWarehouseLocationHandler: (_req: any, res: any) => res.sendStatus(201),
   listStockAdjustmentsHandler: (_req: any, res: any) => res.json([{ id: 8, status: "PENDING" }]),
+  postInventoryMovementHandler: (_req: any, res: any) => res.sendStatus(201),
   requestStockAdjustmentHandler: (_req: any, res: any) => res.sendStatus(201),
   approveStockAdjustmentHandler: (_req: any, res: any) => res.sendStatus(200),
   rejectStockAdjustmentHandler: (_req: any, res: any) => res.sendStatus(200),
+  setItemDefaultLocationHandler: (_req: any, res: any) => res.sendStatus(200),
 }));
 
 import inventoryRouter from "../src/routes/inventory.js";
@@ -22,7 +32,7 @@ const app = express();
 app.use(express.json());
 app.use("/api/inventory", inventoryRouter);
 
-describe("inventory adjustment API retained for supervisor review", () => {
+describe("inventory API", () => {
   it("keeps listing and approval actions", async () => {
     const list = await request(app).get("/api/inventory/adjustments");
     const approve = await request(app).post("/api/inventory/adjustments/8/approve");
@@ -34,13 +44,23 @@ describe("inventory adjustment API retained for supervisor review", () => {
     expect(reject.status).toBe(200);
   });
 
-  it.each([
-    ["GET", "/api/inventory/locations"],
-    ["GET", "/api/inventory/balances"],
-    ["GET", "/api/inventory/movements"],
-    ["POST", "/api/inventory/movements"],
-  ])("does not expose retired ledger endpoint %s %s", async (method, path) => {
-    const response = method === "GET" ? await request(app).get(path) : await request(app).post(path);
-    expect(response.status).toBe(404);
+  it("exposes ledger and legacy mapping endpoints", async () => {
+    const locations = await request(app).get("/api/inventory/locations");
+    const balances = await request(app).get("/api/inventory/balances");
+    const movements = await request(app).get("/api/inventory/movements");
+    const postMovement = await request(app).post("/api/inventory/movements");
+    const itemSummary = await request(app).post("/api/inventory/items/summary").send({ ids: [1] });
+    const itemTotals = await request(app).post("/api/inventory/items/totals").send({ ids: [1] });
+    const unmapped = await request(app).get("/api/inventory/items/unmapped-legacy");
+    const setDefault = await request(app).put("/api/inventory/items/1/default-location");
+
+    expect(locations.status).toBe(200);
+    expect(balances.status).toBe(200);
+    expect(movements.status).toBe(200);
+    expect(postMovement.status).toBe(201);
+    expect(itemSummary.status).toBe(200);
+    expect(itemTotals.status).toBe(200);
+    expect(unmapped.status).toBe(200);
+    expect(setDefault.status).toBe(200);
   });
 });

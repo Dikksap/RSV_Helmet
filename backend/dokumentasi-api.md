@@ -30,12 +30,19 @@
 
 ## 0. Quick Contract (baca ini dulu)
 
+### Stok item per gudang
+
+- `GET /api/items/:id/stok/gudang` memerlukan permission `KELOLA_ITEM` atau `BARANG_LIHAT` dan mengembalikan saldo `StockBalance` untuk setiap gudang aktif.
+- `POST /api/items/:id/stok/transfer` memerlukan permission `INVENTORY_MOVE`. Body: `{ fromLocationId, toLocationId, quantity, idempotencyKey, reason }`. Transfer berjalan atomik, mempertahankan lot, memeriksa saldo asal, dan tidak mengubah total stok item.
+- Kolom Stok Gudang di Master Item & Material bersumber dari `StockBalance` (ledger `InventoryMovement`). Kolom Masuk/Keluar/Net dan riwayat stok lama bersumber dari `StokItemMutasi` dan merupakan ledger legacy yang berbeda.
+
 ### 0.1 Semua endpoint (verified dari `src/routes/*`, `src/app.ts`)
 
 | Method | Path | Auth | Keterangan |
 |--------|------|------|------------|
 | GET | `/` | — | Health `{ message: "API berjalan" }` |
 | POST | `/api/auth/login` | — | Login → JWT |
+| POST | `/api/auth/google` | — | Tukar Firebase ID Token Google → JWT RSV |
 | POST | `/api/auth/logout` | Bearer wajib | Blacklist token |
 | GET | `/api/admin/dashboard` | Bearer + admin | Echo `{ message, user }` |
 | GET | `/api/products` | — | List + variants |
@@ -122,7 +129,7 @@
 | `GET /api/roles*` | `authenticate` + `authorize` + `requirePermission("ROLE_KELOLA")` |
 | `GET /api/users*` | `authenticate` + `adminOnly` |
 | Hampir semua router lain | `authenticate`; write (POST/PUT/PATCH/DELETE) + `adminOnly` kecuali yang eksplisit lain (lihat `src/middleware/auth.ts` + tiap `src/routes/*.ts`) |
-| Pengecualian publik | `POST /api/auth/login`, `POST /api/permintaan-barang`, `GET /api/status-barang` |
+| Pengecualian publik | `POST /api/auth/login`, `POST /api/auth/google`, `POST /api/permintaan-barang`, `GET /api/status-barang` |
 
 ### 0.3 Enum yang harus di-hardcode di konsumen
 
@@ -208,8 +215,22 @@ Route `src/routes/auth.ts`, controller `src/controller/auth/auth.ts:7`, model `s
   "user": { "id": 1, "name": "Admin", "email": "a@b.com", "role": "admin" } }
 ```
 - `email`/`password` wajib string truthy → `400 { message: "Field 'email' wajib diisi" }` (atau password).
-- User tidak ada / password salah → `401 { message: "Email atau password salah" }`; error lain `500 { message: "Gagal login" }`.
-- Flow: `findUserByEmail` → `bcrypt.compare` → `signToken({id,email,name,role})` (`src/controller/auth/auth.ts:31`).
+- User tidak ada / password salah → `401 { message: "Email atau password salah" }`; akun `isActive=false` → `403 { message: "Akun Anda tidak aktif. Hubungi administrator." }`; error lain `500 { message: "Gagal login" }`.
+- Flow: `findUserByEmail` → `bcrypt.compare` → `signToken({id,email,name,role})` (`src/controller/auth/auth.ts`).
+
+### POST /api/auth/google
+```json
+// request
+{ "idToken": "<FIREBASE_ID_TOKEN>" }
+// 200 — bentuk response sama dengan /api/auth/login
+{ "message": "Login berhasil", "token": "<jwt-rsv>",
+  "user": { "id": 1, "name": "Admin", "email": "a@b.com", "role": "admin",
+            "divisiId": null, "divisi": null, "avatarUrl": null } }
+```
+- Verifikasi `idToken` dengan Firebase Admin SDK (`checkRevoked=true`), cek audience/issuer project, provider `google.com`, dan `email_verified`.
+- Email dinormalisasi lowercase lalu dicari di tabel `User`. Tidak ada auto-register; role/permission dari database.
+- `400` jika `idToken` tidak ada; `401` jika token invalid/expired/revoked/project lain; `403` jika email tidak terverifikasi, bukan provider Google, user tidak terdaftar, atau `isActive=false`; `503` jika Firebase Admin belum dikonfigurasi; `500` error tak terduga tanpa detail internal.
+- Setup dan troubleshooting lengkap: `docs/google-oauth-firebase.md`.
 
 ### POST /api/auth/logout
 - Auth `authenticate` wajib. Token diambil dari header, di-blacklist sampai `exp` (`revokeToken(token, req.user.exp)`).

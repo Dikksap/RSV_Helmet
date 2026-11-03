@@ -324,6 +324,8 @@ export async function transferItemStock(
     itemId: number;
     fromLocationId: number;
     toLocationId: number;
+    batchId?: number | null;
+    pemakaianMaterialItemId?: number | null;
     quantity: number;
     idempotencyKey: string;
     sourceType: string;
@@ -336,6 +338,161 @@ export async function transferItemStock(
     ...input,
     type: "TRANSFER",
     syncItemStok: true,
+  });
+}
+
+export async function getItemWarehouseBalances(itemId: number) {
+  const locations = await prisma.inventoryLocation.findMany({
+    where: { type: "WAREHOUSE", isActive: true },
+    select: { id: true, code: true, name: true, gudangId: true },
+    orderBy: [{ code: "asc" }],
+  });
+  if (locations.length === 0) return [];
+
+  const rows = await prisma.stockBalance.findMany({
+    where: { itemId, locationId: { in: locations.map((location) => location.id) } },
+    select: { locationId: true, quantity: true },
+  });
+  const balances = new Map<number, number>();
+  for (const row of rows) {
+    balances.set(row.locationId, (balances.get(row.locationId) ?? 0) + Number(row.quantity));
+  }
+  return locations.map((location) => ({
+    ...location,
+    balance: balances.get(location.id) ?? 0,
+  }));
+}
+
+export async function transferItemBetweenWarehouses(input: {
+  itemId: number;
+  fromLocationId: number;
+  toLocationId: number;
+  quantity: number;
+  idempotencyKey: string;
+  reason: string;
+  userId: number | null;
+}) {
+  const scaledQuantity = input.quantity * 1_000_000;
+  if (
+    !Number.isSafeInteger(input.itemId) ||
+    input.itemId <= 0 ||
+    !Number.isSafeInteger(input.fromLocationId) ||
+    input.fromLocationId <= 0 ||
+    !Number.isSafeInteger(input.toLocationId) ||
+    input.toLocationId <= 0 ||
+    input.fromLocationId === input.toLocationId ||
+    !Number.isFinite(input.quantity) ||
+    input.quantity <= 0 ||
+    !Number.isSafeInteger(Math.round(scaledQuantity)) ||
+    Math.abs(scaledQuantity - Math.round(scaledQuantity)) > 1e-7 ||
+    !input.idempotencyKey.trim() ||
+    !input.reason.trim()
+  ) {
+    throw new InventoryError("INVALID_MOVEMENT", "Data transfer stok tidak valid");
+  }
+  const requestedMicros = Math.round(scaledQuantity);
+  return prisma.$transaction(async (tx: PrismaTransactionClient) => {
+    await tx.$queryRaw`SELECT id FROM Item WHERE id = ${input.itemId} FOR UPDATE`;
+    const item = await tx.item.findUnique({
+      where: { id: input.itemId },
+      select: { id: true },
+    });
+    if (!item) throw new InventoryError("ITEM_NOT_FOUND", "Item tidak ditemukan");
+
+    const prior = await tx.inventoryMovement.findMany({
+      where: {
+        itemId: input.itemId,
+        sourceType: "ITEM_WAREHOUSE_TRANSFER",
+        sourceId: input.idempotencyKey,
+      },
+      select: {
+        type: true,
+        quantity: true,
+        fromLocationId: true,
+        toLocationId: true,
+        reason: true,
+      },
+    });
+    if (prior.length > 0) {
+      const priorMatches = prior.every((movement) =>
+        movement.type === "TRANSFER" &&
+        movement.fromLocationId === input.fromLocationId &&
+        movement.toLocationId === input.toLocationId &&
+        movement.reason === input.reason,
+      );
+      const priorQuantity = prior.reduce((total, movement) => total + Number(movement.quantity), 0);
+      if (!priorMatches || Math.round(priorQuantity * 1_000_000) !== requestedMicros) {
+        throw new InventoryError(
+          "IDEMPOTENCY_CONFLICT",
+          "Kunci idempotensi sudah dipakai untuk transfer yang berbeda",
+        );
+      }
+      return { repeated: true, quantity: priorQuantity };
+    }
+
+    const locationIds = [input.fromLocationId, input.toLocationId].sort((a, b) => a - b);
+    for (const locationId of locationIds) {
+      await tx.$queryRaw`SELECT id FROM InventoryLocation WHERE id = ${locationId} FOR UPDATE`;
+    }
+    const locations = await tx.inventoryLocation.findMany({
+      where: { id: { in: locationIds } },
+      select: { id: true, type: true, isActive: true },
+    });
+    if (locations.length !== locationIds.length || locations.some((location) => !location.isActive)) {
+      throw new InventoryError("LOCATION_NOT_FOUND", "Gudang tidak ditemukan atau tidak aktif");
+    }
+    if (locations.some((location) => location.type !== "WAREHOUSE")) {
+      throw new InventoryError("INVALID_MOVEMENT", "Transfer hanya dapat dilakukan antar gudang");
+    }
+
+    const sourceBalances = await tx.stockBalance.findMany({
+      where: {
+        itemId: input.itemId,
+        locationId: input.fromLocationId,
+        quantity: { gt: 0 },
+      },
+      select: { id: true, batchId: true, pemakaianMaterialItemId: true, quantity: true },
+      orderBy: { id: "asc" },
+    });
+    const available = sourceBalances.reduce((total, row) => total + Number(row.quantity), 0);
+    const availableMicros = sourceBalances.reduce(
+      (total, row) => total + Math.round(Number(row.quantity) * 1_000_000),
+      0,
+    );
+    if (availableMicros < requestedMicros) {
+      throw new InventoryError(
+        "INSUFFICIENT_STOCK",
+        `Saldo gudang asal tidak cukup (tersedia ${available})`,
+      );
+    }
+
+    let remainingMicros = requestedMicros;
+    for (const balance of sourceBalances) {
+      if (remainingMicros <= 0) break;
+      const quantityMicros = Math.min(
+        Math.round(Number(balance.quantity) * 1_000_000),
+        remainingMicros,
+      );
+      if (quantityMicros <= 0) continue;
+      await transferItemStock(tx, {
+        itemId: input.itemId,
+        fromLocationId: input.fromLocationId,
+        toLocationId: input.toLocationId,
+        batchId: balance.batchId,
+        pemakaianMaterialItemId: balance.pemakaianMaterialItemId,
+        quantity: quantityMicros / 1_000_000,
+        idempotencyKey: `${input.idempotencyKey}:${balance.id}`,
+        sourceType: "ITEM_WAREHOUSE_TRANSFER",
+        sourceId: input.idempotencyKey,
+        reason: input.reason,
+        userId: input.userId,
+      });
+      remainingMicros -= quantityMicros;
+    }
+    if (remainingMicros !== 0) {
+      throw new InventoryError("INSUFFICIENT_STOCK", "Saldo gudang asal tidak cukup");
+    }
+    return { repeated: false, quantity: input.quantity };
   });
 }
 
@@ -446,6 +603,56 @@ export async function getInventoryBalances(filters: {
     });
 }
 
+export async function getInventoryItemSummary(
+  itemIds: number[],
+  range: { from?: Date; until?: Date } = {},
+) {
+  const ids = [...new Set(itemIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const summary = Object.fromEntries(ids.map((id) => [id, { masuk: 0, keluar: 0, net: 0 }]));
+  if (ids.length === 0) return summary;
+
+  const locations = await prisma.inventoryLocation.findMany({
+    where: { type: "WAREHOUSE", isActive: true },
+    select: { id: true },
+  });
+  const locationIds = locations.map((location) => location.id);
+  if (locationIds.length === 0) return summary;
+
+  const occurredAt = {
+    ...(range.from ? { gte: range.from } : {}),
+    ...(range.until ? { lt: range.until } : {}),
+  };
+  const dateFilter = Object.keys(occurredAt).length > 0 ? { occurredAt } : {};
+  const [incoming, outgoing] = await Promise.all([
+    prisma.inventoryMovement.groupBy({
+      by: ["itemId"],
+      where: {
+        itemId: { in: ids },
+        toLocationId: { in: locationIds },
+        ...dateFilter,
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.inventoryMovement.groupBy({
+      by: ["itemId"],
+      where: {
+        itemId: { in: ids },
+        fromLocationId: { in: locationIds },
+        ...dateFilter,
+      },
+      _sum: { quantity: true },
+    }),
+  ]);
+  for (const row of incoming) {
+    if (row.itemId !== null) summary[row.itemId].masuk += Number(row._sum.quantity ?? 0);
+  }
+  for (const row of outgoing) {
+    if (row.itemId !== null) summary[row.itemId].keluar += Number(row._sum.quantity ?? 0);
+  }
+  for (const id of ids) summary[id].net = summary[id].masuk - summary[id].keluar;
+  return summary;
+}
+
 export async function getWarehouseItemBalances(itemIds: number[]) {
   const ids = [...new Set(itemIds.filter((id) => Number.isInteger(id) && id > 0))];
   if (ids.length === 0) return {};
@@ -462,6 +669,25 @@ export async function getWarehouseItemBalances(itemIds: number[]) {
     if (row.itemId !== null) balances[row.itemId] = (balances[row.itemId] ?? 0) + Number(row.quantity);
   }
   return balances;
+}
+
+export async function getInventoryItemTotals(itemIds: number[]) {
+  const ids = [...new Set(itemIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const totals: Record<number, number> = Object.fromEntries(ids.map((id) => [id, 0]));
+  if (ids.length === 0) return totals;
+
+  const rows = await prisma.stockBalance.groupBy({
+    by: ["itemId"],
+    where: {
+      itemId: { in: ids },
+      location: { isActive: true },
+    },
+    _sum: { quantity: true },
+  });
+  for (const row of rows) {
+    if (row.itemId !== null) totals[row.itemId] = Number(row._sum.quantity ?? 0);
+  }
+  return totals;
 }
 
 const stockAdjustmentInclude = {
@@ -597,6 +823,7 @@ export async function approveStockAdjustment(
   adjustmentId: number,
   reviewerId: number,
   divisiId?: number,
+  reviewerIsAdmin = false,
 ) {
   return prisma.$transaction(async (tx: PrismaTransactionClient) => {
     await tx.$queryRaw`SELECT locationId FROM StockAdjustment WHERE id = ${adjustmentId}`;
@@ -645,7 +872,7 @@ export async function approveStockAdjustment(
         "Adjustment sudah ditolak",
       );
     }
-    if (adjustment.requestedById === reviewerId) {
+    if (adjustment.requestedById === reviewerId && !reviewerIsAdmin) {
       throw new InventoryError(
         "ADJUSTMENT_SELF_APPROVAL",
         "Pengaju tidak boleh menyetujui adjustment sendiri",

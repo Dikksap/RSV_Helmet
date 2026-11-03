@@ -286,7 +286,11 @@ export async function setApprovalHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const { approval, items } = (req.body ?? {}) as { approval?: unknown; items?: unknown };
+    const { approval, items, targetWarehouseId: targetRaw } = (req.body ?? {}) as {
+      approval?: unknown;
+      items?: unknown;
+      targetWarehouseId?: unknown;
+    };
     const parsed = parseEnum(approval, APPROVAL, null);
     if ("error" in parsed) return res.status(400).json({ message: parsed.error });
 
@@ -315,8 +319,16 @@ export async function setApprovalHandler(req: Request, res: Response) {
       }
     }
 
+    let targetWarehouseId: number | null = null;
+    if (parsed.ok === "DISETUJUI") {
+      targetWarehouseId = positiveInt(targetRaw);
+      if (!targetWarehouseId) {
+        return res.status(400).json({ message: "Gudang tujuan wajib dipilih untuk approval" });
+      }
+    }
+
     const userId = req.user?.id ?? null;
-    const row = await setApproval(id, parsed.ok, keputusan, userId);
+    const row = await setApproval(id, parsed.ok, keputusan, userId, targetWarehouseId);
     if (!row) return res.status(404).json({ message: "Permintaan tidak ditemukan" });
     res.status(200).json(row);
   } catch (error) {

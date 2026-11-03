@@ -150,7 +150,7 @@ export default function StokOpname() {
         <div className="max-w-2xl">
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#00A8E8]">Warehouse</p>
           <h1 className="text-[32px] font-bold leading-[1.2] tracking-tight text-[#1E3A5F] sm:text-4xl">Opname Stok</h1>
-          <p className="mt-2 text-base text-[#6B7280]">Hitung fisik massal, selisih otomatis jadi penyeimbang ledger.</p>
+          <p className="mt-2 text-base text-[#6B7280]">Opname ini menyimpan selisih pada ledger legacy. Saldo gudang aktif tidak berubah.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => setTab("sesi")} className={tabBtn(tab === "sesi")}>Sesi</button>
@@ -164,6 +164,10 @@ export default function StokOpname() {
         {error && <p role="alert" className="rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-[#EF4444]">{error}</p>}
         {notice && <p role="status" className="rounded-lg border border-[#10B981]/30 bg-[#10B981]/10 px-4 py-3 text-[#1F2937]">{notice}</p>}
       </div>
+
+      <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Untuk koreksi saldo inventory per gudang, gunakan Ledger Lokasi dan ajukan penyesuaian pada lokasi yang dihitung.
+      </p>
 
       {tab === "sesi" && (
         <section className="overflow-hidden rounded-xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]">

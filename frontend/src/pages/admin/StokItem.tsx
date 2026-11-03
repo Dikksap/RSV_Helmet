@@ -3,13 +3,13 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
-  faBoxesStacked,
   faCircleCheck,
   faCircleExclamation,
   faFileExport,
   faHistory,
   faMinus,
   faPlus,
+  faRightLeft,
   faRotateRight,
   faSpinner,
   faTriangleExclamation,
@@ -20,11 +20,13 @@ import { getItem, type Item } from "../../api/item";
 import {
   getStokItem,
   listSemuaRiwayatStokItem,
-  tambahStokItem,
-  catatKeluarItem,
+  getItemGudangBalances,
+  transferItemGudang,
   type StokItemResponse,
+  type StokItemGudangBalance,
   type StokMutasiRecord,
 } from "../../api/stokItem";
+import { listErpMovements, postErpMovement, type ErpMovement } from "../../api/erp";
 import { downloadCsv } from "../../lib/csv";
 import { hasPermission } from "../../api/auth";
 
@@ -48,14 +50,14 @@ const KONFIG_TRANSAKSI: Record<
     tombol: "Catat masuk",
     sukses: "Stok masuk berhasil dicatat.",
     placeholder: "cth: Pembelian PO-123",
-    ringkasan: "Transaksi masuk menambah saldo stok item.",
+    ringkasan: "Menambah saldo inventory pada gudang yang dipilih.",
   },
   KELUAR: {
     label: "Keluar",
     tombol: "Catat keluar",
     sukses: "Stok keluar berhasil dicatat.",
     placeholder: "cth: Pengeluaran untuk produksi",
-    ringkasan: "Transaksi keluar mengurangi saldo dan tidak dapat melebihi saldo saat ini.",
+    ringkasan: "Mengurangi saldo inventory pada gudang yang dipilih.",
   },
 };
 
@@ -138,6 +140,18 @@ export default function StokItem() {
 
   const [itemState, setItemState] = useState<{ key: number; item: Item | null; error: string | null } | null>(null);
   const [data, setData] = useState<StokItemResponse | null>(null);
+  const [warehouseBalances, setWarehouseBalances] = useState<StokItemGudangBalance[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<ErpMovement[]>([]);
+  const [warehouseLoading, setWarehouseLoading] = useState(true);
+  const [inventoryMovementsLoading, setInventoryMovementsLoading] = useState(true);
+  const [warehouseError, setWarehouseError] = useState<string | null>(null);
+  const [entryLocationId, setEntryLocationId] = useState("");
+  const [transferFrom, setTransferFrom] = useState("");
+  const [transferTo, setTransferTo] = useState("");
+  const [transferQuantity, setTransferQuantity] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [stokLoading, setStokLoading] = useState(true);
   const [riwayatError, setRiwayatError] = useState<string | null>(null);
@@ -160,16 +174,20 @@ export default function StokItem() {
   const toastId = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
   const stokRequest = useRef(0);
-  const canKelola = hasPermission("KELOLA_ITEM");
+  const canAdjust = hasPermission("INVENTORY_ADJUST");
+  const canTransfer = hasPermission("INVENTORY_MOVE");
   const config = KONFIG_TRANSAKSI[tipe];
-  const saldo = data?.saldo ?? 0;
-  const saldoSiap = data !== null;
   const jumlahN = Number(jumlah);
-  const melebihiSaldo = tipe === "KELUAR" && saldoSiap && Number.isInteger(jumlahN) && jumlahN > saldo;
-  const jumlahValid = Number.isInteger(jumlahN) && jumlahN > 0;
+  const selectedEntryLocation = warehouseBalances.find((location) => String(location.id) === entryLocationId);
+  const entryBalance = selectedEntryLocation?.balance ?? 0;
+  const jumlahUnits = jumlahN * 1_000_000;
+  const jumlahValid = Number.isFinite(jumlahN) && jumlahN > 0 && Number.isSafeInteger(Math.round(jumlahUnits)) && Math.abs(jumlahUnits - Math.round(jumlahUnits)) <= 1e-7;
+  const melebihiSaldo = tipe === "KELUAR" && selectedEntryLocation !== undefined && jumlahN > entryBalance;
   const totalRiwayat = data?.riwayat.meta.total ?? 0;
   const totalPages = data?.riwayat.meta.totalPages ?? 1;
   const filterAktif = filter.dari !== "" || filter.sampai !== "";
+  const warehouseTotal = warehouseBalances.reduce((total, location) => total + location.balance, 0);
+  const selectedSource = warehouseBalances.find((location) => String(location.id) === transferFrom);
 
   useEffect(() => () => {
     window.clearTimeout(toastTimer.current);
@@ -205,6 +223,51 @@ export default function StokItem() {
       aktif = false;
     };
   }, [idValid, itemId, itemKey]);
+
+  const loadWarehouseBalances = useCallback(async () => {
+    if (!idValid) {
+      setWarehouseLoading(false);
+      return;
+    }
+    setWarehouseLoading(true);
+    try {
+      const balances = await getItemGudangBalances(itemId);
+      setWarehouseBalances(balances);
+      setEntryLocationId((current) => current && balances.some((location) => String(location.id) === current)
+        ? current
+        : String(balances[0]?.id ?? ""));
+      setWarehouseError(null);
+    } catch (e) {
+      setWarehouseError(e instanceof Error ? e.message : "Gagal memuat stok per gudang.");
+    } finally {
+      setWarehouseLoading(false);
+    }
+  }, [idValid, itemId]);
+
+  const loadInventoryMovements = useCallback(async () => {
+    if (!idValid) {
+      setInventoryMovementsLoading(false);
+      return;
+    }
+    setInventoryMovementsLoading(true);
+    try {
+      setInventoryMovements(await listErpMovements({ itemId, take: 50 }));
+    } catch (e) {
+      setWarehouseError(e instanceof Error ? e.message : "Gagal memuat riwayat inventory.");
+    } finally {
+      setInventoryMovementsLoading(false);
+    }
+  }, [idValid, itemId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat saldo gudang saat item berubah
+    void loadWarehouseBalances();
+  }, [loadWarehouseBalances]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- muat gerakan inventory saat item berubah
+    void loadInventoryMovements();
+  }, [loadInventoryMovements]);
 
   const item = idValid && itemState?.key === itemId ? itemState.item : null;
   const itemError = !idValid
@@ -267,20 +330,24 @@ export default function StokItem() {
 
   const simpanStok = async () => {
     if (!item || busy) return;
-    if (!saldoSiap) {
-      setSimpanError("Saldo belum dimuat. Tunggu sebentar, lalu coba lagi.");
+    if (!selectedEntryLocation) {
+      setSimpanError("Pilih gudang untuk mencatat stok.");
       return;
     }
     if (!jumlahValid) {
       setSimpanError(
         jumlah.trim() === ""
           ? "Masukkan jumlah stok terlebih dahulu."
-          : "Jumlah harus berupa bilangan bulat lebih dari 0.",
+          : "Jumlah harus positif dengan maksimal 6 angka desimal.",
       );
       return;
     }
     if (melebihiSaldo) {
-      setSimpanError(`Jumlah melebihi saldo saat ini (${saldo.toLocaleString("id-ID")} ${item.unit}).`);
+      setSimpanError(`Jumlah melebihi saldo di ${selectedEntryLocation.name} (${entryBalance.toLocaleString("id-ID")} ${item.unit}).`);
+      return;
+    }
+    if (!keterangan.trim()) {
+      setSimpanError("Alasan transaksi wajib diisi.");
       return;
     }
     if (!tanggalTransaksi) {
@@ -298,24 +365,80 @@ export default function StokItem() {
     setBusy(true);
     setSimpanError(null);
     try {
-      const body = { jumlah: jumlahN, keterangan: keterangan.trim() || undefined, tanggal: tanggalTransaksi };
-      if (tipe === "MASUK") await tambahStokItem(item.id, body);
-      else await catatKeluarItem(item.id, body);
+      await postErpMovement({
+        itemId: item.id,
+        ...(tipe === "MASUK"
+          ? { toLocationId: selectedEntryLocation.id }
+          : { fromLocationId: selectedEntryLocation.id }),
+        quantity: jumlahN,
+        idempotencyKey: crypto.randomUUID(),
+        reason: keterangan.trim(),
+        occurredAt: tanggalTransaksi,
+      });
       setJumlah("");
       setKeterangan("");
       setTanggalTransaksi(tanggalHariIni());
       tampilkanToast(config.sukses);
-      setDariInput("");
-      setSampaiInput("");
-      setFilterError(null);
-      setExportError(null);
-      setFilter({ dari: "", sampai: "" });
-      setPage(1);
-      if (page === 1) await loadStok(1, { dari: "", sampai: "" });
+      await Promise.all([loadWarehouseBalances(), loadInventoryMovements()]);
     } catch (e) {
       setSimpanError(e instanceof Error ? e.message : "Gagal mencatat stok.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const simpanTransfer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const fromLocationId = Number(transferFrom);
+    const toLocationId = Number(transferTo);
+    const quantity = Number(transferQuantity);
+    const scaledQuantity = quantity * 1_000_000;
+    if (
+      !Number.isSafeInteger(fromLocationId) ||
+      fromLocationId <= 0 ||
+      !Number.isSafeInteger(toLocationId) ||
+      toLocationId <= 0 ||
+      fromLocationId === toLocationId
+    ) {
+      setTransferError("Pilih gudang asal dan tujuan yang berbeda.");
+      return;
+    }
+    if (
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isSafeInteger(Math.round(scaledQuantity)) ||
+      Math.abs(scaledQuantity - Math.round(scaledQuantity)) > 1e-7
+    ) {
+      setTransferError("Jumlah transfer harus positif dengan maksimal 6 angka desimal.");
+      return;
+    }
+    if (transferReason.trim().length < 3) {
+      setTransferError("Alasan transfer wajib diisi minimal 3 karakter.");
+      return;
+    }
+
+    setTransferBusy(true);
+    setTransferError(null);
+    try {
+      const result = await transferItemGudang(itemId, {
+        fromLocationId,
+        toLocationId,
+        quantity,
+        idempotencyKey: crypto.randomUUID(),
+        reason: transferReason.trim(),
+      });
+      setTransferQuantity("");
+      setTransferReason("");
+      await Promise.all([loadWarehouseBalances(), loadInventoryMovements()]);
+      tampilkanToast(
+        result.repeated
+          ? "Transfer sebelumnya sudah tercatat; saldo diperbarui."
+          : `Transfer ${quantity.toLocaleString("id-ID")} ${item?.unit ?? ""} berhasil dicatat.`,
+      );
+    } catch (e) {
+      setTransferError(e instanceof Error ? e.message : "Gagal mentransfer stok.");
+    } finally {
+      setTransferBusy(false);
     }
   };
 
@@ -456,40 +579,163 @@ export default function StokItem() {
 
       {!itemLoading && !itemError && item && (
         <main className="space-y-4 sm:space-y-5">
-          <section aria-label="Saldo stok saat ini" className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-6">
-            <div className="flex items-start gap-3 sm:items-center sm:gap-4">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#00A8E8]/12 text-[#00A8E8] sm:h-14 sm:w-14">
-                <FontAwesomeIcon icon={faBoxesStacked} className="h-6 w-6" aria-hidden="true" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B7280]">Saldo saat ini</p>
-                {stokLoading && !data ? (
-                  <div className="mt-2 space-y-2">
-                    <Skeleton className="h-10 w-44 sm:h-12" />
-                    <span role="status" className="sr-only">Memuat saldo stok…</span>
-                  </div>
-                ) : (
-                  <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="text-4xl font-bold tabular-nums tracking-tight text-[#1E3A5F] sm:text-5xl">
-                      {data ? data.saldo.toLocaleString("id-ID") : "—"}
-                    </span>
-                    <span className="rounded-full bg-[#00A8E8]/10 px-2.5 py-1 text-xs font-bold text-[#0088C0]">{item.unit}</span>
-                  </p>
-                )}
-                <p className="mt-1 truncate text-sm text-[#6B7280]">
-                  {item.kode} · Stok gudang yang tersedia untuk item ini
+          <section aria-labelledby="stok-gudang-judul" className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-6">
+            <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 id="stok-gudang-judul" className="text-base font-bold text-[#1F2937]">Stok Inventory per Gudang</h2>
+                <p className="mt-1 text-sm text-[#6B7280]">
+                  Bersumber dari saldo <span className="font-semibold">StockBalance</span>, yang dibentuk oleh ledger mutasi inventory. Total ini sama dengan kolom Stok Gudang di daftar Master Item &amp; Material.
                 </p>
               </div>
-            </div>
+              <p className="shrink-0 text-lg font-bold tabular-nums text-[#1E3A5F]">
+                {warehouseLoading ? "…" : warehouseTotal.toLocaleString("id-ID")} <span className="text-sm">{item.unit}</span>
+              </p>
+            </header>
+
+            {warehouseError && <p role="alert" className="mt-3 rounded-xl border border-[#EF4444]/25 bg-[#EF4444]/5 px-3 py-2.5 text-sm text-[#B91C1C]">{warehouseError}</p>}
+            {!warehouseError && warehouseLoading && <p role="status" className="mt-3 text-sm text-[#6B7280]">Memuat saldo per gudang…</p>}
+            {!warehouseError && !warehouseLoading && warehouseBalances.length === 0 && (
+              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-[#6B7280]">Belum ada gudang aktif yang terhubung ke lokasi inventory.</p>
+            )}
+            {!warehouseLoading && warehouseBalances.length > 0 && (
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {warehouseBalances.map((location) => (
+                  <li key={location.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-[#1F2937]">{location.name}</span>
+                      <span className="block font-mono text-xs text-[#6B7280]">{location.code}</span>
+                    </span>
+                    <span className="shrink-0 text-sm font-bold tabular-nums text-[#1E3A5F]">{location.balance.toLocaleString("id-ID")} {item.unit}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {canTransfer && (
+              <form onSubmit={(event) => void simpanTransfer(event)} className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+                <div className="flex items-center gap-2">
+                  <FontAwesomeIcon icon={faRightLeft} className="h-4 w-4 text-[#0088C0]" aria-hidden="true" />
+                  <h3 className="text-sm font-bold text-[#1F2937]">Transfer gudang</h3>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="transfer-gudang-asal" className={labelCls}>Gudang asal</label>
+                    <select
+                      id="transfer-gudang-asal"
+                      className={`${inputCls} mt-1`}
+                      value={transferFrom}
+                      onChange={(event) => { setTransferFrom(event.target.value); setTransferError(null); }}
+                      disabled={warehouseLoading || warehouseBalances.length < 2}
+                      required
+                    >
+                      <option value="">Pilih gudang asal</option>
+                      {warehouseBalances.filter((location) => location.balance > 0).map((location) => (
+                        <option key={location.id} value={location.id}>{location.name} — {location.balance.toLocaleString("id-ID")} {item.unit}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="transfer-gudang-tujuan" className={labelCls}>Gudang tujuan</label>
+                    <select
+                      id="transfer-gudang-tujuan"
+                      className={`${inputCls} mt-1`}
+                      value={transferTo}
+                      onChange={(event) => { setTransferTo(event.target.value); setTransferError(null); }}
+                      disabled={warehouseLoading || warehouseBalances.length < 2}
+                      required
+                    >
+                      <option value="">Pilih gudang tujuan</option>
+                      {warehouseBalances.filter((location) => location.id !== Number(transferFrom)).map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="transfer-stok-jumlah" className={labelCls}>Jumlah ({item.unit})</label>
+                    <input
+                      id="transfer-stok-jumlah"
+                      type="number"
+                      min="0.000001"
+                      step="0.000001"
+                      max={selectedSource?.balance}
+                      inputMode="decimal"
+                      className={`${inputCls} mt-1`}
+                      value={transferQuantity}
+                      onChange={(event) => { setTransferQuantity(event.target.value); setTransferError(null); }}
+                      disabled={warehouseLoading || warehouseBalances.length < 2}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="transfer-stok-alasan" className={labelCls}>Alasan transfer</label>
+                    <input
+                      id="transfer-stok-alasan"
+                      className={`${inputCls} mt-1`}
+                      value={transferReason}
+                      onChange={(event) => { setTransferReason(event.target.value); setTransferError(null); }}
+                      placeholder="Contoh: pemindahan stok ke gudang produksi"
+                      maxLength={500}
+                      disabled={warehouseLoading || warehouseBalances.length < 2}
+                      required
+                    />
+                  </div>
+                </div>
+                {!warehouseLoading && warehouseBalances.length < 2 && (
+                  <p className="text-sm text-[#6B7280]">Transfer membutuhkan minimal dua gudang aktif yang terhubung.</p>
+                )}
+                <PesanLapangan id="transfer-stok-error" pesan={transferError} />
+                <button type="submit" disabled={transferBusy || warehouseLoading || warehouseBalances.length < 2} className={primaryBtn}>
+                  <FontAwesomeIcon icon={transferBusy ? faSpinner : faRightLeft} className={transferBusy ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+                  {transferBusy ? "Memproses transfer…" : "Transfer stok"}
+                </button>
+              </form>
+            )}
           </section>
 
-          {!canKelola && (
+          <section aria-labelledby="riwayat-inventory-judul" className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-6">
+            <header className="flex items-center justify-between gap-3">
+              <div>
+                <h2 id="riwayat-inventory-judul" className="text-base font-bold text-[#1F2937]">Gerakan Inventory</h2>
+                <p className="mt-1 text-[13px] text-[#6B7280]">Riwayat aktif yang membentuk saldo gudang.</p>
+              </div>
+              <button type="button" onClick={() => void loadInventoryMovements()} disabled={inventoryMovementsLoading} aria-label="Muat ulang gerakan inventory" title="Muat ulang" className={secondaryBtn}>
+                <FontAwesomeIcon icon={faRotateRight} className={inventoryMovementsLoading ? "animate-spin" : ""} aria-hidden="true" />
+              </button>
+            </header>
+            {inventoryMovementsLoading ? (
+              <p role="status" className="mt-4 text-sm text-[#6B7280]">Memuat gerakan...</p>
+            ) : inventoryMovements.length === 0 ? (
+              <p className="mt-4 text-sm text-[#6B7280]">Belum ada gerakan inventory untuk item ini.</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead className="border-b border-slate-100 text-xs uppercase text-slate-500">
+                    <tr><th className="py-2 pr-3">Tanggal</th><th className="pr-3">Tipe</th><th className="pr-3">Asal</th><th className="pr-3">Tujuan</th><th className="pr-3 text-right">Jumlah</th><th>Alasan</th></tr>
+                  </thead>
+                  <tbody>
+                    {inventoryMovements.map((movement) => (
+                      <tr key={movement.id} className="border-b border-slate-100">
+                        <td className="py-2 pr-3 whitespace-nowrap">{formatTanggal(movement.occurredAt)}</td>
+                        <td className="pr-3">{movement.type}</td>
+                        <td className="pr-3">{movement.fromLocation?.name ?? "—"}</td>
+                        <td className="pr-3">{movement.toLocation?.name ?? "—"}</td>
+                        <td className="pr-3 text-right tabular-nums">{Number(movement.quantity).toLocaleString("id-ID")} {item.unit}</td>
+                        <td className="max-w-[260px] truncate">{movement.reason ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {!canAdjust && (
             <p role="note" className="rounded-2xl border border-[#E5E7EB] bg-slate-50 px-4 py-3 text-sm text-[#4B5563]">
-              Mode lihat saja. Pencatatan stok membutuhkan permission <span className="font-semibold">KELOLA_ITEM</span>.
+              Pencatatan Masuk/Keluar inventory membutuhkan permission <span className="font-semibold">INVENTORY_ADJUST</span>. Transfer gudang membutuhkan permission <span className="font-semibold">INVENTORY_MOVE</span>.
             </p>
           )}
 
-          {canKelola && (
+          {canAdjust && (
             <section aria-labelledby="catat-stok-judul" className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-6">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -519,7 +765,25 @@ export default function StokItem() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[150px_170px_minmax(0,1fr)]">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_150px_170px_minmax(0,1fr)]">
+                  <div>
+                    <label htmlFor="stok-gudang" className={labelCls}>
+                      <span className="text-sm font-semibold">Gudang</span>
+                    </label>
+                    <select
+                      id="stok-gudang"
+                      className={`${inputCls} mt-1 text-base`}
+                      value={entryLocationId}
+                      onChange={(event) => setEntryLocationId(event.target.value)}
+                      disabled={warehouseLoading || warehouseBalances.length === 0}
+                      required
+                    >
+                      <option value="">Pilih gudang</option>
+                      {warehouseBalances.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name} · saldo {location.balance.toLocaleString("id-ID")} {item.unit}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label htmlFor="stok-jumlah" className={labelCls}>
                       <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
@@ -530,10 +794,10 @@ export default function StokItem() {
                     <input
                       id="stok-jumlah"
                       type="number"
-                      min={1}
-                      step={1}
-                      max={tipe === "KELUAR" && saldoSiap ? saldo : undefined}
-                      inputMode="numeric"
+                      min="0.000001"
+                      step="0.000001"
+                      max={tipe === "KELUAR" ? entryBalance : undefined}
+                      inputMode="decimal"
                       className={`${inputCls} mt-1 text-base tabular-nums`}
                       value={jumlah}
                       aria-describedby="stok-jumlah-bantuan stok-jumlah-error"
@@ -541,8 +805,8 @@ export default function StokItem() {
                     />
                     <p id="stok-jumlah-bantuan" className="mt-1.5 text-[13px] text-[#6B7280]">
                       {tipe === "KELUAR"
-                        ? `Saldo saat ini: ${saldoSiap ? `${saldo.toLocaleString("id-ID")} ${item.unit}` : "memuat…"}`
-                        : "Masukkan bilangan bulat, misalnya 12."}
+                        ? `Saldo di gudang: ${selectedEntryLocation ? `${entryBalance.toLocaleString("id-ID")} ${item.unit}` : "pilih gudang"}`
+                        : "Jumlah positif, maksimal 6 angka desimal."}
                     </p>
                   </div>
                   <div>
@@ -561,7 +825,7 @@ export default function StokItem() {
                   </div>
                   <div>
                     <label htmlFor="stok-keterangan" className={labelCls}>
-                      <span className="text-sm font-semibold">Keterangan <span className="font-normal text-[#6B7280]">(opsional)</span></span>
+                      <span className="text-sm font-semibold">Alasan transaksi</span>
                     </label>
                     <input
                       id="stok-keterangan"
@@ -578,11 +842,11 @@ export default function StokItem() {
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-[13px] text-[#6B7280]">
-                    Batas akhir saldo tetap ditentukan oleh server agar stok tidak minus.
+                    Perubahan dicatat ke saldo Inventory gudang terpilih.
                   </p>
                   <button
                     type="button"
-                    disabled={busy || !jumlahValid || melebihiSaldo || !saldoSiap || !tanggalTransaksi}
+                    disabled={busy || !selectedEntryLocation || !jumlahValid || melebihiSaldo || !tanggalTransaksi || !keterangan.trim()}
                     onClick={() => void simpanStok()}
                     className={tipe === "MASUK" ? masukBtn : keluarBtn}
                   >
@@ -597,11 +861,11 @@ export default function StokItem() {
           <section aria-labelledby="riwayat-judul" className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.06)] sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0">
-                <h2 id="riwayat-judul" className="text-base font-bold text-[#1F2937]">Riwayat mutasi</h2>
+                <h2 id="riwayat-judul" className="text-base font-bold text-[#1F2937]">Riwayat mutasi legacy</h2>
                 <p className="mt-1 text-[13px] text-[#6B7280]">
                   {data
-                    ? `${totalRiwayat.toLocaleString("id-ID")} catatan${filterAktif ? " sesuai filter tanggal" : ""}`
-                    : "Saldo di atas selalu menunjukkan saldo saat ini."}
+                    ? `${totalRiwayat.toLocaleString("id-ID")} catatan historis${filterAktif ? " sesuai filter tanggal" : ""}`
+                    : "Riwayat transaksi sebelum pencatatan Inventory per gudang."}
                 </p>
               </div>
               <button

@@ -7,7 +7,6 @@ import {
 import { lockItem } from "../stokItem/stokItem.js";
 import {
   consumeItemAtLocation,
-  ensureDivisionInventoryLocation,
   getItemStockAtLocation,
   postInventoryMovementInTransaction,
 } from "../inventory/inventory.js";
@@ -407,13 +406,12 @@ async function warehouseStockForItem(
     .sort((a, b) => b.available - a.available);
 }
 
-async function resolveWarehouseSource(
+async function resolveWarehouseSources(
   tx: PrismaTransactionClient,
   itemId: number,
   defaultLocationId: number | null,
   preferredLocationId: number | null,
-  need: number,
-): Promise<WarehouseStock | null> {
+): Promise<WarehouseStock[]> {
   if (preferredLocationId !== null) {
     const location = await tx.inventoryLocation.findUnique({
       where: { id: preferredLocationId },
@@ -422,38 +420,16 @@ async function resolveWarehouseSource(
     if (!location?.isActive || location.type !== "WAREHOUSE") {
       throw new KeputusanItemError("Gudang sumber tidak ditemukan atau bukan gudang");
     }
-    return {
+    return [{
       locationId: preferredLocationId,
       available: await getItemStockAtLocation(tx, itemId, preferredLocationId),
-    };
+    }];
   }
   const rows = await warehouseStockForItem(tx, itemId);
-  if (rows.length === 0) return null;
-  if (defaultLocationId !== null) {
-    const preferred = rows.find((row) => row.locationId === defaultLocationId);
-    if (preferred && preferred.available >= need) return preferred;
-  }
-  return rows[0];
-}
-
-async function resolveWarehouseTarget(
-  tx: PrismaTransactionClient,
-  itemId: number,
-  defaultLocationId: number | null,
-): Promise<number | null> {
-  if (defaultLocationId !== null) {
-    const location = await tx.inventoryLocation.findUnique({
-      where: { id: defaultLocationId },
-      select: { id: true, type: true, isActive: true },
-    });
-    if (location?.isActive && location.type === "WAREHOUSE") return defaultLocationId;
-  }
-  const location = await tx.inventoryLocation.findFirst({
-    where: { type: "WAREHOUSE", isActive: true },
-    select: { id: true },
-    orderBy: { id: "asc" },
-  });
-  return location?.id ?? null;
+  if (defaultLocationId === null) return rows;
+  return rows.sort((a, b) =>
+    Number(b.locationId === defaultLocationId) - Number(a.locationId === defaultLocationId),
+  );
 }
 
 async function moveItemStock(
@@ -503,6 +479,7 @@ export async function setApproval(
   approval: ApprovalPermintaan,
   keputusan: KeputusanItemInput[] = [],
   userId: number | null = null,
+  targetWarehouseId: number | null = null,
 ): Promise<PermintaanRecord | null> {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM PermintaanBarang WHERE id = ${id} FOR UPDATE`;
@@ -524,34 +501,61 @@ export async function setApproval(
 
     if (approval === StatusApprovalPermintaan.BELUM_DISETUJUI) {
       if (existing.approval === StatusApprovalPermintaan.DISETUJUI) {
-        if (divisiPemintaId === null) throw new DivisiPemintaError();
-        const divisionLocation = await ensureDivisionInventoryLocation(tx, divisiPemintaId);
         for (const it of existing.items) {
           if (it.statusKeputusan !== "DISETUJUI" || !it.itemId || !it.jumlahDisetujui) continue;
           await lockItem(tx, it.itemId);
-          const tersedia = await getItemStockAtLocation(tx, it.itemId, divisionLocation.id);
-          if (tersedia + 0.000001 < it.jumlahDisetujui) {
-            throw new PemakaianDipakaiProduksiError();
-          }
-          const target = await resolveWarehouseTarget(
-            tx,
-            it.itemId,
-            it.item?.defaultInventoryLocationId ?? null,
+          const approvalPrefix = `permintaan-approve:${id}:${it.id}:`;
+          const cancellationPrefix = `permintaan-batal:${id}:${it.id}:`;
+          const [allMovements, cancellations] = await Promise.all([
+            tx.inventoryMovement.findMany({
+              where: {
+                sourceType: "PERMINTAAN_BARANG",
+                sourceId: { startsWith: approvalPrefix },
+              },
+              select: { sourceId: true, fromLocationId: true, toLocationId: true, quantity: true },
+            }),
+            tx.inventoryMovement.findMany({
+              where: {
+                sourceType: "PERMINTAAN_BARANG",
+                sourceId: { startsWith: cancellationPrefix },
+              },
+              select: { sourceId: true },
+            }),
+          ]);
+          const cancelledApprovals = new Set(
+            cancellations.map((movement) => movement.sourceId.slice(cancellationPrefix.length)),
           );
-          if (target === null) {
-            throw new KeputusanItemError(
-              `Gudang tujuan untuk item "${it.nama}" belum tersedia.`,
-            );
+          const movements = allMovements.filter((movement) => !cancelledApprovals.has(movement.sourceId));
+          const transfers = new Map<string, {
+            sourceLocationId: number | null;
+            targetLocationId: number | null;
+            quantity: number;
+          }>();
+          for (const movement of movements) {
+            const transfer = transfers.get(movement.sourceId) ?? {
+              sourceLocationId: null,
+              targetLocationId: null,
+              quantity: 0,
+            };
+            if (movement.fromLocationId !== null) {
+              transfer.sourceLocationId = movement.fromLocationId;
+              transfer.quantity += Number(movement.quantity);
+            }
+            if (movement.toLocationId !== null) transfer.targetLocationId = movement.toLocationId;
+            transfers.set(movement.sourceId, transfer);
           }
-          await moveItemStock(tx, {
-            itemId: it.itemId,
-            fromLocationId: divisionLocation.id,
-            toLocationId: target,
-            quantity: it.jumlahDisetujui,
-            key: `permintaan-batal:${id}:${it.id}`,
-            reason: `Pembatalan approval ${existing.noPermintaan}`,
-            userId,
-          });
+          for (const [sourceId, transfer] of transfers) {
+            if (transfer.sourceLocationId === null || transfer.targetLocationId === null) continue;
+            await moveItemStock(tx, {
+              itemId: it.itemId,
+              fromLocationId: transfer.targetLocationId,
+              toLocationId: transfer.sourceLocationId,
+              quantity: transfer.quantity,
+              key: `permintaan-batal:${id}:${it.id}:${sourceId}`,
+              reason: `Pembatalan approval ${existing.noPermintaan}`,
+              userId,
+            });
+          }
         }
         await tx.permintaanBarangItem.updateMany({
           where: { permintaanId: id },
@@ -593,19 +597,28 @@ export async function setApproval(
       }
     }
 
-    const divisionLocation = await ensureDivisionInventoryLocation(tx, divisiPemintaId);
+    if (targetWarehouseId === null) {
+      throw new KeputusanItemError("Pilih gudang tujuan sebelum menyetujui permintaan.");
+    }
+    const targetWarehouse = await tx.inventoryLocation.findUnique({
+      where: { id: targetWarehouseId },
+      select: { id: true, type: true, isActive: true },
+    });
+    if (!targetWarehouse?.isActive || targetWarehouse.type !== "WAREHOUSE") {
+      throw new KeputusanItemError("Gudang tujuan tidak ditemukan atau tidak aktif.");
+    }
     let adaDisetujui = false;
     for (const it of existing.items) {
       const itemId = it.itemId!;
       await lockItem(tx, itemId);
-      const source = await resolveWarehouseSource(
+      const sources = await resolveWarehouseSources(
         tx,
         itemId,
         it.item?.defaultInventoryLocationId ?? null,
         sumberById.get(it.id) ?? null,
-        it.jumlah,
       );
-      const batas = source ? Math.min(it.jumlah, Math.max(0, source.available)) : 0;
+      const tersedia = sources.reduce((total, source) => total + Math.max(0, source.available), 0);
+      const batas = Math.min(it.jumlah, tersedia);
       const diminta = byId.has(it.id) ? byId.get(it.id)! : batas;
       if (diminta > batas) {
         throw new KeputusanItemError(
@@ -619,17 +632,27 @@ export async function setApproval(
           statusKeputusan: diminta > 0 ? "DISETUJUI" : "DITOLAK",
         },
       });
-      if (diminta > 0 && source) {
+      if (diminta > 0 && sources.length > 0) {
         adaDisetujui = true;
-        await moveItemStock(tx, {
-          itemId,
-          fromLocationId: source.locationId,
-          toLocationId: divisionLocation.id,
-          quantity: diminta,
-          key: `permintaan-approve:${id}:${it.id}`,
-          reason: `Approval ${existing.noPermintaan}`,
-          userId,
-        });
+        let remaining = diminta;
+        for (const source of sources) {
+          if (remaining <= 0) break;
+          const taken = Math.min(remaining, source.available);
+          if (taken <= 0) continue;
+          if (source.locationId !== targetWarehouseId) {
+            const approvalKey = `permintaan-approve:${id}:${it.id}:${existing.updatedAt.getTime()}:${source.locationId}`;
+            await moveItemStock(tx, {
+              itemId,
+              fromLocationId: source.locationId,
+              toLocationId: targetWarehouseId,
+              quantity: taken,
+              key: approvalKey,
+              reason: `Approval ${existing.noPermintaan}`,
+              userId,
+            });
+          }
+          remaining -= taken;
+        }
       }
     }
 

@@ -11,7 +11,8 @@ import {
   type PermintaanItemRecord,
 } from "../../../api/permintaanBarang";
 import { getUser, hasPermission } from "../../../api/auth";
-import { getSaldoBulk } from "../../../api/stokItem";
+import { getSaldoGudangBulk } from "../../../api/stokItem";
+import { listErpLocations, type ErpLocation } from "../../../api/erp";
 import { createItem, getItems, type Item } from "../../../api/item";
 import {
   bolehApprove,
@@ -47,6 +48,8 @@ export default function KeputusanApprovalModal({
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [masterList, setMasterList] = useState<Item[]>([]);
+  const [warehouses, setWarehouses] = useState<ErpLocation[]>([]);
+  const [targetWarehouseId, setTargetWarehouseId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -64,7 +67,7 @@ export default function KeputusanApprovalModal({
 
   const muatSaldo = async (items: PermintaanItemRecord[]) => {
     const ids = [...new Set(items.map((it) => it.itemId).filter((x): x is number => x != null))];
-    const map = ids.length > 0 ? (await getSaldoBulk(ids)).saldo : {};
+    const map = ids.length > 0 ? (await getSaldoGudangBulk(ids)).saldo : {};
     setRows(
       items.map((it) => {
         const saldo = it.itemId != null ? (map[it.itemId] ?? 0) : null;
@@ -76,10 +79,17 @@ export default function KeputusanApprovalModal({
 
   useEffect(() => {
     let aktif = true;
-    Promise.all([getItems({ aktif: true }), muatSaldo(record.items).catch((e: unknown) => { throw e; })])
-      .then(([masters]) => {
+    Promise.all([
+      getItems({ aktif: true }),
+      muatSaldo(record.items),
+      listErpLocations(),
+    ])
+      .then(([masters, , locations]) => {
         if (!aktif) return;
         setMasterList(masters);
+        const activeWarehouses = locations.filter((location) => location.type === "WAREHOUSE" && location.isActive);
+        setWarehouses(activeWarehouses);
+        setTargetWarehouseId(String(activeWarehouses[0]?.id ?? ""));
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -134,7 +144,7 @@ export default function KeputusanApprovalModal({
     setSubmitError(null);
     try {
       const updated = await petakanItemPermintaan(record.id, r.item.id, masterId);
-      const { saldo } = await getSaldoBulk([masterId]);
+      const { saldo } = await getSaldoGudangBulk([masterId]);
       const s = saldo[masterId] ?? 0;
       const maks = Math.max(0, Math.min(updated.jumlah, s));
       setRows((prev) =>
@@ -192,6 +202,7 @@ export default function KeputusanApprovalModal({
   const blokir =
     tidakBerhak !== null ||
     masalahMapping !== null ||
+    !targetWarehouseId ||
     loading ||
     adaError ||
     saving;
@@ -207,7 +218,7 @@ export default function KeputusanApprovalModal({
       jumlahDisetujui: Number(r.nilai),
     }));
     try {
-      const updated = await setApprovalPermintaan(record.id, "DISETUJUI", items);
+      const updated = await setApprovalPermintaan(record.id, "DISETUJUI", items, Number(targetWarehouseId));
       const disetujui = updated.approval === "DISETUJUI";
       onDone(
         disetujui
@@ -279,6 +290,24 @@ export default function KeputusanApprovalModal({
             <p role="alert" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
               {masalahMapping}
             </p>
+          )}
+
+          {!loading && !loadError && (
+            <label className="mb-4 block">
+              <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Gudang tujuan</span>
+              <select
+                value={targetWarehouseId}
+                onChange={(event) => setTargetWarehouseId(event.target.value)}
+                disabled={saving || warehouses.length === 0}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Pilih gudang tujuan</option>
+                {warehouses.map((warehouse) => (
+                  <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">Stok akan dipindahkan ke gudang ini, bukan ke lokasi divisi.</span>
+            </label>
           )}
 
           {!loading && !loadError && rows.length > 0 && (
