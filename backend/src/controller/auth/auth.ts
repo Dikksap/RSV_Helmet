@@ -10,6 +10,40 @@ import {
   saveOptimizedImage,
 } from "../../lib/imageStorage.js";
 import { getUserAvatarPath, setUserAvatarPath } from "../../model/user/user.js";
+import {
+  FirebaseConfigError,
+  FirebaseTokenError,
+  verifyFirebaseIdToken,
+} from "../../lib/firebase.js";
+
+interface LoginUser {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  divisiId?: number | null;
+  divisi?: { id: number; nama: string } | null;
+  avatarPath?: string | null;
+}
+
+/** Satu-satunya bentuk respons login agar email/password dan Google konsisten. */
+function sendLoginSuccess(res: Response, user: LoginUser) {
+  const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role });
+
+  return res.status(200).json({
+    message: "Login berhasil",
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      divisiId: user.divisiId ?? null,
+      divisi: user.divisi ?? null,
+      avatarUrl: user.avatarPath ? "/api/auth/me/avatar" : null,
+    },
+  });
+}
 
 export async function login(req: Request, res: Response) {
   try {
@@ -35,23 +69,71 @@ export async function login(req: Request, res: Response) {
       return res.status(401).json({ message: "Email atau password salah" });
     }
 
-    const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role });
+    if (user.isActive === false) {
+      return res.status(403).json({ message: "Akun Anda tidak aktif. Hubungi administrator." });
+    }
 
-    res.status(200).json({
-      message: "Login berhasil",
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        divisiId: user.divisiId ?? null,
-        divisi: user.divisi ?? null,
-        avatarUrl: user.avatarPath ? "/api/auth/me/avatar" : null,
-      },
-    });
+    return sendLoginSuccess(res, user);
   } catch (error) {
     res.status(500).json({ message: "Gagal login", error });
+  }
+}
+
+/**
+ * Login Google: Firebase hanya membuktikan identitas. JWT RSV tetap diterbitkan
+ * dari user database, sehingga role/permission tidak pernah berasal dari token
+ * atau body request. Tidak ada auto-register.
+ */
+export async function googleLogin(req: Request, res: Response) {
+  const { idToken } = req.body ?? {};
+
+  if (!idToken || typeof idToken !== "string" || !idToken.trim()) {
+    return res.status(400).json({ message: "Field 'idToken' wajib diisi" });
+  }
+
+  try {
+    const identity = await verifyFirebaseIdToken(idToken.trim());
+
+    if (identity.signInProvider && identity.signInProvider !== "google.com") {
+      return res.status(403).json({ message: "Gunakan Login dengan Google untuk masuk" });
+    }
+
+    if (!identity.email || !identity.emailVerified) {
+      return res.status(403).json({ message: "Email Google belum terverifikasi" });
+    }
+
+    const email = identity.email.trim().toLowerCase();
+    if (!email) {
+      return res.status(403).json({ message: "Email Google belum terverifikasi" });
+    }
+
+    const user = await findUserByEmail(email);
+
+    if (!user) {
+      return res
+        .status(403)
+        .json({ message: "Akun Google belum terdaftar di sistem RSV. Hubungi administrator." });
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({ message: "Akun Anda tidak aktif. Hubungi administrator." });
+    }
+
+    return sendLoginSuccess(res, user);
+  } catch (error) {
+    if (error instanceof FirebaseConfigError) {
+      console.error("Login Google belum siap:", error.message);
+      return res
+        .status(503)
+        .json({ message: "Login Google belum dapat digunakan. Hubungi administrator." });
+    }
+
+    if (error instanceof FirebaseTokenError) {
+      return res.status(401).json({ message: "Token Google tidak valid atau kedaluwarsa" });
+    }
+
+    console.error("Gagal login dengan Google:", error);
+    return res.status(500).json({ message: "Gagal login dengan Google" });
   }
 }
 

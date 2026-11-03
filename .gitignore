@@ -4,3 +4,7 @@
 /telegram_bot/.env
 /merkari-jurnal
 /__pycache__
+
+# Firebase Admin service account — jangan pernah masuk Git
+/secrets/
+*firebase-adminsdk*.json

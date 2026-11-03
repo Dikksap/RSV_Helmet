@@ -42,6 +42,7 @@ const publicFields = {
   name: true,
   email: true,
   role: true,
+  isActive: true,
   divisiId: true,
   divisi: { select: { id: true, nama: true } },
   createdAt: true,
@@ -85,6 +86,7 @@ export async function createUser(data: {
   email: string;
   password: string;
   role: string;
+  isActive?: boolean;
   divisiId?: number | null;
 }) {
   await pastikanDivisiAda(data.divisiId);
@@ -94,7 +96,14 @@ export async function createUser(data: {
 
 export async function updateUser(
   id: number,
-  data: { name?: string; email?: string; password?: string; role?: string; divisiId?: number | null },
+  data: {
+    name?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+    isActive?: boolean;
+    divisiId?: number | null;
+  },
 ) {
   await pastikanDivisiAda(data.divisiId);
   const payload: Record<string, unknown> = { ...data };

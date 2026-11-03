@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   deleteMyAvatar,
   getMyAvatar,
+  googleLogin,
   login,
   logout,
   me,
@@ -14,6 +15,7 @@ import { receiveImage } from "../lib/imageStorage.js";
 const router = Router();
 
 router.post("/login", login);
+router.post("/google", googleLogin);
 router.get("/me", authenticate, authorize, me);
 router.put("/me", authenticate, authorize, updateMe);
 router.get("/me/avatar", authenticate, getMyAvatar);

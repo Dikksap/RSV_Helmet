@@ -15,6 +15,7 @@ import {
 
 import { checkSession, clearAuth, getProfileAvatar, getToken, getUser, logout } from "../api/auth";
 import type { User } from "../api/auth";
+import { signOutFirebase } from "../lib/firebase";
 
 import { NotificationCenter } from "./admin/NotificationCenter";
 import logoUrl from "../assets/logo.png";
@@ -300,6 +301,7 @@ function RoleLayout({
   const handleLogout = async () => {
     const token = getToken();
     if (token) await logout(token).catch(() => undefined);
+    await signOutFirebase();
     clearAuth();
     navigate("/login", { replace: true });
   };

@@ -7,6 +7,7 @@ import {
   homeForRole,
   isAuthenticated,
   login,
+  loginWithGoogle,
   setAuth,
 } from "../../api/auth";
 import { getApiErrorMessage } from "../../api/errors";
@@ -15,12 +16,37 @@ import logoUrl from "../../assets/logo.png";
 const inputClass =
   "h-[50px] w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 text-sm text-slate-800 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-sky-500 focus:bg-white focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60";
 
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5 shrink-0">
+      <path
+        fill="#FFC107"
+        d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 5.1 29.3 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5Z"
+      />
+      <path
+        fill="#FF3D00"
+        d="m6.3 14.7 6.6 4.8C14.7 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 5.1 29.3 3 24 3 16.3 3 9.7 7.4 6.3 14.7Z"
+      />
+      <path
+        fill="#4CAF50"
+        d="M24 45c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 36.1 26.7 37 24 37c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.6 40.5 16.2 45 24 45Z"
+      />
+      <path
+        fill="#1976D2"
+        d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.5 45 34 45 24c0-1.4-.1-2.7-.4-3.5Z"
+      />
+    </svg>
+  );
+}
+
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const busy = isLoading || isGoogleLoading;
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -31,6 +57,26 @@ function Login() {
       navigate(homeForRole(getUser()?.role), { replace: true });
     }
   }, [navigate]);
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    setIsGoogleLoading(true);
+
+    try {
+      const response = await loginWithGoogle();
+
+      setAuth(response.token, response.user);
+      await checkSession();
+
+      navigate(homeForRole(response.user.role), { replace: true });
+    } catch (err) {
+      setError(
+        getApiErrorMessage(err, "Gagal masuk dengan Google. Silakan coba kembali."),
+      );
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -337,7 +383,7 @@ function Login() {
                         placeholder="nama@perusahaan.com"
                         autoComplete="email"
                         required
-                        disabled={isLoading}
+                        disabled={busy}
                       />
                     </div>
                   </label>
@@ -380,7 +426,7 @@ function Login() {
                         placeholder="Masukkan kata sandi"
                         autoComplete="current-password"
                         required
-                        disabled={isLoading}
+                        disabled={busy}
                       />
 
                       <button
@@ -401,7 +447,7 @@ function Login() {
 
                   <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={busy}
                     className="mt-2 inline-flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl bg-[#079DD5] px-5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(7,157,213,0.20)] transition-all hover:bg-[#0789BA] hover:shadow-[0_7px_20px_rgba(7,157,213,0.25)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
                   >
                     {isLoading ? (
@@ -452,6 +498,61 @@ function Login() {
                   </button>
                 </div>
               </form>
+
+              <div className="mt-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-slate-100" />
+                  <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                    atau
+                  </span>
+                  <div className="h-px flex-1 bg-slate-100" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={busy}
+                  className="inline-flex h-[50px] w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isGoogleLoading ? (
+                    <>
+                      <svg
+                        aria-hidden="true"
+                        className="h-4 w-4 animate-spin text-slate-500"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="9"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          className="opacity-25"
+                        />
+                        <path
+                          d="M21 12a9 9 0 0 0-9-9"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          className="opacity-90"
+                        />
+                      </svg>
+                      Menghubungkan ke Google...
+                    </>
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      Login dengan Google
+                    </>
+                  )}
+                </button>
+
+                <p className="mt-3 text-center text-xs leading-5 text-slate-400">
+                  Gunakan akun Google yang emailnya sudah terdaftar di RSV
+                  Helmet.
+                </p>
+              </div>
 
               <div className="mt-7 flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-100" />

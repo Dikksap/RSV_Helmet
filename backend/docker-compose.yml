@@ -29,6 +29,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
 
+      # Firebase Admin untuk Google OAuth. Service account di-mount read-only
+      # dari folder secrets di root repo; jangan commit file JSON-nya.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-}
+
     volumes:
       # Bind mount seluruh project
       - .:/app
@@ -39,6 +44,7 @@ services:
       # Generated Prisma tetap di container
       - /app/generated
       - ./uploads:/app/uploads
+      - ../secrets:/app/secrets:ro
 
     depends_on:
       db:

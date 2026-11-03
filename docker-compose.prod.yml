@@ -32,6 +32,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET di .env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
 
+      # Firebase Admin (Google OAuth). Isi di .env server; service account
+      # di-mount read-only pada bagian volumes di bawah.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-}
+
     depends_on:
       db:
         condition: service_healthy
@@ -41,6 +46,8 @@ services:
     restart: unless-stopped
     volumes:
       - uploads_data:/app/uploads
+      # Service account disediakan per server (gitignored), mount read-only.
+      - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
 
     networks:
       - app

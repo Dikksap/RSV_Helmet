@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import logoUrl from "../../assets/logo.svg";
 import { checkSession, clearAuth, getToken, getUser, isAuthenticated, logout } from "../../api/auth";
+import { signOutFirebase } from "../../lib/firebase";
 import { useStatusOptions } from "../../lib/useStatusOptions";
 
 type Module = { title: string; desc: string; to: string; icon: ReactNode; public?: boolean };
@@ -275,6 +276,7 @@ function LandingPage() {
     setMenuOpen(false);
     const token = getToken();
     if (token) await logout(token).catch(() => undefined);
+    await signOutFirebase();
     clearAuth();
     setRole(undefined);
   };

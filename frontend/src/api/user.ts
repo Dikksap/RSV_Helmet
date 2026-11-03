@@ -7,6 +7,7 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  isActive?: boolean;
   divisiId?: number | null;
   divisi?: { id: number; nama: string } | null;
   createdAt?: string;
@@ -55,7 +56,7 @@ export const createUser = (body: {
   request<User>("/users", { method: "POST", body: JSON.stringify(body) });
 export const updateUser = (
   id: number,
-  body: { name?: string; email?: string; password?: string; role?: string; divisiId?: number | null },
+  body: { name?: string; email?: string; password?: string; role?: string; isActive?: boolean; divisiId?: number | null },
 ) => request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) });
 export const deleteUser = (id: number) =>
   request<{ message: string }>(`/users/${id}`, { method: "DELETE" });

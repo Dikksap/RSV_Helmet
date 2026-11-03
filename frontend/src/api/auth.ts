@@ -1,4 +1,5 @@
 import { getApiErrorMessage, getHttpErrorMessage, reportApiConnection } from "./errors";
+import { signInWithGoogle, signOutFirebase } from "../lib/firebase";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
@@ -49,6 +50,42 @@ export async function login(credentials: LoginCredentials): Promise<LoginRespons
   try {
     return (await response.json()) as LoginResponse;
   } catch {
+    throw new Error("Respons server tidak valid. Silakan coba kembali.");
+  }
+}
+
+/**
+ * Login Google: Firebase membuktikan identitas, lalu backend menukar Firebase
+ * ID Token dengan JWT RSV. Token RSV disimpan lewat `setAuth` oleh pemanggil,
+ * sama seperti login email/password.
+ */
+export async function loginWithGoogle(): Promise<LoginResponse> {
+  const idToken = await signInWithGoogle();
+
+  let response: Response;
+  try {
+    response = await authFetch("/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+  } catch (error) {
+    await signOutFirebase();
+    throw error;
+  }
+
+  if (!response.ok) {
+    await signOutFirebase();
+    const payload = await response.json().catch(() => null);
+    throw new Error(
+      getHttpErrorMessage(response.status, payload?.message, "Gagal masuk dengan Google"),
+    );
+  }
+
+  try {
+    return (await response.json()) as LoginResponse;
+  } catch {
+    await signOutFirebase();
     throw new Error("Respons server tidak valid. Silakan coba kembali.");
   }
 }
@@ -273,6 +310,7 @@ export function authHeaders(extra: HeadersInit = {}): HeadersInit {
 
 export function redirectToLogin(): void {
   clearAuth();
+  void signOutFirebase();
   if (window.location.pathname.startsWith("/login")) return;
   const hash = window.location.protocol === "file:" ? "#" : "";
   window.location.assign(`${hash}/login?session=expired`);

@@ -73,12 +73,23 @@ export async function getUserDetail(req: Request, res: Response) {
 async function validateCreate(
   body: any,
 ): Promise<
-  { error: string } | { data: { name: string; email: string; password: string; role: string; divisiId?: number | null } }
+  | { error: string }
+  | {
+      data: {
+        name: string;
+        email: string;
+        password: string;
+        role: string;
+        isActive?: boolean;
+        divisiId?: number | null;
+      };
+    }
 > {
-  const { name, email, password, role, divisiId } = body ?? {};
+  const { name, email, password, role, isActive, divisiId } = body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) return { error: "Field 'name' wajib diisi" };
   if (!email || typeof email !== "string" || !email.trim()) return { error: "Field 'email' wajib diisi" };
   if (!password || typeof password !== "string" || password.length < 6) return { error: "Field 'password' wajib diisi minimal 6 karakter" };
+  if (isActive !== undefined && typeof isActive !== "boolean") return { error: "Field 'isActive' harus boolean" };
   const resolved = role === undefined ? { role: DEFAULT_ROLE } : await normalizeRole(role);
   if ("error" in resolved) return resolved;
   let divisiValue: number | null | undefined;
@@ -93,6 +104,7 @@ async function validateCreate(
       email: email.trim(),
       password,
       role: resolved.role,
+      ...(isActive !== undefined ? { isActive } : {}),
       ...(divisiValue !== undefined ? { divisiId: divisiValue } : {}),
     },
   };
@@ -126,19 +138,21 @@ export async function updateUserHandler(req: Request, res: Response) {
     if (!id) {
       return res.status(400).json({ message: "ID harus angka bulat positif" });
     }
-    const { name, email, password, role, divisiId } = req.body ?? {};
+    const { name, email, password, role, isActive, divisiId } = req.body ?? {};
     if (
       name === undefined &&
       email === undefined &&
       password === undefined &&
       role === undefined &&
+      isActive === undefined &&
       divisiId === undefined
     ) {
-      return res.status(400).json({ message: "Minimal satu field: name, email, password, role, divisiId" });
+      return res.status(400).json({ message: "Minimal satu field: name, email, password, role, isActive, divisiId" });
     }
     if (name !== undefined && (typeof name !== "string" || !name.trim())) return res.status(400).json({ message: "Field 'name' tidak valid" });
     if (email !== undefined && (typeof email !== "string" || !email.trim())) return res.status(400).json({ message: "Field 'email' tidak valid" });
     if (password !== undefined && (typeof password !== "string" || password.length < 6)) return res.status(400).json({ message: "Field 'password' minimal 6 karakter" });
+    if (isActive !== undefined && typeof isActive !== "boolean") return res.status(400).json({ message: "Field 'isActive' harus boolean" });
     let roleValue: string | undefined;
     if (role !== undefined) {
       const resolved = await normalizeRole(role);
@@ -156,6 +170,7 @@ export async function updateUserHandler(req: Request, res: Response) {
       ...(email !== undefined ? { email: email.trim() } : {}),
       ...(password !== undefined ? { password } : {}),
       ...(roleValue !== undefined ? { role: roleValue } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
       ...(divisiValue !== undefined ? { divisiId: divisiValue } : {}),
     });
     res.status(200).json(user);

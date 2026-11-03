@@ -269,6 +269,26 @@ describe("PUT /api/users/:id", () => {
     expect(mockedUpdate).toHaveBeenCalledWith(2, { role: "gudang" });
   });
 
+  it("200 update isActive untuk menonaktifkan akun", async () => {
+    mockedUpdate.mockResolvedValue({ ...sampleUser, isActive: false } as any);
+    const res = await request(app)
+      .put("/api/users/2")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: false });
+    expect(res.status).toBe(200);
+    expect(res.body.isActive).toBe(false);
+    expect(mockedUpdate).toHaveBeenCalledWith(2, { isActive: false });
+  });
+
+  it("400 isActive bukan boolean", async () => {
+    const res = await request(app)
+      .put("/api/users/2")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isActive: "false" });
+    expect(res.status).toBe(400);
+    expect(mockedUpdate).not.toHaveBeenCalled();
+  });
+
   it("200 update divisiId", async () => {
     mockedUpdate.mockResolvedValue({ ...sampleUser, divisiId: 1, divisi: { id: 1, nama: "Buffing" } } as any);
     const res = await request(app)

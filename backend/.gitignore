@@ -8,3 +8,7 @@ uploads/
 
 /generated/prisma
 .agents/
+
+# Firebase Admin service account
+*firebase-adminsdk*.json
+secrets/
