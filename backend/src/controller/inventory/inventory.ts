@@ -176,7 +176,10 @@ export async function getInventoryItemSummaryHandler(req: Request, res: Response
   until?.setUTCDate(until.getUTCDate() + 1);
   try {
     return res.json({
-      ringkasan: await getInventoryItemSummary(itemIds as number[], { from, until }),
+      ringkasan: await getInventoryItemSummary(itemIds as number[], {
+        from: from ?? undefined,
+        until,
+      }),
     });
   } catch (error) {
     return respondError(res, error);

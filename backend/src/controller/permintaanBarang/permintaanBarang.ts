@@ -321,7 +321,8 @@ export async function setApprovalHandler(req: Request, res: Response) {
 
     let targetWarehouseId: number | null = null;
     if (parsed.ok === "DISETUJUI") {
-      targetWarehouseId = positiveInt(targetRaw);
+      const parsedTarget = Number(targetRaw);
+      targetWarehouseId = Number.isInteger(parsedTarget) && parsedTarget > 0 ? parsedTarget : null;
       if (!targetWarehouseId) {
         return res.status(400).json({ message: "Gudang tujuan wajib dipilih untuk approval" });
       }
