@@ -31,6 +31,7 @@ type FilterSectionProps = {
   searchDisabled?: boolean;
   searchHint?: string;
   variantError?: string | null;
+  activeFilterChips?: { key: string; label: string; onClear: () => void }[];
   onSearchChange: (value: string) => void;
   onStatusChange: (value: StatusBarang) => void;
   onVariantChange: (value: string) => void;
@@ -72,6 +73,7 @@ export function FilterSection({
   searchDisabled,
   searchHint,
   variantError,
+  activeFilterChips,
   onSearchChange,
   onStatusChange,
   onVariantChange,
@@ -154,8 +156,8 @@ export function FilterSection({
           </p>
         )}
 
-        <span className="hidden shrink-0 text-xs font-medium tabular-nums text-[#6B7280] sm:inline">
-          {currentPage}/{totalPages}
+        <span className="hidden shrink-0 text-[11px] font-medium tabular-nums text-slate-500 sm:inline" title="Halaman saat ini">
+          Hal {currentPage}/{totalPages}
         </span>
 
         {hasActiveFilters && (
@@ -164,6 +166,38 @@ export function FilterSection({
           </button>
         )}
       </div>
+
+      {/* chips filter aktif — tetap terlihat walau panel filter dilipat */}
+      {activeFilterChips && activeFilterChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 bg-slate-50/50 px-3 py-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Filter aktif</span>
+          {activeFilterChips.map((chip) => (
+            <span
+              key={chip.key}
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-white py-0.5 pl-2.5 pr-1 text-[11px] font-medium text-slate-700"
+            >
+              <span className="truncate" title={chip.label}>
+                {chip.label}
+              </span>
+              <button
+                type="button"
+                onClick={chip.onClear}
+                aria-label={`Hapus filter ${chip.label}`}
+                className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="ml-auto text-[11px] font-semibold text-slate-500 transition hover:text-[#EF4444] hover:underline"
+          >
+            Bersihkan semua
+          </button>
+        </div>
+      )}
 
       {/* collapsible advanced filters — single row on desktop, grid on smaller */}
       {open && (

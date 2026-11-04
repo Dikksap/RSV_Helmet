@@ -17,6 +17,7 @@ import {
   faSitemap,
   faTags,
   faUsers,
+  faWarehouse,
 } from "@fortawesome/free-solid-svg-icons";
 
 /**
@@ -43,7 +44,7 @@ export interface NavGroup {
 export const NAV_MAIN: NavItem[] = [
   {
     to: "/admin/home",
-    label: "Homepage",
+    label: "Beranda",
     icon: faHouse,
     end: true,
   },
@@ -136,7 +137,7 @@ export const MANAJEMEN: NavGroup = {
 
 export const WAREHOUSE: NavGroup = {
   label: "Warehouse",
-  icon: faBoxesStacked,
+  icon: faWarehouse,
   description: "Kelola aktivitas dan persediaan warehouse",
   children: [
     {

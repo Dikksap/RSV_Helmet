@@ -1,1 +1,140 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Brand palette (lihat .agents/DESIGN.md) */
+  --color-navy-950: #08111d;
+  --color-navy-900: #0d1a2b;
+  --color-navy-800: #13253a;
+  --color-navy-700: #1b3550;
+  --color-navy-600: #1e3a5f;
+  --color-accent-400: #38c6f4;
+  --color-accent-500: #00a8e8;
+  --color-accent-600: #0088c0;
+  --color-canvas: #f4f7fb;
+  --color-ink-900: #0f172a;
+  --color-ink-500: #64748b;
+
+  --shadow-shell: 0 24px 60px -32px rgb(8 17 29 / 0.55);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :focus-visible {
+    outline: none;
+  }
+}
+
+/* ==========================================================================
+   Admin shell utilities
+   ========================================================================== */
+
+.app-admin {
+  background-color: var(--color-canvas);
+}
+
+/* Scrollbar tipis & selalu terlihat supaya tabel lebar tidak "terpotong" diam-diam. */
+.app-admin :where(.overflow-x-auto),
+.app-admin :where(.overflow-y-auto),
+.shell-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #c3cddb transparent;
+}
+
+.app-admin :where(.overflow-x-auto)::-webkit-scrollbar,
+.app-admin :where(.overflow-y-auto)::-webkit-scrollbar,
+.shell-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.app-admin :where(.overflow-x-auto)::-webkit-scrollbar-track,
+.app-admin :where(.overflow-y-auto)::-webkit-scrollbar-track,
+.shell-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-admin :where(.overflow-x-auto)::-webkit-scrollbar-thumb,
+.app-admin :where(.overflow-y-auto)::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-color: #c3cddb;
+  background-clip: content-box;
+}
+
+.app-admin :where(.overflow-x-auto)::-webkit-scrollbar-thumb:hover,
+.app-admin :where(.overflow-y-auto)::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+  background-clip: content-box;
+}
+
+/* Sidebar gelap: scrollbar kontras rendah agar tidak mengganggu navigasi. */
+.shell-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.shell-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-color: rgb(255 255 255 / 0.16);
+  background-clip: content-box;
+}
+
+.shell-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.3);
+  background-clip: content-box;
+}
+
+.app-shell-sidebar {
+  background-image: linear-gradient(180deg, var(--color-navy-900) 0%, var(--color-navy-950) 100%);
+  box-shadow: var(--shadow-shell);
+}
+
+.shell-fade-bottom {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 16px), transparent 100%);
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 120;
+  transform: translateY(-160%);
+  border-radius: 0.5rem;
+  background: var(--color-navy-900);
+  color: #fff;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  box-shadow: 0 12px 30px -12px rgb(8 17 29 / 0.6);
+  transition: transform 150ms ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-admin *,
+  .app-admin *::before,
+  .app-admin *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

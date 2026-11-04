@@ -8,3 +8,4 @@
 # Firebase Admin service account — jangan pernah masuk Git
 /secrets/
 *firebase-adminsdk*.json
+/.dsh-preview

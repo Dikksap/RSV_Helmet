@@ -1,24 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
-import {
-  faAnglesLeft,
-  faAnglesRight,
-  faArrowLeft,
-  faArrowRightFromBracket,
-  faBars,
-  faChevronDown,
-  faUserPen,
-  faXmark,
-} from "@fortawesome/free-solid-svg-icons";
 
 import { checkSession, clearAuth, getProfileAvatar, getToken, getUser, logout } from "../api/auth";
 import type { User } from "../api/auth";
 import { signOutFirebase } from "../lib/firebase";
 
-import { NotificationCenter } from "./admin/NotificationCenter";
-import logoUrl from "../assets/logo.png";
+import { CommandPalette } from "./shell/CommandPalette";
+import { Sidebar } from "./shell/Sidebar";
+import { Topbar } from "./shell/Topbar";
+import { buildPaletteEntries, findActiveGroup, findActiveItem, findLooseMatch } from "./shell/nav-utils";
 
 export type NavItem = { to: string; label: string; icon: IconDefinition; end?: boolean; description?: string };
 export type NavGroup = { label: string; icon: IconDefinition; children: NavItem[] };
@@ -44,149 +35,27 @@ const ROLE_LABELS: Record<string, string> = {
   supervisor: "Supervisor",
 };
 
-const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
-
 function collapseKey(role: string) {
   return `rsv_${role}_sidebar_collapsed`;
 }
 
-function initialsFromName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "AD";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+function groupsKey(role: string) {
+  return `rsv_${role}_sidebar_groups`;
 }
 
-function matches(pathname: string, item: NavItem) {
-  return item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(item.to + "/");
-}
-
-function SideLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
-  return (
-    <NavLink
-      to={item.to}
-      end={item.end}
-      title={collapsed ? item.label : undefined}
-      aria-label={collapsed ? item.label : undefined}
-      className={({ isActive }) =>
-        `relative flex h-10 items-center gap-3 rounded-lg text-[13px] font-medium transition-colors ${FOCUS} ${
-          collapsed ? "justify-center px-0" : "px-3"
-        } ${
-          isActive
-            ? "bg-[#1E3A5F] text-white shadow-sm"
-            : "text-slate-600 hover:bg-slate-100 hover:text-[#1E3A5F]"
-        }`
-      }
-    >
-      <FontAwesomeIcon icon={item.icon} className="h-4 w-4 shrink-0 opacity-80" fixedWidth />
-      {!collapsed && <span className="truncate">{item.label}</span>}
-    </NavLink>
-  );
-}
-
-function SidebarContent({
-  pathname,
-  collapsed = false,
-  brand,
-  subtitle,
-  main,
-  groups,
-}: {
-  pathname: string;
-  collapsed?: boolean;
-  brand: string;
-  subtitle: string;
-  main: NavItem[];
-  groups: NavGroup[];
-}) {
-  const [closed, setClosed] = useState<Record<string, boolean>>({});
-
-  return (
-    <div className="flex h-full flex-col">
-      <div
-        className={`flex h-14 shrink-0 items-center gap-2.5 border-b border-slate-200 sm:h-16 ${
-          collapsed ? "justify-center px-2" : "px-4"
-        }`}
-      >
-        <img src={logoUrl} alt="RSV Logo" className="h-8 w-8 shrink-0 rounded-lg object-contain" />
-        {!collapsed && (
-          <div className="leading-tight">
-            <p className="text-sm font-bold tracking-wide text-[#1E3A5F]">
-              RSV<span className="text-[#00A8E8]">.{brand}</span>
-            </p>
-            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">{subtitle}</p>
-          </div>
-        )}
-      </div>
-
-      <nav
-        aria-label={`Navigasi ${brand.toLowerCase()}`}
-        className={`flex-1 overflow-y-auto overflow-x-hidden py-4 ${collapsed ? "space-y-2 px-2" : "space-y-4 px-3"}`}
-      >
-        {main.length > 0 && (
-          <div className="space-y-1">
-            {main.map((item) => (
-              <SideLink key={item.to} item={item} collapsed={collapsed} />
-            ))}
-          </div>
-        )}
-
-        {groups.map((group) => {
-          const active = group.children.some((c) => matches(pathname, c));
-          const open = active || !closed[group.label];
-          if (collapsed) {
-            return (
-              <div key={group.label} className="space-y-1 border-t border-slate-100 pt-2">
-                {group.children.map((item) => (
-                  <SideLink key={item.to} item={item} collapsed />
-                ))}
-              </div>
-            );
-          }
-          return (
-            <div key={group.label}>
-              <button
-                type="button"
-                onClick={() => setClosed((s) => ({ ...s, [group.label]: open }))}
-                aria-expanded={open}
-                disabled={active}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400 transition-colors enabled:hover:text-slate-600 ${FOCUS}`}
-              >
-                {group.label}
-                {!active && (
-                  <FontAwesomeIcon
-                    icon={faChevronDown}
-                    className={`h-2.5 w-2.5 transition-transform ${open ? "" : "-rotate-90"}`}
-                  />
-                )}
-              </button>
-              {open && (
-                <div className="mt-1 space-y-1">
-                  {group.children.map((item) => (
-                    <SideLink key={item.to} item={item} collapsed={false} />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      <div className={`shrink-0 border-t border-slate-200 ${collapsed ? "p-2" : "p-3"}`}>
-        <Link
-          to="/"
-          title={collapsed ? "Halaman Utama" : undefined}
-          aria-label={collapsed ? "Halaman Utama" : undefined}
-          className={`flex h-10 items-center gap-3 rounded-lg text-[13px] font-medium text-slate-600 no-underline transition-colors hover:bg-slate-100 hover:text-[#1E3A5F] ${FOCUS} ${
-            collapsed ? "justify-center" : "px-3"
-          }`}
-        >
-          <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" fixedWidth />
-          {!collapsed && "Halaman Utama"}
-        </Link>
-      </div>
-    </div>
-  );
+function readOpenGroups(role: string): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(groupsKey(role));
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, boolean] => typeof entry[1] === "boolean",
+      ),
+    );
+  } catch {
+    return {};
+  }
 }
 
 function RoleLayout({
@@ -203,19 +72,19 @@ function RoleLayout({
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const allowed = useMemo(() => allowedRoles ?? [role], [allowedRoles, role]);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => getUser());
   const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
   const [avatarRefresh, setAvatarRefresh] = useState(0);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(collapseKey(role)) === "1");
   const [hovered, setHovered] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => readOpenGroups(role));
   const effectiveCollapsed = collapsed && !hovered;
 
   useEffect(() => {
-    const refreshUser = () => {
-      setUser(getUser());
-    };
+    const refreshUser = () => setUser(getUser());
     const refreshAvatar = () => {
       setAvatarSrc(null);
       setAvatarRefresh((current) => current + 1);
@@ -232,7 +101,6 @@ function RoleLayout({
     let active = true;
     let objectUrl: string | null = null;
     if (!user?.avatarUrl) {
-      setAvatarSrc(null);
       return () => {
         active = false;
       };
@@ -251,12 +119,6 @@ function RoleLayout({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [user?.avatarUrl, avatarRefresh]);
-
-  const toggleCollapsed = () =>
-    setCollapsed((c) => {
-      localStorage.setItem(collapseKey(role), c ? "0" : "1");
-      return !c;
-    });
 
   useEffect(() => {
     if (!allowed.includes(getUser()?.role ?? "")) {
@@ -277,26 +139,65 @@ function RoleLayout({
   }, [allowed, navigate, pathname]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- tutup drawer/menu saat pindah halaman
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tutup drawer/palette setiap kali halaman berubah
     setDrawerOpen(false);
-    setMenuOpen(false);
+    setPaletteOpen(false);
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, [pathname]);
 
   useEffect(() => {
-    if (!drawerOpen && !menuOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setDrawerOpen(false);
-      setMenuOpen(false);
+    if (!drawerOpen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drawerOpen, menuOpen]);
+  }, []);
+
+  const toggleCollapsed = () =>
+    setCollapsed((current) => {
+      localStorage.setItem(collapseKey(role), current ? "0" : "1");
+      return !current;
+    });
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((current) => {
+      const activeGroup = findActiveGroup(pathname, groups);
+      const open = current[label] ?? activeGroup?.label === label;
+      const next = { ...current, [label]: !open };
+      localStorage.setItem(groupsKey(role), JSON.stringify(next));
+      return next;
+    });
+  };
 
   const userName = user?.name ?? `${titleFallback} RSV`;
   const userRoleLabel = ROLE_LABELS[user?.role ?? ""] ?? (user?.role ?? titleFallback);
-  const allItems = [...main, ...groups.flatMap((g) => g.children)];
-  const pageTitle = allItems.find((i) => matches(pathname, i))?.label ?? titleFallback;
+  const looseMatch = findLooseMatch(pathname, main, groups);
+  const activeItem = findActiveItem(pathname, main, groups) ?? looseMatch?.item;
+  const activeGroup = findActiveGroup(pathname, groups) ?? looseMatch?.group;
+  const isProfileRoute = /\/profil\/?$/.test(pathname);
+  const pageTitle = isProfileRoute ? "Profil Saya" : (activeItem?.label ?? titleFallback);
+  const resolvedProfileTo = profileTo ?? `/${role}/profil`;
+  const homeTo = main[0]?.to ?? "/";
+  const paletteEntries = useMemo(() => buildPaletteEntries(main, groups), [main, groups]);
 
   const handleLogout = async () => {
     const token = getToken();
@@ -308,148 +209,101 @@ function RoleLayout({
 
   if (!allowed.includes(user?.role ?? "")) return <Navigate to="/login" replace />;
 
-  const sidebar = (collapsedAt: boolean) => (
-    <SidebarContent
-      pathname={pathname}
-      collapsed={collapsedAt}
+  const sidebar = (isCollapsed: boolean, options?: { onClose?: () => void }) => (
+    <Sidebar
       brand={brand}
       subtitle={subtitle}
       main={main}
       groups={groups}
+      pathname={pathname}
+      collapsed={isCollapsed}
+      openGroups={openGroups}
+      onToggleGroup={toggleGroup}
+      onOpenPalette={() => setPaletteOpen(true)}
+      onNavigate={() => setDrawerOpen(false)}
+      onClose={options?.onClose}
+      userName={userName}
+      userRoleLabel={userRoleLabel}
+      avatarSrc={avatarSrc}
+      profileTo={resolvedProfileTo}
+      onLogout={() => void handleLogout()}
+      homeTo={homeTo}
     />
   );
 
   return (
-    <div className="app-admin min-h-screen w-full bg-[#F6F8FB] font-sans text-slate-800 antialiased">
+    <div className="app-admin min-h-screen w-full font-sans text-slate-800 antialiased">
+      <a href="#main-content" className="skip-link">
+        Lewati ke konten utama
+      </a>
+
       <aside
         onMouseEnter={() => collapsed && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className={`fixed inset-y-0 left-0 z-40 hidden border-r border-slate-200 bg-white transition-[width] duration-200 lg:block ${
-          effectiveCollapsed ? "w-16" : "w-64"
-        } ${collapsed && hovered ? "shadow-xl" : ""}`}
+        className={`app-shell-sidebar fixed inset-y-0 left-0 z-40 hidden flex-col overflow-hidden transition-[width] duration-200 ease-out lg:flex ${
+          effectiveCollapsed ? "w-[76px]" : "w-[272px]"
+        }`}
       >
         {sidebar(effectiveCollapsed)}
       </aside>
 
       {drawerOpen && (
         <div
-          className="fixed inset-0 z-[60] lg:hidden"
+          className="fixed inset-0 z-[70] lg:hidden"
           role="dialog"
           aria-modal="true"
           aria-label={`Navigasi ${titleFallback.toLowerCase()}`}
         >
-          <div className="absolute inset-0 bg-[#0F1C2E]/50 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-[min(80vw,288px)] bg-white shadow-2xl">
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(false)}
-              aria-label="Tutup navigasi"
-              className={`absolute right-2 top-2.5 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 sm:top-3.5 ${FOCUS}`}
-            >
-              <FontAwesomeIcon icon={faXmark} className="h-5 w-5" />
-            </button>
-            {sidebar(false)}
-          </aside>
+          <div
+            className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm"
+            onClick={() => setDrawerOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="app-shell-sidebar absolute inset-y-0 left-0 flex w-[min(86vw,304px)] flex-col">
+            {sidebar(false, { onClose: () => setDrawerOpen(false) })}
+          </div>
         </div>
       )}
 
-      <div className={`flex min-h-screen flex-col transition-[padding] duration-200 ${collapsed ? "lg:pl-16" : "lg:pl-64"}`}>
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-          <div className="flex h-14 items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
-            <div className="flex min-w-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="Buka navigasi"
-                aria-expanded={drawerOpen}
-                className={`-ml-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden ${FOCUS}`}
-              >
-                <FontAwesomeIcon icon={faBars} className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
-                title={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
-                aria-expanded={!collapsed}
-                className={`-ml-1.5 hidden h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 lg:grid ${FOCUS}`}
-              >
-                <FontAwesomeIcon icon={collapsed ? faAnglesRight : faAnglesLeft} className="h-4 w-4" />
-              </button>
-              <h1 className="truncate text-base font-semibold text-[#0F1C2E] sm:text-lg">{pageTitle}</h1>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-              <NotificationCenter />
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen((o) => !o)}
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  className={`flex items-center gap-2.5 rounded-full p-1 transition-colors hover:bg-slate-100 sm:pr-3 ${FOCUS}`}
-                >
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt="" className="h-8 w-8 rounded-full object-cover" />
-                  ) : (
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-[#1E3A5F] text-[11px] font-bold text-white">
-                      {initialsFromName(userName)}
-                    </span>
-                  )}
-                  <span className="hidden text-left leading-tight sm:block">
-                    <span className="block max-w-[160px] truncate text-[13px] font-semibold text-[#0F1C2E]">{userName}</span>
-                    <span className="block text-[11px] text-slate-500">{userRoleLabel}</span>
-                  </span>
-                  <FontAwesomeIcon icon={faChevronDown} className="hidden h-3 w-3 text-slate-400 sm:block" />
-                </button>
-
-                {menuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-                    <div
-                      role="menu"
-                      className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-[0_12px_32px_rgba(15,28,46,0.12)]"
-                    >
-                      <div className="border-b border-slate-100 px-4 py-3 sm:hidden">
-                        <p className="truncate text-sm font-semibold text-[#0F1C2E]">{userName}</p>
-                        <p className="text-xs text-slate-500">{userRoleLabel}</p>
-                      </div>
-                      <Link
-                        to={profileTo ?? `/${role}/profil`}
-                        role="menuitem"
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#0F1C2E] no-underline hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
-                      >
-                        <FontAwesomeIcon icon={faUserPen} className="h-4 w-4" />
-                        Profil
-                      </Link>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-[#EF4444] hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none"
-                      >
-                        <FontAwesomeIcon icon={faArrowRightFromBracket} className="h-4 w-4" />
-                        Keluar
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
+      <div
+        className={`flex min-h-screen flex-col transition-[padding] duration-200 ease-out ${
+          collapsed ? "lg:pl-[76px]" : "lg:pl-[272px]"
+        }`}
+      >
+        <Topbar
+          pageTitle={pageTitle}
+          groupLabel={activeGroup?.label}
+          roleLabel={ROLE_LABELS[user?.role ?? ""] ?? userRoleLabel}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+          onOpenDrawer={() => setDrawerOpen(true)}
+          onOpenPalette={() => setPaletteOpen(true)}
+          userName={userName}
+          userEmail={user?.email}
+          userRoleLabel={userRoleLabel}
+          avatarSrc={avatarSrc}
+          profileTo={resolvedProfileTo}
+          onLogout={() => void handleLogout()}
+        />
 
         {subheader && (
           <div className="border-b border-slate-200 bg-white px-4 py-2 sm:px-6">{subheader}</div>
         )}
 
-        <main className="min-w-0 flex-1 px-4 pb-8 pt-5 sm:px-6 md:pt-6">
-          <div className="mx-auto w-full max-w-[1600px]">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-4 pb-12 pt-6 focus-visible:outline-none sm:px-6 lg:px-8"
+        >
+          <div className="mx-auto w-full max-w-[1560px]">
             <Outlet />
           </div>
         </main>
       </div>
+
+      {paletteOpen && (
+        <CommandPalette entries={paletteEntries} onClose={() => setPaletteOpen(false)} />
+      )}
     </div>
   );
 }

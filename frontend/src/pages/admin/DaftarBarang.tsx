@@ -1,4 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faArrowsLeftRight,
+  faBoxOpen,
+  faDownload,
+  faPenToSquare,
+  faPlus,
+  faRotate,
+  faTrashCan,
+  faTriangleExclamation,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 import {
   bulkStatusBarang,
   createBarang,
@@ -9,9 +21,9 @@ import {
   searchBarang,
   updateBarang,
   type Barang,
+  type BarangStatusSummary,
   type CreateBarangPayload,
   type StatusBarang,
-  type StatusSummary,
   type UpdateBarangPayload,
 } from "../../api/barang";
 import { getProducts, type Product } from "../../api/products";
@@ -26,6 +38,7 @@ import { HangtagModal } from "../../components/admin/DaftarBarang/HangtagModal";
 import { RiwayatModal } from "../../components/admin/DaftarBarang/RiwayatModal";
 import { BarangImportModal } from "../../components/admin/DaftarBarang/BarangImportModal";
 import { BarangTabs } from "../../components/admin/DaftarBarang/BarangTabs";
+import { RekapSection } from "../../components/admin/DaftarBarang/RekapSection";
 import { useLiveSocketContext } from "../../lib/LiveSocketContext";
 import { getUser, hasPermission } from "../../api/auth";
 import { downloadCsv } from "../../lib/csv";
@@ -52,6 +65,12 @@ const BTN_PRIMARY = `${BTN} bg-[#1E3A5F] text-white hover:bg-[#162C48]`;
 const BTN_GHOST = `${BTN} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`;
 const BTN_DANGER = `${BTN} bg-[#EF4444] text-white hover:bg-red-600`;
 
+const BAR_BTN =
+  "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50";
+const BAR_GHOST = `${BAR_BTN} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`;
+const BAR_PRIMARY = `${BAR_BTN} bg-[#1E3A5F] text-white hover:bg-[#162C48]`;
+const BAR_DANGER = `${BAR_BTN} bg-[#EF4444] text-white hover:bg-red-600`;
+
 const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 const num = (s: string) => (s ? Number(s) : undefined);
 // Tanggal disimpan sebagai ISO dari tengah malam lokal; baca kembali sebagai tanggal lokal, bukan potongan UTC.
@@ -65,6 +84,9 @@ function toast(message: string, type: "success" | "error" = "success") {
 
 const formatDate = (date: string) =>
   new Date(date).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+
+const formatDateParam = (value: string) =>
+  new Date(`${value}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
 function formatRelativeTime(date: string, nowMs: number) {
   const minutes = Math.floor((nowMs - new Date(date).getTime()) / 60000);
@@ -192,15 +214,36 @@ function BarangForm({
 
 const EMPTY_FORM: FormState = { variantId: "", batchId: "", batchDetach: false, kodeBarang: "", tanggal: "", status: "REGISTER", keterangan: "" };
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function TableSkeleton() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</p>
-      <div className="mt-2 h-1.5 w-full rounded-full bg-slate-100">
-        <div className={`h-full rounded-full bg-[#00A8E8] opacity-40`} style={{ width: "60%" }} />
+    <section
+      aria-label="Memuat data barang"
+      aria-busy="true"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-3.5 w-24 animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-8 animate-pulse rounded-full bg-slate-100" />
+        </div>
+        <div className="hidden gap-2 sm:flex">
+          <div className="h-8 w-24 animate-pulse rounded-lg bg-slate-100" />
+          <div className="h-8 w-20 animate-pulse rounded-lg bg-slate-100" />
+        </div>
       </div>
-    </div>
+      <div className="divide-y divide-slate-100">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+            <div className="h-4 w-4 shrink-0 animate-pulse rounded bg-slate-200" />
+            <div className="h-3.5 w-40 shrink-0 animate-pulse rounded bg-slate-200" />
+            <div className="hidden h-3.5 flex-1 animate-pulse rounded bg-slate-100 sm:block" />
+            <div className="ml-auto h-5 w-24 shrink-0 animate-pulse rounded-full bg-slate-100" />
+            <div className="hidden h-3.5 w-16 shrink-0 animate-pulse rounded bg-slate-100 md:block" />
+            <div className="hidden h-3.5 w-20 shrink-0 animate-pulse rounded bg-slate-100 lg:block" />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -235,7 +278,9 @@ function DaftarBarang() {
 
   const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
-  const [summary, setSummary] = useState<StatusSummary | null>(null);
+  const [summary, setSummary] = useState<BarangStatusSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedBarang, setSelectedBarang] = useState<Barang | null>(null);
   const [riwayatBarang, setRiwayatBarang] = useState<Barang | null>(null);
@@ -258,6 +303,24 @@ function DaftarBarang() {
 
   const reqRef = useRef(0);
 
+  const loadSummary = useCallback(() => {
+    return getBarangSummary()
+      .then((raw) => {
+        setSummary(raw);
+        setSummaryError(null);
+      })
+      .catch((e) => {
+        setSummaryError(errMsg(e, "Gagal memuat ringkasan status barang"));
+      })
+      .finally(() => {
+        setSummaryLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
+
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(id);
@@ -277,17 +340,6 @@ function DaftarBarang() {
     getColors().then((r) => setColorOptions(toOptions(r))).catch(() => setColorOptions([]));
     getSizes().then((r) => setSizeOptions(toOptions(r))).catch(() => setSizeOptions([]));
     getGudangList().then(setGudangOptions).catch(() => setGudangOptions([]));
-
-    getBarangSummary()
-      .then((raw) => setSummary({
-        REGISTER: raw.perStatus.REGISTER ?? 0,
-        FINISHGOOD: raw.perStatus.FINISHGOOD ?? 0,
-        RETUR: raw.perStatus.RETUR ?? 0,
-        OUT: raw.perStatus.OUT ?? 0,
-        BAD: raw.perStatus.BAD ?? 0,
-        total: raw.total,
-      }))
-      .catch(() => setSummary(null));
   }, []);
 
   const matchesAttr = useCallback(
@@ -344,7 +396,7 @@ function DaftarBarang() {
   const load = useCallback(() => {
     const req = ++reqRef.current;
     const request = isSearchMode ? searchBarang(debouncedSearch, searchLimit) : getBarangPage({ page, limit: pageSize, ...filterParams });
-    request
+    return request
       .then((data) => {
         if (req !== reqRef.current) return;
         setResult({
@@ -361,8 +413,13 @@ function DaftarBarang() {
       });
   }, [key, isSearchMode, debouncedSearch, searchLimit, page, pageSize, filterParams]);
 
+  const refreshAll = useCallback(async () => {
+    setSummaryLoading(true);
+    await Promise.all([load(), loadSummary()]);
+  }, [load, loadSummary]);
+
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const loadRef = useRef(load);
@@ -376,13 +433,16 @@ function DaftarBarang() {
     const unsub = subscribe((payload) => {
       if (!payload.type.startsWith("barang.")) return;
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => loadRef.current(), 1000);
+      timer = window.setTimeout(() => {
+        void loadRef.current();
+        void loadSummary();
+      }, 1000);
     });
     return () => {
       unsub();
       window.clearTimeout(timer);
     };
-  }, [subscribe]);
+  }, [subscribe, loadSummary]);
 
   const isLoading = result?.key !== key;
   const barang = useMemo(() => (result && !isLoading ? result.rows : []), [result, isLoading]);
@@ -421,6 +481,13 @@ function DaftarBarang() {
     setPage(1);
   };
 
+  // Pencarian memakai endpoint terpisah dari filter; kosongkan kata kunci saat filter lain diubah.
+  const resetFilter = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setSearch("");
+    setPage(1);
+  };
+
   const handleResetFilters = () => {
     setSearch("");
     setStatusFilter("");
@@ -438,6 +505,139 @@ function DaftarBarang() {
     setPage(1);
   };
 
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter((prev) => (prev.toUpperCase() === status.toUpperCase() ? "" : status));
+    // Pencarian dan filter status memakai endpoint berbeda; kosongkan kata kunci agar hasil tidak membingungkan.
+    setSearch("");
+    setPage(1);
+  };
+
+  const activeFilterChips: { key: string; label: string; onClear: () => void }[] = [];
+  if (search.trim()) {
+    activeFilterChips.push({
+      key: "search",
+      label: `Cari: "${search.trim()}"`,
+      onClear: () => {
+        setSearch("");
+        setPage(1);
+      },
+    });
+  }
+  if (statusFilter) {
+    const label = statusOptions.find((option) => option.value === statusFilter)?.label ?? statusFilter;
+    activeFilterChips.push({
+      key: "status",
+      label: `Status: ${label}`,
+      onClear: () => {
+        setStatusFilter("");
+        setPage(1);
+      },
+    });
+  }
+  if (effectiveVariant) {
+    const option = filterVariantOptions.find((item) => String(item.id) === effectiveVariant);
+    activeFilterChips.push({
+      key: "variant",
+      label: `Varian: ${option?.nama ?? effectiveVariant}`,
+      onClear: () => {
+        setVariantFilter("");
+        setPage(1);
+      },
+    });
+  }
+  if (styleFilter) {
+    const label = styleOptions.find((option) => String(option.id) === styleFilter)?.nama ?? styleFilter;
+    activeFilterChips.push({
+      key: "style",
+      label: `Style: ${label}`,
+      onClear: () => {
+        setStyleFilter("");
+        setPage(1);
+      },
+    });
+  }
+  if (colorFilter) {
+    const label = colorOptions.find((option) => String(option.id) === colorFilter)?.nama ?? colorFilter;
+    activeFilterChips.push({
+      key: "color",
+      label: `Warna: ${label}`,
+      onClear: () => {
+        setColorFilter("");
+        setPage(1);
+      },
+    });
+  }
+  if (sizeFilter) {
+    const label = sizeOptions.find((option) => String(option.id) === sizeFilter)?.nama ?? sizeFilter;
+    activeFilterChips.push({
+      key: "size",
+      label: `Ukuran: ${label}`,
+      onClear: () => {
+        setSizeFilter("");
+        setPage(1);
+      },
+    });
+  }
+  if (tanggalAwal || tanggalAkhir) {
+    const label =
+      tanggalAwal && tanggalAkhir
+        ? `${formatDateParam(tanggalAwal)} – ${formatDateParam(tanggalAkhir)}`
+        : tanggalAwal
+          ? `mulai ${formatDateParam(tanggalAwal)}`
+          : `sampai ${formatDateParam(tanggalAkhir)}`;
+    activeFilterChips.push({
+      key: "tanggal",
+      label: `Tanggal: ${label}`,
+      onClear: () => {
+        setTanggalAwal("");
+        setTanggalAkhir("");
+        setDatePreset("");
+        setPage(1);
+      },
+    });
+  }
+  if (gudangFilter) {
+    const gudang = gudangOptions.find((option) => String(option.id) === gudangFilter);
+    activeFilterChips.push({
+      key: "gudang",
+      label: `Gudang: ${gudang ? `${gudang.kode} - ${gudang.name}` : gudangFilter}`,
+      onClear: () => {
+        setGudangFilter("");
+        setPage(1);
+      },
+    });
+  }
+  if (hanyaPernahRetur) {
+    activeFilterChips.push({
+      key: "retur",
+      label: "Pernah retur",
+      onClear: () => {
+        setHanyaPernahRetur(false);
+        setPage(1);
+      },
+    });
+  }
+  if (tanpaDus) {
+    activeFilterChips.push({
+      key: "tanpa-dus",
+      label: "Tanpa dus",
+      onClear: () => {
+        setTanpaDus(false);
+        setPage(1);
+      },
+    });
+  }
+  if (tanpaGudang) {
+    activeFilterChips.push({
+      key: "tanpa-gudang",
+      label: "Tanpa gudang",
+      onClear: () => {
+        setTanpaGudang(false);
+        setPage(1);
+      },
+    });
+  }
+
   const toggleSelect = (id: number) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -448,8 +648,12 @@ function DaftarBarang() {
   const toggleSelectAll = (checked: boolean) => setSelectedIds(checked ? new Set(barang.map((b) => b.id)) : new Set());
 
   const afterRemove = (removed: number) => {
-    if (removed >= barang.length && page > 1) setPage(page - 1);
-    else load();
+    if (removed >= barang.length && page > 1) {
+      setPage(page - 1);
+      void loadSummary();
+    } else {
+      refreshAll();
+    }
   };
 
   const openCreate = () => {
@@ -493,7 +697,7 @@ function DaftarBarang() {
         keterangan: mutasiKeterangan.trim() || undefined,
       });
       setMutasiBarang(null);
-      load();
+      refreshAll();
     } catch (e) {
       setCrudError(e instanceof Error ? e.message : "Gagal mencatat mutasi.");
     } finally {
@@ -518,8 +722,11 @@ function DaftarBarang() {
         const created = await createBarang(payload);
         setFormMode(null);
         toast(`Barang ${created.kodeBarang} dibuat`);
-        if (page === 1) load();
-        else setPage(1);
+        if (page === 1) refreshAll();
+        else {
+          setPage(1);
+          void loadSummary();
+        }
         return;
       }
       const orig = editingBarang;
@@ -540,7 +747,7 @@ function DaftarBarang() {
       const updated = await updateBarang(orig.id, payload);
       setFormMode(null);
       toast(`Barang ${updated.kodeBarang} diperbarui`);
-      load();
+      refreshAll();
     } catch (err) {
       setCrudError(errMsg(err, "Gagal menyimpan barang"));
     } finally {
@@ -608,7 +815,7 @@ function DaftarBarang() {
       });
       setSelectedIds(new Set());
       setShowBulkMutasi(false);
-      load();
+      refreshAll();
       toast(`${res.summary.success} barang dimutasi`);
     } catch (err) {
       setCrudError(errMsg(err, "Gagal mencatat mutasi massal"));
@@ -654,11 +861,11 @@ function DaftarBarang() {
     } catch (err) {
       setCrudError(errMsg(err, "Gagal memperbarui barang"));
       setBusy(false);
-      load();
+      refreshAll();
       return;
     }
     setBusy(false);
-    load();
+    refreshAll();
     const ok = ids.length - failedIds.length;
     if (failedIds.length === 0) {
       setSelectedIds(new Set());
@@ -709,11 +916,11 @@ function DaftarBarang() {
   };
 
   return (
-    <div className="w-full space-y-3">
+    <div className={`w-full space-y-4 ${selectedCount > 0 ? "pb-44 sm:pb-24" : ""}`}>
       <BarangTabs />
 
       <HeaderSection
-        totalBarang={totalBarang}
+        totalBarang={summary?.total ?? totalBarang}
         isExporting={isExporting}
         exportDisabled={isSearchMode}
         exportDisabledReason="Export tidak mendukung pencarian — gunakan filter"
@@ -741,105 +948,85 @@ function DaftarBarang() {
         totalPages={totalPages}
         hasActiveFilters={hasActiveFilters}
         hanyaPernahRetur={hanyaPernahRetur}
-        onPernahReturChange={resetPage(setHanyaPernahRetur)}
+        onPernahReturChange={resetFilter(setHanyaPernahRetur)}
         tanpaDus={tanpaDus}
-        onTanpaDusChange={resetPage(setTanpaDus)}
+        onTanpaDusChange={resetFilter(setTanpaDus)}
         gudangFilter={gudangFilter}
         gudangOptions={gudangOptions.map((g) => ({ id: g.id, nama: `${g.kode} - ${g.name}` }))}
-        onGudangChange={resetPage(setGudangFilter)}
+        onGudangChange={resetFilter(setGudangFilter)}
         tanpaGudang={tanpaGudang}
-        onTanpaGudangChange={resetPage(setTanpaGudang)}
+        onTanpaGudangChange={resetFilter(setTanpaGudang)}
         searchDisabled={hasOtherFilters}
         searchHint="Pencarian dinonaktifkan saat filter lain dipakai"
         variantError={productsError}
+        activeFilterChips={activeFilterChips}
         onSearchChange={resetPage(setSearch)}
-        onStatusChange={resetPage(setStatusFilter)}
-        onVariantChange={resetPage(setVariantFilter)}
-        onStyleChange={resetPage(setStyleFilter)}
-        onColorChange={resetPage(setColorFilter)}
-        onSizeChange={resetPage(setSizeFilter)}
+        onStatusChange={resetFilter(setStatusFilter)}
+        onVariantChange={resetFilter(setVariantFilter)}
+        onStyleChange={resetFilter(setStyleFilter)}
+        onColorChange={resetFilter(setColorFilter)}
+        onSizeChange={resetFilter(setSizeFilter)}
         onDatePresetChange={setDatePreset}
-        onTanggalAwalChange={resetPage(setTanggalAwal)}
-        onTanggalAkhirChange={resetPage(setTanggalAkhir)}
+        onTanggalAwalChange={resetFilter(setTanggalAwal)}
+        onTanggalAkhirChange={resetFilter(setTanggalAkhir)}
         onResetFilters={handleResetFilters}
       />
 
-      {summary && (
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total" value={summary.total.toLocaleString("id-ID")} />
-          <StatCard label="REGISTER" value={summary.REGISTER.toLocaleString("id-ID")} />
-          <StatCard label="FINISHGOOD" value={summary.FINISHGOOD.toLocaleString("id-ID")} />
-          <StatCard label="RETUR / OUT / BAD" value={(summary.RETUR + summary.OUT + summary.BAD).toLocaleString("id-ID")} />
-        </section>
-      )}
-
-      {selectedCount > 0 && (
-        <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-[#00A8E8]/30 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur sm:top-16">
-          <span className="text-sm font-semibold text-[#1E3A5F]">{selectedCount} dipilih</span>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <button type="button" onClick={() => setSelectedIds(new Set())} className={`${BTN_GHOST} h-9`}>
-              Batal
-            </button>
-            <button type="button" onClick={handleBulkExport} className={`${BTN_GHOST} h-9`}>
-              Export
-            </button>
-            {canUbahStatus && (
-              <button type="button" onClick={openBulkEdit} className={`${BTN_PRIMARY} h-9`}>
-                Edit massal
-              </button>
-            )}
-            {canMutasi && (
-              <button type="button" onClick={openBulkMutasi} className={`${BTN_PRIMARY} h-9`}>
-                Mutasi massal
-              </button>
-            )}
-            {canKelola && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCrudError(null);
-                  setPendingDelete({ kind: "bulk" });
-                }}
-                className={`${BTN_DANGER} h-9`}
-              >
-                Hapus
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <RekapSection
+        summary={summary}
+        loading={summaryLoading}
+        error={summaryError}
+        statusOptions={statusOptions}
+        activeStatus={statusFilter}
+        onStatusSelect={handleStatusFilter}
+        onRetry={() => {
+          setSummaryLoading(true);
+          void loadSummary();
+        }}
+      />
 
       {isLoading ? (
-        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Memuat data barang">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="flex animate-pulse gap-4 py-2">
-              <div className="h-4 w-8 rounded bg-slate-200" />
-              <div className="h-4 flex-1 rounded bg-slate-200" />
-              <div className="h-4 w-24 rounded bg-slate-100" />
-            </div>
-          ))}
-        </div>
+        <TableSkeleton />
       ) : error ? (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-[#EF4444]">
-          {error}
-          <button type="button" onClick={load} className={`${BTN_GHOST} h-9`}>
+        <section role="alert" className="flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-white px-6 py-12 text-center shadow-sm">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-red-50 text-red-500" aria-hidden="true">
+            <FontAwesomeIcon icon={faTriangleExclamation} className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">Data barang gagal dimuat</h2>
+            <p className="mt-1 max-w-md text-sm text-slate-500">{error}</p>
+          </div>
+          <button type="button" onClick={() => void load()} className={BTN_GHOST}>
+            <FontAwesomeIcon icon={faRotate} className="h-3.5 w-3.5" aria-hidden="true" />
             Coba lagi
           </button>
-        </div>
+        </section>
       ) : barang.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-          <p className="font-semibold text-slate-700">{hasActiveFilters ? "Tidak ada hasil" : "Belum ada data barang"}</p>
-          <p className="mx-auto mt-1 max-w-xs text-sm text-slate-500">
-            {hasActiveFilters ? "Ubah kata kunci atau reset filter." : "Tambahkan barang pertama untuk mulai mengelola inventory."}
+        <section className="rounded-2xl border border-slate-200 bg-white px-6 py-14 text-center shadow-sm">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-400" aria-hidden="true">
+            <FontAwesomeIcon icon={faBoxOpen} className="h-5 w-5" />
+          </span>
+          <h2 className="mt-3 text-base font-semibold text-slate-800">
+            {hasActiveFilters ? "Tidak ada barang yang cocok" : "Belum ada data barang"}
+          </h2>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+            {hasActiveFilters
+              ? "Coba longgarkan filter atau hapus kata kunci pencarian yang sedang aktif."
+              : "Tambahkan barang pertama untuk mulai mengelola inventori produksi."}
           </p>
-          {(!hasActiveFilters && !canKelola) ? null : (
-            <button type="button" onClick={hasActiveFilters ? handleResetFilters : openCreate} className={`${hasActiveFilters ? BTN_GHOST : BTN_PRIMARY} mt-4`}>
-              {hasActiveFilters ? "Reset filter" : "+ Tambah barang"}
+          {!hasActiveFilters && !canKelola ? null : (
+            <button
+              type="button"
+              onClick={hasActiveFilters ? handleResetFilters : openCreate}
+              className={`${hasActiveFilters ? BTN_GHOST : BTN_PRIMARY} mt-4`}
+            >
+              <FontAwesomeIcon icon={hasActiveFilters ? faXmark : faPlus} className="h-3.5 w-3.5" aria-hidden="true" />
+              {hasActiveFilters ? "Reset filter" : "Tambah barang"}
             </button>
           )}
-        </div>
+        </section>
       ) : (
-        <section className="space-y-3">
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <BarangTable
             barang={barang}
             currentPage={page}
@@ -851,40 +1038,112 @@ function DaftarBarang() {
             onToggle={toggleSelect}
             onToggleAll={toggleSelectAll}
             onRowClick={setSelectedBarang}
-            onEdit={canKelola ? openEdit : undefined}
-            onDelete={canKelola ? (b) => {
-              setCrudError(null);
-              setPendingDelete({ kind: "single", barang: b });
-            } : undefined}
+            onEdit={
+              canKelola
+                ? openEdit
+                : undefined
+            }
+            onDelete={
+              canKelola
+                ? (b) => {
+                    setCrudError(null);
+                    setPendingDelete({ kind: "single", barang: b });
+                  }
+                : undefined
+            }
             onMutasi={canMutasi ? openMutasi : undefined}
             onRiwayat={setRiwayatBarang}
             formatDate={formatDate}
             formatRelativeTime={formatRelativeTime}
+            onRefresh={refreshAll}
+            footer={
+              !isSearchMode ? (
+                <>
+                  <label className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    Baris
+                    <select
+                      value={String(pageSize)}
+                      onChange={(e) => {
+                        setPageSize(e.target.value === "all" ? "all" : Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#00A8E8] focus:ring-2 focus:ring-[#00A8E8]/20"
+                    >
+                      {[20, 50, 100].map((size) => (
+                        <option key={size} value={String(size)}>
+                          {size}
+                        </option>
+                      ))}
+                      <option value="all">Semua ({totalBarang.toLocaleString("id-ID")})</option>
+                    </select>
+                  </label>
+                  <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+                </>
+              ) : undefined
+            }
           />
-          {!isSearchMode && (
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
-              <label className="flex items-center gap-2 text-sm text-slate-500">
-                Per halaman
-                <select
-                  value={String(pageSize)}
-                  onChange={(e) => {
-                    setPageSize(e.target.value === "all" ? "all" : Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:border-[#00A8E8] focus:outline-none"
-                >
-                  {[20, 50, 100].map((n) => (
-                    <option key={n} value={String(n)}>
-                      {n}
-                    </option>
-                  ))}
-                  <option value="all">Semua ({totalBarang.toLocaleString("id-ID")})</option>
-                </select>
-              </label>
-              {totalPages > 1 && <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
-            </div>
-          )}
         </section>
+      )}
+
+      {selectedCount > 0 && (
+        <div
+          role="region"
+          aria-label="Aksi untuk barang terpilih"
+          className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4"
+        >
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-[0_18px_40px_-18px_rgba(15,23,42,0.45)] backdrop-blur sm:flex-row sm:items-center sm:gap-3 sm:px-3">
+            <div className="flex min-w-0 items-center gap-2 px-1">
+              <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-[#00A8E8]/10 px-1.5 text-[11px] font-bold tabular-nums text-[#0088C0]">
+                {selectedCount.toLocaleString("id-ID")}
+              </span>
+              <span className="truncate text-xs font-semibold text-slate-800">barang dipilih</span>
+              {selectedCount < barang.length && (
+                <button
+                  type="button"
+                  onClick={() => toggleSelectAll(true)}
+                  className="shrink-0 text-[11px] font-semibold text-[#0088C0] transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8E8]/50"
+                >
+                  Pilih semua {barang.length}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+              <button type="button" onClick={() => setSelectedIds(new Set())} className={BAR_GHOST}>
+                <FontAwesomeIcon icon={faXmark} className="h-3 w-3" aria-hidden="true" />
+                Batal
+              </button>
+              <button type="button" onClick={handleBulkExport} className={BAR_GHOST}>
+                <FontAwesomeIcon icon={faDownload} className="h-3 w-3" aria-hidden="true" />
+                Export
+              </button>
+              {canUbahStatus && (
+                <button type="button" onClick={openBulkEdit} className={BAR_PRIMARY}>
+                  <FontAwesomeIcon icon={faPenToSquare} className="h-3 w-3" aria-hidden="true" />
+                  Edit massal
+                </button>
+              )}
+              {canMutasi && (
+                <button type="button" onClick={openBulkMutasi} className={BAR_PRIMARY}>
+                  <FontAwesomeIcon icon={faArrowsLeftRight} className="h-3 w-3" aria-hidden="true" />
+                  Mutasi
+                </button>
+              )}
+              {canKelola && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCrudError(null);
+                    setPendingDelete({ kind: "bulk" });
+                  }}
+                  className={BAR_DANGER}
+                >
+                  <FontAwesomeIcon icon={faTrashCan} className="h-3 w-3" aria-hidden="true" />
+                  Hapus
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedBarang && (
@@ -901,7 +1160,18 @@ function DaftarBarang() {
 
       {riwayatBarang && <RiwayatModal barangId={riwayatBarang.id} kodeBarang={riwayatBarang.kodeBarang} onClose={() => setRiwayatBarang(null)} />}
 
-      <BarangImportModal open={showImport} onClose={() => setShowImport(false)} variantOptions={formVariantOptions} onImported={() => (page === 1 ? load() : setPage(1))} />
+      <BarangImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        variantOptions={formVariantOptions}
+        onImported={() => {
+          if (page === 1) refreshAll();
+          else {
+            setPage(1);
+            void loadSummary();
+          }
+        }}
+      />
 
       {formMode && (
         <Modal
