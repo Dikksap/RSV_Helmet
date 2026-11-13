@@ -4,9 +4,11 @@ import {
   createWipRejectHandler,
   createWipRejectReasonHandler,
   createWipRejectRepairAttemptHandler,
+  listRoutingsHandler,
   listWipRejectOptionsHandler,
   listWipRejectReasonsHandler,
   listWipRejectsHandler,
+  replaceRoutingHandler,
   reviewWipRejectRepairHandler,
 } from "../controller/quality/quality.js";
 import { authenticate, authorize, requirePermission } from "../middleware/auth.js";
@@ -26,4 +28,17 @@ router.post(
   requirePermission("QUALITY_FINALIZE"),
   reviewWipRejectRepairHandler,
 );
+
+// Routing produksi: dibutuhkan agar posting HP dapat divalidasi tanpa seed/DB manual.
+router.get(
+  "/routings",
+  requirePermission("QUALITY_VIEW", "QUALITY_INSPECT", "BOM_KELOLA"),
+  listRoutingsHandler,
+);
+router.put(
+  "/routings",
+  requirePermission("QUALITY_ROUTING_MANAGE", "BOM_KELOLA"),
+  replaceRoutingHandler,
+);
+
 export default router;

@@ -9,9 +9,13 @@
     "test:watch": "vitest",
     "start": "node dist/api/index.js",
     "db:migrate": "docker exec -it backend-api-1 npx prisma migrate dev",
+    "db:migrate:deploy": "docker exec backend-api-1 npx prisma migrate deploy",
+    "db:status": "docker exec backend-api-1 npx prisma migrate status",
     "db:push": "docker exec -it backend-api-1 npx prisma db push",
     "db:studio": "docker exec -it backend-api-1 npx prisma studio",
     "db:seed": "docker exec -it backend-api-1 npx prisma db seed",
+    "verify:reports": "docker exec backend-api-1 npx tsx scripts/smoke-reports.ts",
+    "verify:e2e": "docker exec backend-api-1 npx tsx scripts/e2e-hp-finishgood.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },

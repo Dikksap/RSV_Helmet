@@ -30,6 +30,9 @@ import bomRouter from "./routes/bom.js";
 import notificationsRouter from "./routes/notifications.js";
 import inventoryRouter from "./routes/inventory.js";
 import produksiHarianRouter from "./routes/produksi-harian.js";
+import hasilProduksiHarianRouter from "./routes/hasil-produksi-harian.js";
+import wipTransferRouter from "./routes/wip-transfer.js";
+import reportsRouter from "./routes/reports.js";
 import qualityRouter from "./routes/quality.js";
 
 dotenv.config();
@@ -74,6 +77,10 @@ app.use("/api/bom", bomRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/produksi-harian", produksiHarianRouter);
+// Jalur kanonik posting produksi per divisi (menggantikan posting PH).
+app.use("/api/hasil-produksi-harian", hasilProduksiHarianRouter);
+app.use("/api/wip-transfer", wipTransferRouter);
+app.use("/api/reports", reportsRouter);
 app.use("/api/quality", qualityRouter);
 
 

@@ -46,16 +46,19 @@ describe("bolehApprove", () => {
     ).toBe(true);
   });
 
-  it("non-admin butuh KELOLA_ITEM dan divisi approver yang sama", () => {
-    expect(bolehApprove({ divisiApproverId: 3 }, aktor())).toBe(true);
+  it("role gudang atau admin boleh approve", () => {
     expect(
-      bolehApprove({ divisiApproverId: 3 }, aktor({ punyaKelolaItem: false })),
-    ).toBe(false);
-    expect(bolehApprove({ divisiApproverId: 4 }, aktor())).toBe(false);
+      bolehApprove(
+        { divisiApproverId: 3 },
+        aktor({ role: "gudang", isAdmin: false }),
+      ),
+    ).toBe(true);
     expect(
-      bolehApprove({ divisiApproverId: 3 }, aktor({ divisiId: null })),
+      bolehApprove(
+        { divisiApproverId: 3 },
+        aktor({ role: "operator", isAdmin: false }),
+      ),
     ).toBe(false);
-    expect(bolehApprove({ divisiApproverId: null }, aktor())).toBe(false);
   });
 });
 
@@ -73,7 +76,7 @@ describe("masalahApprove", () => {
     ).toContain("belum dipetakan");
   });
 
-  it("admin boleh menyetujui item beda divisi", () => {
+  it("admin atau gudang boleh menyetujui jika item sudah dipetakan", () => {
     expect(
       masalahApprove(
         record,
@@ -84,7 +87,7 @@ describe("masalahApprove", () => {
     ).toBeNull();
   });
 
-  it("non-admin ditolak jika item berasal dari divisi lain", () => {
+  it("menolak jika user bukan admin atau gudang", () => {
     expect(
       masalahApprove(
         record,
@@ -92,28 +95,6 @@ describe("masalahApprove", () => {
         false,
         true,
       ),
-    ).toContain("tidak berasal dari divisi approver");
-  });
-
-  it("item tanpa divisi boleh jika peminta sama dengan approver", () => {
-    expect(
-      masalahApprove(
-        { divisiPemintaId: 3, divisiApproverId: 3 },
-        [item({ item: { ...item().item!, divisiId: null } })],
-        false,
-        true,
-      ),
-    ).toBeNull();
-  });
-
-  it("non-admin tanpa divisi approver selalu ditolak", () => {
-    expect(
-      masalahApprove(
-        { divisiPemintaId: 2, divisiApproverId: null },
-        [item()],
-        false,
-        true,
-      ),
-    ).toContain("hanya admin");
+    ).toContain("Hanya role gudang atau admin");
   });
 });

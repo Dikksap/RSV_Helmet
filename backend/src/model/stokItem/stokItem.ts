@@ -40,7 +40,9 @@ export class StokKurangError extends Error {
   }
 }
 
-// Saldo = SUM(MASUK) - SUM(KELUAR). Dihitung dari ledger, tidak ada kolom stok.
+// Saldo legacy = SUM(MASUK) - SUM(KELUAR) pada `StokItemMutasi`.
+// HANYA untuk membaca histori lama; bukan saldo operasional. Saldo operasional
+// adalah total `StockBalance` (lihat getItemStockTotal di model inventory).
 export async function getSaldo(itemId: number, tx: PrismaTransactionClient | typeof prisma = prisma): Promise<number> {
   const rows = await tx.stokItemMutasi.groupBy({
     by: ["tipe"],
@@ -112,8 +114,14 @@ export async function getRingkasanBulk(
   return out;
 }
 
+/**
+ * @deprecated Ledger L1 (`StokItemMutasi`) DIBEKUKAN. Fungsi ini hanya
+ * dipertahankan untuk kompatibilitas modul lama dan TIDAK lagi mengubah
+ * `Item.stok`. Gunakan `postInventoryMovementInTransaction` (ledger lokasi)
+ * untuk seluruh posting baru. Jangan menambah pemanggil baru.
+ */
 export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasiInput) {
-  const mutasi = await tx.stokItemMutasi.create({
+  return tx.stokItemMutasi.create({
     data: {
       itemId: input.itemId,
       tipe: input.tipe,
@@ -126,14 +134,6 @@ export async function catatMutasi(tx: PrismaTransactionClient, input: StokMutasi
       ...(input.tanggal ? { tanggal: input.tanggal } : {}),
     },
   });
-  if (input.syncStok !== false) {
-    await syncItemStok(
-      tx,
-      input.itemId,
-      input.tipe === TipeStokItem.MASUK ? input.jumlah : -input.jumlah,
-    );
-  }
-  return mutasi;
 }
 
 function awalHari(tanggal: Date): Date {

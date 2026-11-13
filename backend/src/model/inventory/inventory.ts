@@ -13,6 +13,7 @@ export class InventoryError extends Error {
       | "IDEMPOTENCY_CONFLICT"
       | "MOVEMENT_NOT_FOUND"
       | "ALREADY_REVERSED"
+      | "MOVEMENT_HAS_DEPENDENCY"
       | "SCOPE_DENIED"
       | "ADJUSTMENT_NOT_FOUND"
       | "ADJUSTMENT_ALREADY_REVIEWED"
@@ -337,7 +338,6 @@ export async function transferItemStock(
   return postInventoryMovementInTransaction(tx, {
     ...input,
     type: "TRANSFER",
-    syncItemStok: true,
   });
 }
 
@@ -553,11 +553,79 @@ export async function consumeItemAtLocation(
       reason: input.reason ?? null,
       userId: input.userId ?? null,
       occurredAt: input.occurredAt,
-      syncItemStok: true,
     });
     sisa -= pakai;
   }
   return tersedia - input.quantity;
+}
+
+/**
+ * Terima material di lokasi divisi: debit lokasi asal (lintas lot), kredit lot
+ * WIP baru di lokasi divisi. Lot dan StockBalance selalu bergerak bersama
+ * sehingga WIP tidak lagi menjadi saldo "paralel" yang tidak terlihat ledger.
+ */
+export async function receiveItemToDivision(
+  tx: PrismaTransactionClient,
+  input: {
+    itemId: number;
+    fromLocationId: number;
+    toLocationId: number;
+    pemakaianMaterialItemId?: number | null;
+    quantity: number;
+    idempotencyKey: string;
+    sourceType: string;
+    sourceId: string;
+    reason?: string | null;
+    userId?: number | null;
+    occurredAt?: Date;
+    hasilProduksiHarianId?: number | null;
+  },
+) {
+  if (input.fromLocationId === input.toLocationId) {
+    throw new InventoryError("INVALID_MOVEMENT", "Lokasi asal dan tujuan harus berbeda");
+  }
+  await consumeItemAtLocation(tx, {
+    itemId: input.itemId,
+    locationId: input.fromLocationId,
+    quantity: input.quantity,
+    idempotencyKey: `${input.idempotencyKey}:out`,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    reason: input.reason ?? null,
+    userId: input.userId ?? null,
+    occurredAt: input.occurredAt,
+    movementType: "TRANSFER",
+  });
+  return postInventoryMovementInTransaction(tx, {
+    itemId: input.itemId,
+    ...(input.pemakaianMaterialItemId != null
+      ? { pemakaianMaterialItemId: input.pemakaianMaterialItemId }
+      : {}),
+    ...(input.hasilProduksiHarianId != null
+      ? { hasilProduksiHarianId: input.hasilProduksiHarianId }
+      : {}),
+    toLocationId: input.toLocationId,
+    type: "TRANSFER",
+    quantity: input.quantity,
+    idempotencyKey: `${input.idempotencyKey}:in`,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    reason: input.reason ?? null,
+    userId: input.userId ?? null,
+    occurredAt: input.occurredAt,
+  });
+}
+
+/** Saldo proyeksi satu item = total StockBalance seluruh lokasi aktif. */
+export async function getItemStockTotal(
+  tx: PrismaTransactionClient | typeof prisma,
+  itemId: number,
+): Promise<number> {
+  const row = await tx.stockBalance.aggregate({
+    where: { itemId, location: { isActive: true } },
+    _sum: { quantity: true },
+  });
+  return Number(row._sum.quantity ?? 0);
 }
 
 export async function getInventoryBalances(filters: {
@@ -911,7 +979,6 @@ export async function approveStockAdjustment(
       sourceId: String(adjustment.id),
       reason: adjustment.reason,
       userId: reviewerId,
-      syncItemStok: true,
     });
     await tx.stockAdjustment.update({
       where: { id: adjustment.id },
@@ -999,6 +1066,7 @@ export type InventoryMovementInput = {
   toLocationId?: number | null;
   pemakaianMaterialItemId?: number | null;
   hasilProduksiHarianId?: number | null;
+  hasilProduksiHarianItemId?: number | null;
   produksiHarianId?: number | null;
   type:
     | "OPENING"
@@ -1018,8 +1086,6 @@ export type InventoryMovementInput = {
   reason?: string | null;
   userId?: number | null;
   occurredAt?: Date;
-  /** Perbarui Item.stok untuk pergerakan satu arah. Transfer tidak mengubah total. */
-  syncItemStok?: boolean;
 };
 
 export async function postInventoryMovement(input: InventoryMovementInput) {
@@ -1074,6 +1140,18 @@ export async function reverseInventoryMovement(
           "MOVEMENT_NOT_FOUND",
           "Mutasi tidak ditemukan",
         );
+      if (original.hasilProduksiHarianId !== null || original.produksiHarianId !== null) {
+        throw new InventoryError(
+          "MOVEMENT_HAS_DEPENDENCY",
+          "Mutasi berasal dari transaksi produksi; koreksi harus melalui pembalik transaksi produksi",
+        );
+      }
+      if (original.sourceType === "STOCK_ADJUSTMENT") {
+        throw new InventoryError(
+          "MOVEMENT_HAS_DEPENDENCY",
+          "Mutasi hasil adjustment tidak dapat dibalik langsung; ajukan adjustment koreksi",
+        );
+      }
       if (divisiId !== undefined) {
         const locationIds = [
           original.fromLocationId,
@@ -1258,6 +1336,7 @@ async function createMovement(
       toLocationId: input.toLocationId ?? null,
       pemakaianMaterialItemId: input.pemakaianMaterialItemId ?? null,
       hasilProduksiHarianId: input.hasilProduksiHarianId ?? null,
+      hasilProduksiHarianItemId: input.hasilProduksiHarianItemId ?? null,
       produksiHarianId: input.produksiHarianId ?? null,
       type: input.type,
       quantity: input.quantity,
@@ -1288,7 +1367,9 @@ async function createMovement(
     });
   }
 
-  if (input.syncItemStok && input.itemId != null) {
+  // Proyeksi Item.stok: SATU penulis (ledger lokasi). Gerakan satu arah
+  // (masuk saja / keluar saja) menggeser total; transfer dua lokasi tidak.
+  if (input.itemId != null) {
     const oneWay = (input.fromLocationId == null) !== (input.toLocationId == null);
     if (oneWay) {
       await syncItemStok(

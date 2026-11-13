@@ -57,7 +57,9 @@ function serialize(value: unknown): unknown {
 function respondError(res: Response, error: unknown) {
   if (error instanceof ProduksiHarianError || error instanceof InventoryError) {
     const status =
-      error.code === "STOK_TIDAK_CUKUP" || error.code === "INSUFFICIENT_STOCK"
+      error.code === "PH_DINONAKTIFKAN"
+        ? 409
+        : error.code === "STOK_TIDAK_CUKUP" || error.code === "INSUFFICIENT_STOCK"
         ? 409
         : error.code === "GUDANG_JENIS_TIDAK_DIIZINKAN"
           ? 409

@@ -44,7 +44,9 @@ export async function bulkScanBarangHandler(req: Request, res: Response) {
       });
     }
 
-    const result = await bulkScanBarang(kodeBarang, status, keterangan);
+    const result = await bulkScanBarang(kodeBarang, status, keterangan, {
+      userId: req.user?.id ?? null,
+    });
 
     for (const barang of result.success) {
       await broadcast({

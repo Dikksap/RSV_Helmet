@@ -289,6 +289,8 @@ export default function StokItem() {
       const hasil = await getStokItem(itemId, p, 20, {
         ...(f.dari ? { dari: f.dari } : {}),
         ...(f.sampai ? { sampai: f.sampai } : {}),
+        // Kartu ini khusus ledger legacy; baris ledger lokasi ada di kartu Gerakan Inventory.
+        sumber: "LEGACY",
       });
       if (stokRequest.current !== permintaan) return;
       setData(hasil);
@@ -474,6 +476,7 @@ export default function StokItem() {
       const semua = await listSemuaRiwayatStokItem(item.id, {
         ...(filter.dari ? { dari: filter.dari } : {}),
         ...(filter.sampai ? { sampai: filter.sampai } : {}),
+        sumber: "LEGACY",
       });
       if (semua.length === 0) {
         setExportError("Tidak ada riwayat pada rentang tanggal tersebut.");
@@ -485,7 +488,7 @@ export default function StokItem() {
         : "semua-tanggal";
       const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       downloadCsv(`stok-${kodeFile}-${rentangFile}-${stamp}.csv`, [
-        ["Kode", "Nama", "Unit", "Tanggal", "Tipe", "Jumlah", "Keterangan"],
+        ["Kode", "Nama", "Unit", "Tanggal", "Tipe", "Jumlah", "Keterangan", "Sumber"],
         ...semua.map((m: StokMutasiRecord) => [
           item.kode,
           item.nama,
@@ -494,6 +497,7 @@ export default function StokItem() {
           tipeLabel(m.tipe),
           m.jumlah,
           m.keterangan ?? "",
+          m.sumber ?? "LEGACY",
         ]),
       ]);
       tampilkanToast(`Laporan CSV berhasil diunduh (${semua.length.toLocaleString("id-ID")} catatan).`);
@@ -867,6 +871,11 @@ export default function StokItem() {
                     ? `${totalRiwayat.toLocaleString("id-ID")} catatan historis${filterAktif ? " sesuai filter tanggal" : ""}`
                     : "Riwayat transaksi sebelum pencatatan Inventory per gudang."}
                 </p>
+                {data?.riwayat.meta.truncated && (
+                  <p className="mt-1 text-[13px] font-semibold text-[#92400E]">
+                    Histori melebihi batas tampil server; persempit rentang tanggal untuk melihat catatan lain.
+                  </p>
+                )}
               </div>
               <button
                 type="button"

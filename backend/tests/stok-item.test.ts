@@ -2,31 +2,51 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
-vi.mock("../src/model/stokItem/stokItem.js", () => ({
-  catatMutasi: vi.fn(),
-  getSaldo: vi.fn(),
-  getSaldoBulk: vi.fn(),
-  getRingkasanBulk: vi.fn(),
-  listMutasiItem: vi.fn(),
-  lockItem: vi.fn(),
-  StokKurangError: class StokKurangError extends Error {
+const prismaMock = vi.hoisted(() => ({
+  $transaction: vi.fn(),
+  stokItemMutasi: { findMany: vi.fn() },
+  inventoryMovement: { findMany: vi.fn() },
+}));
+
+const inventoryMock = vi.hoisted(() => {
+  class InventoryError extends Error {
+    constructor(public readonly code: string, message: string) {
+      super(message);
+      this.name = "InventoryError";
+    }
+  }
+  return {
+    InventoryError,
+    postInventoryMovementInTransaction: vi.fn(),
+    getItemStockTotal: vi.fn(),
+    getItemStockAtLocation: vi.fn(),
+    getInventoryItemTotals: vi.fn(),
+    getInventoryItemSummary: vi.fn(),
+    getItemWarehouseBalances: vi.fn(),
+    getWarehouseItemBalances: vi.fn(),
+    transferItemBetweenWarehouses: vi.fn(),
+  };
+});
+
+const stokMock = vi.hoisted(() => {
+  class StokKurangError extends Error {
     readonly code = "STOK_KURANG";
     constructor(readonly itemId: number, readonly tersedia: number) {
       super(`Stok item ${itemId} tidak cukup (tersedia ${tersedia}).`);
     }
-  },
-}));
+  }
+  return { lockItem: vi.fn(), StokKurangError };
+});
 
 vi.mock("../src/model/item/item.js", () => ({
   getItemById: vi.fn(),
   listItems: vi.fn(),
 }));
 
-vi.mock("../src/lib/prisma.js", () => ({
-  default: {
-    $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
-  },
-}));
+vi.mock("../src/model/inventory/inventory.js", () => inventoryMock);
+vi.mock("../src/model/stokItem/stokItem.js", () => stokMock);
+
+vi.mock("../src/lib/prisma.js", () => ({ default: prismaMock }));
 
 vi.mock("../src/middleware/auth.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/middleware/auth.js")>();
@@ -38,213 +58,198 @@ vi.mock("../src/middleware/auth.js", async (importOriginal) => {
     },
     adminOnly: (_req: any, _res: any, next: any) => next(),
     authorize: (req: any, _res: any, next: any) => {
-      req.access = { role: "user", permissions: ["KELOLA_ITEM"], statusView: null };
+      req.access = { role: "admin", permissions: ["KELOLA_ITEM"], statusView: null };
       next();
     },
   };
 });
 
 import itemRouter from "../src/routes/item.js";
-import { catatMutasi, getSaldo, getSaldoBulk, getRingkasanBulk, listMutasiItem } from "../src/model/stokItem/stokItem.js";
 import { getItemById } from "../src/model/item/item.js";
 
 const mocked = {
-  catatMutasi: vi.mocked(catatMutasi),
-  getSaldo: vi.mocked(getSaldo),
-  getSaldoBulk: vi.mocked(getSaldoBulk),
-  getRingkasanBulk: vi.mocked(getRingkasanBulk),
-  listMutasiItem: vi.mocked(listMutasiItem),
   getItemById: vi.mocked(getItemById),
+  getItemStockTotal: vi.mocked(inventoryMock.getItemStockTotal),
+  getItemStockAtLocation: vi.mocked(inventoryMock.getItemStockAtLocation),
+  postMovement: vi.mocked(inventoryMock.postInventoryMovementInTransaction),
+  totals: vi.mocked(inventoryMock.getInventoryItemTotals),
+  summary: vi.mocked(inventoryMock.getInventoryItemSummary),
+  lockItem: vi.mocked(stokMock.lockItem),
 };
 
 const app = express();
 app.use(express.json());
 app.use("/api/items", itemRouter);
 
-const item = { id: 1, kode: "MSK", nama: "Masker", unit: "pcs", divisi: null };
+const item = {
+  id: 1,
+  kode: "MSK",
+  nama: "Masker",
+  unit: "pcs",
+  divisi: null,
+  defaultInventoryLocationId: 3,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prismaMock.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn({}));
+  prismaMock.stokItemMutasi.findMany.mockResolvedValue([]);
+  prismaMock.inventoryMovement.findMany.mockResolvedValue([]);
+  mocked.getItemStockTotal.mockResolvedValue(25);
+  mocked.postMovement.mockResolvedValue({
+    id: 11,
+    itemId: 1,
+    fromLocationId: null,
+    toLocationId: 3,
+    quantity: 20,
+    reason: null,
+    userId: 1,
+    occurredAt: new Date("2026-10-01T00:00:00.000Z"),
+  });
 });
 
-describe("POST /api/items/:id/stok", () => {
-  it("201 mencatat MASUK dan mengembalikan saldo baru", async () => {
+describe("POST /api/items/:id/stok (ledger lokasi)", () => {
+  it("201 mencatat MASUK pada ledger inventory dan mengembalikan saldo proyeksi", async () => {
     mocked.getItemById.mockResolvedValue(item as never);
-    mocked.catatMutasi.mockResolvedValue({ id: 1, tipe: "MASUK", jumlah: 20 } as never);
-    mocked.getSaldo.mockResolvedValue(25 as never);
 
     const res = await request(app).post("/api/items/1/stok").send({ jumlah: 20 });
 
     expect(res.status).toBe(201);
     expect(res.body.saldo).toBe(25);
-    expect(mocked.catatMutasi).toHaveBeenCalledWith(
+    expect(res.body.mutasi).toMatchObject({ tipe: "MASUK", jumlah: 20, sumber: "INVENTORY" });
+    expect(res.body.mutasi.id).toBeLessThan(0);
+    expect(mocked.postMovement).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ itemId: 1, tipe: "MASUK", jumlah: 20, userId: 1 }),
+      expect.objectContaining({
+        itemId: 1,
+        toLocationId: 3,
+        type: "OPENING",
+        quantity: 20,
+        userId: 1,
+        sourceType: "MANUAL_ITEM_IN",
+      }),
     );
+  });
+
+  it("409 jika item belum punya lokasi default (tidak menebak lokasi)", async () => {
+    mocked.getItemById.mockResolvedValue({ ...item, defaultInventoryLocationId: null } as never);
+
+    const res = await request(app).post("/api/items/1/stok").send({ jumlah: 5 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("LOCATION_NOT_FOUND");
+    expect(mocked.postMovement).not.toHaveBeenCalled();
   });
 
   it("400 jika jumlah 0, negatif, atau bukan bilangan bulat", async () => {
     expect((await request(app).post("/api/items/1/stok").send({ jumlah: 0 })).status).toBe(400);
     expect((await request(app).post("/api/items/1/stok").send({ jumlah: -3 })).status).toBe(400);
     expect((await request(app).post("/api/items/1/stok").send({ jumlah: 1.5 })).status).toBe(400);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
+    expect(mocked.postMovement).not.toHaveBeenCalled();
   });
 
-  it("201 meneruskan tanggal transaksi kustom ke model", async () => {
+  it("meneruskan tanggal bisnis kustom dan menolak tanggal masa depan", async () => {
     mocked.getItemById.mockResolvedValue(item as never);
-    mocked.catatMutasi.mockResolvedValue({ id: 4, tipe: "MASUK", jumlah: 5 } as never);
-    mocked.getSaldo.mockResolvedValue(30 as never);
 
-    const res = await request(app).post("/api/items/1/stok").send({ jumlah: 5, tanggal: "2026-10-01" });
+    const ok = await request(app).post("/api/items/1/stok").send({ jumlah: 5, tanggal: "2026-10-01" });
+    expect(ok.status).toBe(201);
+    const input = mocked.postMovement.mock.calls[0][1] as { occurredAt?: Date };
+    expect(input.occurredAt?.getTime()).toBe(new Date("2026-10-01T00:00:00+07:00").getTime());
 
-    expect(res.status).toBe(201);
-    const input = mocked.catatMutasi.mock.calls[0][1] as { tanggal?: Date };
-    expect(input.tanggal).toBeInstanceOf(Date);
-    expect([input.tanggal?.getFullYear(), (input.tanggal?.getMonth() ?? 0) + 1, input.tanggal?.getDate()]).toEqual([2026, 10, 1]);
-  });
-
-  it("201 tanpa tanggal memakai default database", async () => {
-    mocked.getItemById.mockResolvedValue(item as never);
-    mocked.catatMutasi.mockResolvedValue({ id: 5, tipe: "MASUK", jumlah: 5 } as never);
-    mocked.getSaldo.mockResolvedValue(35 as never);
-
-    const res = await request(app).post("/api/items/1/stok").send({ jumlah: 5 });
-
-    expect(res.status).toBe(201);
-    const input = mocked.catatMutasi.mock.calls[0][1] as { tanggal?: Date };
-    expect("tanggal" in input).toBe(false);
-  });
-
-  it("400 jika tanggal invalid atau melebihi hari ini", async () => {
-    mocked.getItemById.mockResolvedValue(item as never);
     const besok = new Date();
     besok.setDate(besok.getDate() + 1);
     const isoBesok = `${besok.getFullYear()}-${String(besok.getMonth() + 1).padStart(2, "0")}-${String(besok.getDate()).padStart(2, "0")}`;
-
-    expect((await request(app).post("/api/items/1/stok").send({ jumlah: 5, tanggal: "15-10-2026" })).status).toBe(400);
     expect((await request(app).post("/api/items/1/stok").send({ jumlah: 5, tanggal: isoBesok })).status).toBe(400);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
+    expect((await request(app).post("/api/items/1/stok").send({ jumlah: 5, tanggal: "15-10-2026" })).status).toBe(400);
   });
 
   it("404 jika item tidak ada", async () => {
     mocked.getItemById.mockResolvedValue(null as never);
-    const res = await request(app).post("/api/items/99/stok").send({ jumlah: 5 });
-    expect(res.status).toBe(404);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
+    expect((await request(app).post("/api/items/99/stok").send({ jumlah: 5 })).status).toBe(404);
   });
 });
 
 describe("POST /api/items/:id/stok/keluar", () => {
-  it("201 mencatat KELUAR jika saldo cukup", async () => {
+  it("201 mencatat KELUAR jika saldo lokasi cukup", async () => {
     mocked.getItemById.mockResolvedValue(item as never);
-    mocked.getSaldo.mockResolvedValueOnce(10 as never).mockResolvedValueOnce(7 as never);
-    mocked.catatMutasi.mockResolvedValue({ id: 2, tipe: "KELUAR", jumlah: 3 } as never);
+    mocked.getItemStockAtLocation.mockResolvedValue(10);
+    mocked.getItemStockTotal.mockResolvedValue(7);
+    mocked.postMovement.mockResolvedValue({
+      id: 12,
+      itemId: 1,
+      fromLocationId: 3,
+      toLocationId: null,
+      quantity: 3,
+      reason: "produksi batch 2",
+      userId: 1,
+      occurredAt: new Date(),
+    } as never);
 
     const res = await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 3, keterangan: "produksi batch 2" });
 
     expect(res.status).toBe(201);
     expect(res.body.saldo).toBe(7);
-    expect(mocked.catatMutasi).toHaveBeenCalledWith(
+    expect(res.body.mutasi.tipe).toBe("KELUAR");
+    expect(mocked.postMovement).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ itemId: 1, tipe: "KELUAR", jumlah: 3, keterangan: "produksi batch 2", userId: 1 }),
+      expect.objectContaining({ itemId: 1, fromLocationId: 3, type: "ADJUSTMENT", quantity: 3 }),
     );
   });
 
-  it("201 keterangan opsional, default 'Keluar manual'", async () => {
+  it("409 jika jumlah melebihi saldo lokasi", async () => {
     mocked.getItemById.mockResolvedValue(item as never);
-    mocked.getSaldo.mockResolvedValueOnce(5 as never).mockResolvedValueOnce(2 as never);
-    mocked.catatMutasi.mockResolvedValue({ id: 3 } as never);
-
-    const res = await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 3 });
-
-    expect(res.status).toBe(201);
-    expect(mocked.catatMutasi).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ keterangan: "Keluar manual" }),
-    );
-  });
-
-  it("201 keluar bertanggal lama tetap memakai cek saldo total saat ini", async () => {
-    mocked.getItemById.mockResolvedValue(item as never);
-    mocked.getSaldo.mockResolvedValueOnce(10 as never).mockResolvedValueOnce(7 as never);
-    mocked.catatMutasi.mockResolvedValue({ id: 6, tipe: "KELUAR", jumlah: 3 } as never);
-
-    const res = await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 3, tanggal: "2026-10-01" });
-
-    expect(res.status).toBe(201);
-    const input = mocked.catatMutasi.mock.calls[0][1] as { tanggal?: Date };
-    expect([input.tanggal?.getFullYear(), (input.tanggal?.getMonth() ?? 0) + 1, input.tanggal?.getDate()]).toEqual([2026, 10, 1]);
-  });
-
-  it("400 jika tanggal keluar invalid atau melebihi hari ini", async () => {
-    mocked.getItemById.mockResolvedValue(item as never);
-    const besok = new Date();
-    besok.setDate(besok.getDate() + 1);
-    const isoBesok = `${besok.getFullYear()}-${String(besok.getMonth() + 1).padStart(2, "0")}-${String(besok.getDate()).padStart(2, "0")}`;
-
-    expect((await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 1, tanggal: "kemarin" })).status).toBe(400);
-    expect((await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 1, tanggal: isoBesok })).status).toBe(400);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
-  });
-
-  it("409 jika jumlah melebihi saldo, tanpa mencatat", async () => {
-    mocked.getItemById.mockResolvedValue(item as never);
-    mocked.getSaldo.mockResolvedValue(2 as never);
+    mocked.getItemStockAtLocation.mockResolvedValue(2);
 
     const res = await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 3 });
 
     expect(res.status).toBe(409);
     expect(res.body.tersedia).toBe(2);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
+    expect(mocked.postMovement).not.toHaveBeenCalled();
   });
 
   it("400 jika jumlah invalid", async () => {
     expect((await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 0 })).status).toBe(400);
     expect((await request(app).post("/api/items/1/stok/keluar").send({ jumlah: 2.5 })).status).toBe(400);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
-  });
-
-  it("404 jika item tidak ada", async () => {
-    mocked.getItemById.mockResolvedValue(null as never);
-    expect((await request(app).post("/api/items/99/stok/keluar").send({ jumlah: 1 })).status).toBe(404);
-    expect(mocked.catatMutasi).not.toHaveBeenCalled();
+    expect(mocked.postMovement).not.toHaveBeenCalled();
   });
 });
 
 describe("GET /api/items/:id/stok", () => {
-  it("200 mengembalikan saldo + riwayat", async () => {
+  it("200 menggabungkan riwayat legacy (L1) dan ledger inventory (L2)", async () => {
     mocked.getItemById.mockResolvedValue(item as never);
-    mocked.getSaldo.mockResolvedValue(15 as never);
-    mocked.listMutasiItem.mockResolvedValue({
-      data: [{ id: 1, tipe: "KELUAR", jumlah: 5 }],
-      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
-    } as never);
+    mocked.getItemStockTotal.mockResolvedValue(15);
+    prismaMock.stokItemMutasi.findMany.mockResolvedValue([
+      {
+        id: 1,
+        itemId: 1,
+        tipe: "KELUAR",
+        jumlah: 5,
+        sumberPermintaanItemId: null,
+        keterangan: "legacy",
+        userId: 1,
+        tanggal: new Date("2026-10-01T00:00:00.000Z"),
+      },
+    ]);
+    prismaMock.inventoryMovement.findMany.mockResolvedValue([
+      {
+        id: 9,
+        itemId: 1,
+        fromLocationId: null,
+        toLocationId: 3,
+        quantity: 20,
+        reason: "ledger",
+        userId: 1,
+        occurredAt: new Date("2026-10-02T00:00:00.000Z"),
+      },
+    ]);
 
     const res = await request(app).get("/api/items/1/stok");
 
     expect(res.status).toBe(200);
     expect(res.body.saldo).toBe(15);
-    expect(res.body.riwayat.data).toHaveLength(1);
-  });
-
-  it("200 meneruskan rentang tanggal valid ke model", async () => {
-    mocked.getItemById.mockResolvedValue(item as never);
-    mocked.getSaldo.mockResolvedValue(15 as never);
-    mocked.listMutasiItem.mockResolvedValue({
-      data: [{ id: 1, tipe: "MASUK", jumlah: 5 }],
-      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
-    } as never);
-
-    const res = await request(app).get("/api/items/1/stok?dari=2026-10-01&sampai=2026-10-15");
-
-    expect(res.status).toBe(200);
-    expect(mocked.listMutasiItem).toHaveBeenCalledWith(1, 1, 20, {
-      dari: expect.any(Date),
-      sampai: expect.any(Date),
-    });
-    const rentang = mocked.listMutasiItem.mock.calls[0][3] as { dari?: Date; sampai?: Date };
-    expect([rentang.dari?.getFullYear(), (rentang.dari?.getMonth() ?? 0) + 1, rentang.dari?.getDate()]).toEqual([2026, 10, 1]);
-    expect([rentang.sampai?.getFullYear(), (rentang.sampai?.getMonth() ?? 0) + 1, rentang.sampai?.getDate()]).toEqual([2026, 10, 15]);
+    expect(res.body.riwayat.data).toHaveLength(2);
+    expect(res.body.riwayat.data[0]).toMatchObject({ id: -9, sumber: "INVENTORY", tipe: "MASUK" });
+    expect(res.body.riwayat.data[1]).toMatchObject({ id: 1, sumber: "LEGACY", tipe: "KELUAR" });
   });
 
   it("400 jika format tanggal tidak valid atau dari lebih besar dari sampai", async () => {
@@ -253,7 +258,6 @@ describe("GET /api/items/:id/stok", () => {
     expect((await request(app).get("/api/items/1/stok?dari=2026-13-01")).status).toBe(400);
     expect((await request(app).get("/api/items/1/stok?sampai=15-10-2026")).status).toBe(400);
     expect((await request(app).get("/api/items/1/stok?dari=2026-10-16&sampai=2026-10-15")).status).toBe(400);
-    expect(mocked.listMutasiItem).not.toHaveBeenCalled();
   });
 
   it("404 jika item tidak ada", async () => {
@@ -261,27 +265,70 @@ describe("GET /api/items/:id/stok", () => {
     const res = await request(app).get("/api/items/99/stok");
     expect(res.status).toBe(404);
   });
+
+  it("sumber=LEGACY hanya membaca ledger legacy dan tidak menyentuh ledger lokasi", async () => {
+    mocked.getItemById.mockResolvedValue(item as never);
+    prismaMock.stokItemMutasi.findMany.mockResolvedValue([
+      {
+        id: 3,
+        itemId: 1,
+        tipe: "MASUK",
+        jumlah: 7,
+        sumberPermintaanItemId: null,
+        keterangan: "legacy",
+        userId: 1,
+        tanggal: new Date("2026-10-01T00:00:00.000Z"),
+      },
+    ]);
+
+    const res = await request(app).get("/api/items/1/stok?sumber=LEGACY");
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.inventoryMovement.findMany).not.toHaveBeenCalled();
+    expect(res.body.riwayat.data).toHaveLength(1);
+    expect(res.body.riwayat.data[0]).toMatchObject({ id: 3, sumber: "LEGACY" });
+  });
+
+  it("sumber=INVENTORY hanya membaca ledger lokasi", async () => {
+    mocked.getItemById.mockResolvedValue(item as never);
+    prismaMock.inventoryMovement.findMany.mockResolvedValue([
+      {
+        id: 12,
+        itemId: 1,
+        fromLocationId: 3,
+        toLocationId: null,
+        quantity: 4,
+        reason: "keluar",
+        userId: 1,
+        occurredAt: new Date("2026-10-02T00:00:00.000Z"),
+      },
+    ]);
+
+    const res = await request(app).get("/api/items/1/stok?sumber=inventory");
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.stokItemMutasi.findMany).not.toHaveBeenCalled();
+    expect(res.body.riwayat.data[0]).toMatchObject({ id: -12, sumber: "INVENTORY", tipe: "KELUAR" });
+  });
+
+  it("400 jika sumber tidak dikenal", async () => {
+    mocked.getItemById.mockResolvedValue(item as never);
+    const res = await request(app).get("/api/items/1/stok?sumber=lainnya");
+    expect(res.status).toBe(400);
+  });
 });
 
-describe("POST /api/items/stok-saldo", () => {
-  it("200 mengembalikan map saldo satu query", async () => {
-    mocked.getSaldoBulk.mockResolvedValue({ 1: 100, 2: 5 } as never);
+describe("saldo dan ringkasan memakai ledger lokasi", () => {
+  it("POST /api/items/stok-saldo memakai total StockBalance", async () => {
+    mocked.totals.mockResolvedValue({ 1: 100, 2: 5 } as never);
     const res = await request(app).post("/api/items/stok-saldo").send({ ids: [1, 2] });
     expect(res.status).toBe(200);
     expect(res.body.saldo).toEqual({ 1: 100, 2: 5 });
-    expect(mocked.getSaldoBulk).toHaveBeenCalledWith([1, 2]);
+    expect(mocked.totals).toHaveBeenCalledWith([1, 2]);
   });
 
-  it("400 jika ids kosong atau invalid", async () => {
-    expect((await request(app).post("/api/items/stok-saldo").send({ ids: [] })).status).toBe(400);
-    expect((await request(app).post("/api/items/stok-saldo").send({ ids: [0] })).status).toBe(400);
-    expect(mocked.getSaldoBulk).not.toHaveBeenCalled();
-  });
-});
-
-describe("POST /api/items/stok-ringkasan", () => {
-  it("200 mengembalikan ringkasan masuk/keluar/net per periode", async () => {
-    mocked.getRingkasanBulk.mockResolvedValue({ 1: { masuk: 120, keluar: 50, net: 70 } } as never);
+  it("POST /api/items/stok-ringkasan memakai ringkasan inventory", async () => {
+    mocked.summary.mockResolvedValue({ 1: { masuk: 120, keluar: 50, net: 70 } } as never);
 
     const res = await request(app)
       .post("/api/items/stok-ringkasan")
@@ -289,17 +336,9 @@ describe("POST /api/items/stok-ringkasan", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ringkasan).toEqual({ 1: { masuk: 120, keluar: 50, net: 70 } });
-    expect(mocked.getRingkasanBulk).toHaveBeenCalledWith([1], {
-      dari: expect.any(Date),
-      sampai: expect.any(Date),
+    expect(mocked.summary).toHaveBeenCalledWith([1], {
+      from: expect.any(Date),
+      until: expect.any(Date),
     });
-  });
-
-  it("400 jika ids, tanggal, atau rentang tidak valid", async () => {
-    expect((await request(app).post("/api/items/stok-ringkasan").send({ ids: [] })).status).toBe(400);
-    expect((await request(app).post("/api/items/stok-ringkasan").send({ ids: [1], dari: "2026-13-01" })).status).toBe(400);
-    expect((await request(app).post("/api/items/stok-ringkasan").send({ ids: [1], sampai: "15-10-2026" })).status).toBe(400);
-    expect((await request(app).post("/api/items/stok-ringkasan").send({ ids: [1], dari: "2026-10-16", sampai: "2026-10-15" })).status).toBe(400);
-    expect(mocked.getRingkasanBulk).not.toHaveBeenCalled();
   });
 });

@@ -1,14 +1,20 @@
+import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { getItemById } from "../../model/item/item.js";
-import { catatMutasi, getSaldo, getSaldoBulk, getRingkasanBulk, listMutasiItem, lockItem, StokKurangError } from "../../model/stokItem/stokItem.js";
+import { lockItem, StokKurangError } from "../../model/stokItem/stokItem.js";
 import {
+  getInventoryItemSummary,
+  getInventoryItemTotals,
+  getItemStockAtLocation,
+  getItemStockTotal,
   getItemWarehouseBalances,
   getWarehouseItemBalances,
   InventoryError,
+  postInventoryMovementInTransaction,
   transferItemBetweenWarehouses,
 } from "../../model/inventory/inventory.js";
 import prisma from "../../lib/prisma.js";
-import { TipeStokItem } from "../../../generated/prisma/enums.js";
+import { awalHariBisnis, parseTanggalBisnis } from "../../lib/tanggalBisnis.js";
 
 function parseId(raw: string) {
   const id = Number(raw);
@@ -16,17 +22,88 @@ function parseId(raw: string) {
 }
 
 function isTanggalMasaDepan(tanggal: Date): boolean {
-  const hariIni = new Date();
-  hariIni.setHours(0, 0, 0, 0);
+  const hariIni = awalHariBisnis(new Date());
   return tanggal > hariIni;
 }
 
-// POST /api/items/:id/stok  body: { jumlah, keterangan?, tanggal? }  (catat stok MASUK manual)
+type MutasiView = {
+  id: number;
+  itemId: number;
+  tipe: "MASUK" | "KELUAR";
+  jumlah: number;
+  sumberPermintaanItemId: number | null;
+  keterangan: string | null;
+  userId: number | null;
+  tanggal: string;
+  sumber: "INVENTORY" | "LEGACY";
+};
+
+function movementToMutasi(movement: {
+  id: bigint | number;
+  itemId: number | null;
+  fromLocationId: number | null;
+  toLocationId: number | null;
+  quantity: unknown;
+  reason: string | null;
+  userId: number | null;
+  occurredAt: Date;
+}): MutasiView {
+  const masuk = movement.toLocationId !== null && movement.fromLocationId === null;
+  return {
+    // id negatif = baris ledger inventory (hindari tabrakan id dengan ledger legacy)
+    id: -Number(movement.id),
+    itemId: movement.itemId ?? 0,
+    tipe: masuk ? "MASUK" : "KELUAR",
+    jumlah: Number(movement.quantity),
+    sumberPermintaanItemId: null,
+    keterangan: movement.reason,
+    userId: movement.userId,
+    tanggal: movement.occurredAt.toISOString(),
+    sumber: "INVENTORY",
+  };
+}
+
+function legacyToMutasi(row: {
+  id: number;
+  itemId: number;
+  tipe: string;
+  jumlah: unknown;
+  sumberPermintaanItemId: number | null;
+  keterangan: string | null;
+  userId: number | null;
+  tanggal: Date;
+}): MutasiView {
+  return {
+    id: row.id,
+    itemId: row.itemId,
+    tipe: row.tipe === "MASUK" ? "MASUK" : "KELUAR",
+    jumlah: Number(row.jumlah),
+    sumberPermintaanItemId: row.sumberPermintaanItemId,
+    keterangan: row.keterangan,
+    userId: row.userId,
+    tanggal: row.tanggal.toISOString(),
+    sumber: "LEGACY",
+  };
+}
+
+async function resolveDefaultLocation(item: {
+  id: number;
+  kode: string;
+  defaultInventoryLocationId?: number | null;
+}): Promise<number> {
+  if (item.defaultInventoryLocationId) return item.defaultInventoryLocationId;
+  throw new InventoryError(
+    "LOCATION_NOT_FOUND",
+    `Item ${item.kode} belum punya lokasi default; atur lokasi default sebelum mencatat stok manual`,
+  );
+}
+
+// POST /api/items/:id/stok — tambah stok manual (ledger lokasi, bukan L1)
 export async function tambahStokHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const { jumlah, keterangan, tanggal } = (req.body ?? {}) as { jumlah?: unknown; keterangan?: unknown; tanggal?: unknown };
+    const { jumlah, keterangan, tanggal, idempotencyKey } = (req.body ?? {}) as Record<string, unknown>;
     const n = Number(jumlah);
     if (!Number.isInteger(n) || n <= 0) {
       return res.status(400).json({ message: "Field 'jumlah' harus bilangan bulat lebih dari 0" });
@@ -36,40 +113,51 @@ export async function tambahStokHandler(req: Request, res: Response) {
     }
     let tanggalTransaksi: Date | undefined;
     if (tanggal !== undefined && tanggal !== null && tanggal !== "") {
-      const parsed = parseTanggalFilter(tanggal);
+      const parsed = parseTanggalBisnis(tanggal);
       if (!parsed) return res.status(400).json({ message: "Field 'tanggal' harus tanggal valid (YYYY-MM-DD)" });
       if (isTanggalMasaDepan(parsed)) return res.status(400).json({ message: "Field 'tanggal' tidak boleh melebihi hari ini" });
       tanggalTransaksi = parsed;
     }
     const item = await getItemById(id);
     if (!item) return res.status(404).json({ message: "Item tidak ditemukan" });
+    const locationId = await resolveDefaultLocation(item);
+    const key =
+      typeof idempotencyKey === "string" && idempotencyKey.trim().length >= 8
+        ? idempotencyKey.trim()
+        : `manual-item-in:${randomUUID()}`;
 
     const row = await prisma.$transaction(async (tx) => {
-      const mutasi = await catatMutasi(tx, {
+      await lockItem(tx, id);
+      const movement = await postInventoryMovementInTransaction(tx, {
         itemId: id,
-        tipe: TipeStokItem.MASUK,
-        jumlah: n,
-        keterangan: typeof keterangan === "string" && keterangan.trim() ? keterangan.trim() : "Input stok manual",
+        toLocationId: locationId,
+        type: "OPENING",
+        quantity: n,
+        idempotencyKey: key,
+        sourceType: "MANUAL_ITEM_IN",
+        sourceId: key,
+        reason: typeof keterangan === "string" && keterangan.trim() ? keterangan.trim() : "Input stok manual",
         userId: req.user?.id ?? null,
-        ...(tanggalTransaksi ? { tanggal: tanggalTransaksi } : {}),
+        ...(tanggalTransaksi ? { occurredAt: tanggalTransaksi } : {}),
       });
-      const saldo = await getSaldo(id, tx);
-      return { mutasi, saldo };
+      const saldo = await getItemStockTotal(tx, id);
+      return { mutasi: movementToMutasi(movement), saldo };
     });
     res.status(201).json(row);
   } catch (error) {
-    res.status(500).json({ message: "Gagal mencatat stok item", error });
+    if (error instanceof InventoryError) {
+      return res.status(error.code === "LOCATION_NOT_FOUND" ? 409 : 400).json({ code: error.code, message: error.message });
+    }
+    res.status(500).json({ message: "Gagal mencatat stok item" });
   }
 }
 
-// POST /api/items/:id/stok/keluar  body: { jumlah, keterangan?, tanggal? }  (catat stok KELUAR manual)
-// Lock baris Item + cek saldo + insert dalam satu transaksi: ledger tidak boleh minus.
-// Cek saldo memakai total saat ini; tanggal kustom hanya menentukan tanggal bisnis mutasi.
+// POST /api/items/:id/stok/keluar — keluar manual (ledger lokasi)
 export async function keluarStokHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
-    const { jumlah, keterangan, tanggal } = (req.body ?? {}) as { jumlah?: unknown; keterangan?: unknown; tanggal?: unknown };
+    const { jumlah, keterangan, tanggal, idempotencyKey } = (req.body ?? {}) as Record<string, unknown>;
     const n = Number(jumlah);
     if (!Number.isInteger(n) || n <= 0) {
       return res.status(400).json({ message: "Field 'jumlah' harus bilangan bulat lebih dari 0" });
@@ -79,39 +167,51 @@ export async function keluarStokHandler(req: Request, res: Response) {
     }
     let tanggalTransaksi: Date | undefined;
     if (tanggal !== undefined && tanggal !== null && tanggal !== "") {
-      const parsed = parseTanggalFilter(tanggal);
+      const parsed = parseTanggalBisnis(tanggal);
       if (!parsed) return res.status(400).json({ message: "Field 'tanggal' harus tanggal valid (YYYY-MM-DD)" });
       if (isTanggalMasaDepan(parsed)) return res.status(400).json({ message: "Field 'tanggal' tidak boleh melebihi hari ini" });
       tanggalTransaksi = parsed;
     }
     const item = await getItemById(id);
     if (!item) return res.status(404).json({ message: "Item tidak ditemukan" });
+    const locationId = await resolveDefaultLocation(item);
+    const key =
+      typeof idempotencyKey === "string" && idempotencyKey.trim().length >= 8
+        ? idempotencyKey.trim()
+        : `manual-item-out:${randomUUID()}`;
 
     const row = await prisma.$transaction(async (tx) => {
       await lockItem(tx, id);
-      const saldoSebelum = await getSaldo(id, tx);
-      if (n > saldoSebelum) throw new StokKurangError(id, saldoSebelum);
-      const mutasi = await catatMutasi(tx, {
+      const tersedia = await getItemStockAtLocation(tx, id, locationId);
+      if (n > tersedia) throw new StokKurangError(id, tersedia);
+      const movement = await postInventoryMovementInTransaction(tx, {
         itemId: id,
-        tipe: TipeStokItem.KELUAR,
-        jumlah: n,
-        keterangan: typeof keterangan === "string" && keterangan.trim() ? keterangan.trim() : "Keluar manual",
+        fromLocationId: locationId,
+        type: "ADJUSTMENT",
+        quantity: n,
+        idempotencyKey: key,
+        sourceType: "MANUAL_ITEM_OUT",
+        sourceId: key,
+        reason: typeof keterangan === "string" && keterangan.trim() ? keterangan.trim() : "Keluar manual",
         userId: req.user?.id ?? null,
-        ...(tanggalTransaksi ? { tanggal: tanggalTransaksi } : {}),
+        ...(tanggalTransaksi ? { occurredAt: tanggalTransaksi } : {}),
       });
-      const saldo = await getSaldo(id, tx);
-      return { mutasi, saldo };
+      const saldo = await getItemStockTotal(tx, id);
+      return { mutasi: movementToMutasi(movement), saldo };
     });
     res.status(201).json(row);
   } catch (error) {
     if (error instanceof StokKurangError) {
       return res.status(409).json({ message: `Jumlah melebihi saldo (tersedia ${error.tersedia})`, code: error.code, tersedia: error.tersedia });
     }
-    res.status(500).json({ message: "Gagal mencatat stok keluar", error });
+    if (error instanceof InventoryError) {
+      return res.status(error.code === "LOCATION_NOT_FOUND" ? 409 : 400).json({ code: error.code, message: error.message });
+    }
+    res.status(500).json({ message: "Gagal mencatat stok keluar" });
   }
 }
 
-// POST /api/items/stok-saldo  body: { ids: number[] }  -> { saldo: Record<id, number> }
+// POST /api/items/stok-saldo — total saldo proyeksi (StockBalance)
 export async function getSaldoBulkHandler(req: Request, res: Response) {
   try {
     const { ids } = (req.body ?? {}) as { ids?: unknown };
@@ -122,13 +222,13 @@ export async function getSaldoBulkHandler(req: Request, res: Response) {
     if (parsed.some((n) => !Number.isInteger(n) || n <= 0)) {
       return res.status(400).json({ message: "Field 'ids' harus berisi angka bulat positif" });
     }
-    res.status(200).json({ saldo: await getSaldoBulk(parsed) });
+    res.status(200).json({ saldo: await getInventoryItemTotals(parsed) });
   } catch (error) {
-    res.status(500).json({ message: "Gagal mengambil saldo item", error });
+    res.status(500).json({ message: "Gagal mengambil saldo item" });
   }
 }
 
-// POST /api/items/stok-saldo-gudang body: { ids: number[] } -> aggregate balance in active warehouses only.
+// POST /api/items/stok-saldo-gudang — saldo per gudang aktif
 export async function getSaldoGudangBulkHandler(req: Request, res: Response) {
   try {
     const { ids } = (req.body ?? {}) as { ids?: unknown };
@@ -141,11 +241,11 @@ export async function getSaldoGudangBulkHandler(req: Request, res: Response) {
     }
     res.status(200).json({ saldo: await getWarehouseItemBalances(parsed) });
   } catch (error) {
-    res.status(500).json({ message: "Gagal mengambil saldo item di gudang", error });
+    res.status(500).json({ message: "Gagal mengambil saldo item di gudang" });
   }
 }
 
-// GET /api/items/:id/stok/gudang — saldo per gudang aktif dari StockBalance.
+// GET /api/items/:id/stok/gudang
 export async function getItemWarehouseBalancesHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
@@ -154,11 +254,11 @@ export async function getItemWarehouseBalancesHandler(req: Request, res: Respons
     if (!item) return res.status(404).json({ message: "Item tidak ditemukan" });
     return res.status(200).json(await getItemWarehouseBalances(id));
   } catch (error) {
-    return res.status(500).json({ message: "Gagal mengambil saldo item per gudang", error });
+    return res.status(500).json({ message: "Gagal mengambil saldo item per gudang" });
   }
 }
 
-// POST /api/items/:id/stok/transfer — transfer stok item antargudang.
+// POST /api/items/:id/stok/transfer
 export async function transferItemWarehouseHandler(req: Request, res: Response) {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ message: "ID harus angka bulat positif" });
@@ -219,15 +319,14 @@ export async function transferItemWarehouseHandler(req: Request, res: Response) 
             : 400;
       return res.status(status).json({ code: error.code, message: error.message });
     }
-    return res.status(500).json({ message: "Gagal mentransfer stok item", error });
+    return res.status(500).json({ message: "Gagal mentransfer stok item" });
   }
 }
 
-// POST /api/items/stok-ringkasan  body: { ids: number[], dari?, sampai? }
-// Ringkasan Masuk/Keluar/Net per periode untuk daftar Kelola Item. Saldo aktual tetap dari /stok-saldo.
+// POST /api/items/stok-ringkasan — ringkasan Masuk/Keluar/Net (ledger lokasi, gudang)
 export async function getRingkasanBulkHandler(req: Request, res: Response) {
   try {
-    const { ids, dari: dariRaw, sampai: sampaiRaw } = (req.body ?? {}) as { ids?: unknown; dari?: unknown; sampai?: unknown };
+    const { ids, dari: dariRaw, sampai: sampaiRaw } = (req.body ?? {}) as Record<string, unknown>;
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 200) {
       return res.status(400).json({ message: "Field 'ids' harus array 1-200 id" });
     }
@@ -237,34 +336,29 @@ export async function getRingkasanBulkHandler(req: Request, res: Response) {
     }
     let dari: Date | undefined;
     if (dariRaw !== undefined && dariRaw !== null && dariRaw !== "") {
-      const parsed = parseTanggalFilter(dariRaw);
+      const parsed = parseTanggalBisnis(dariRaw);
       if (!parsed) return res.status(400).json({ message: "Field 'dari' harus tanggal valid (YYYY-MM-DD)" });
       dari = parsed;
     }
     let sampai: Date | undefined;
     if (sampaiRaw !== undefined && sampaiRaw !== null && sampaiRaw !== "") {
-      const parsed = parseTanggalFilter(sampaiRaw);
+      const parsed = parseTanggalBisnis(sampaiRaw);
       if (!parsed) return res.status(400).json({ message: "Field 'sampai' harus tanggal valid (YYYY-MM-DD)" });
       sampai = parsed;
     }
     if (dari && sampai && dari > sampai) {
       return res.status(400).json({ message: "Field 'dari' tidak boleh lebih besar dari 'sampai'" });
     }
-    res.status(200).json({ ringkasan: await getRingkasanBulk(parsedIds, { dari, sampai }) });
+    const sampaiEksklusif = sampai ? new Date(awalHariBisnis(sampai).getTime() + 86_400_000) : undefined;
+    res.status(200).json({
+      ringkasan: await getInventoryItemSummary(parsedIds, { from: dari, until: sampaiEksklusif }),
+    });
   } catch (error) {
-    res.status(500).json({ message: "Gagal mengambil ringkasan stok item", error });
+    res.status(500).json({ message: "Gagal mengambil ringkasan stok item" });
   }
 }
 
-function parseTanggalFilter(value: unknown): Date | null {
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const date = new Date(`${raw}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-// GET /api/items/:id/stok?page&limit&dari&sampai  -> saldo + riwayat mutasi
+// GET /api/items/:id/stok — saldo proyeksi + riwayat gabungan (legacy + inventory)
 export async function getStokItemHandler(req: Request, res: Response) {
   try {
     const id = parseId(req.params.id);
@@ -274,23 +368,91 @@ export async function getStokItemHandler(req: Request, res: Response) {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     let dari: Date | undefined;
+    let sampai: Date | undefined;
     if (req.query.dari !== undefined && req.query.dari !== "") {
-      const parsed = parseTanggalFilter(req.query.dari);
+      const parsed = parseTanggalBisnis(req.query.dari);
       if (!parsed) return res.status(400).json({ message: "Query 'dari' harus tanggal valid (YYYY-MM-DD)" });
       dari = parsed;
     }
-    let sampai: Date | undefined;
     if (req.query.sampai !== undefined && req.query.sampai !== "") {
-      const parsed = parseTanggalFilter(req.query.sampai);
+      const parsed = parseTanggalBisnis(req.query.sampai);
       if (!parsed) return res.status(400).json({ message: "Query 'sampai' harus tanggal valid (YYYY-MM-DD)" });
       sampai = parsed;
     }
     if (dari && sampai && dari > sampai) {
       return res.status(400).json({ message: "Query 'dari' tidak boleh lebih besar dari 'sampai'" });
     }
-    const [saldo, riwayat] = await Promise.all([getSaldo(id), listMutasiItem(id, page, limit, { dari, sampai })]);
-    res.status(200).json({ item, saldo, riwayat });
+
+    const tanggalFilter =
+      dari || sampai
+        ? {
+            ...(dari ? { gte: dari } : {}),
+            ...(sampai ? { lt: new Date(awalHariBisnis(sampai).getTime() + 86_400_000) } : {}),
+          }
+        : undefined;
+
+    // `sumber` memisahkan kartu histori legacy dari baris ledger lokasi.
+    // Kosong = gabungan (perilaku lama), LEGACY/INVENTORY = hanya satu sumber.
+    const sumberRaw =
+      typeof req.query.sumber === "string" ? req.query.sumber.trim().toUpperCase() : "";
+    if (sumberRaw && sumberRaw !== "LEGACY" && sumberRaw !== "INVENTORY") {
+      return res.status(400).json({ message: "Query 'sumber' harus LEGACY atau INVENTORY" });
+    }
+    const mauLegacy = sumberRaw === "" || sumberRaw === "LEGACY";
+    const mauInventory = sumberRaw === "" || sumberRaw === "INVENTORY";
+
+    // Batas aman: histori lama dapat sangat panjang. `truncated` memberi tahu
+    // klien bila ada baris di luar jendela yang ditampilkan.
+    const CAP = 1000;
+    const [saldo, legacyRows, inventoryRows] = await Promise.all([
+      getItemStockTotal(prisma, id),
+      mauLegacy
+        ? prisma.stokItemMutasi.findMany({
+            where: { itemId: id, ...(tanggalFilter ? { tanggal: tanggalFilter } : {}) },
+            orderBy: [{ tanggal: "desc" }, { id: "desc" }],
+            take: CAP,
+          })
+        : Promise.resolve([]),
+      mauInventory
+        ? prisma.inventoryMovement.findMany({
+            where: { itemId: id, ...(tanggalFilter ? { occurredAt: tanggalFilter } : {}) },
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: CAP,
+            select: {
+              id: true,
+              itemId: true,
+              fromLocationId: true,
+              toLocationId: true,
+              quantity: true,
+              reason: true,
+              userId: true,
+              occurredAt: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const merged = [...legacyRows.map(legacyToMutasi), ...inventoryRows.map(movementToMutasi)].sort(
+      (a, b) => b.tanggal.localeCompare(a.tanggal) || Math.abs(b.id) - Math.abs(a.id),
+    );
+    const start = (page - 1) * limit;
+    const data = merged.slice(start, start + limit);
+
+    res.status(200).json({
+      item,
+      saldo,
+      riwayat: {
+        data,
+        meta: {
+          page,
+          limit,
+          total: merged.length,
+          totalPages: Math.max(1, Math.ceil(merged.length / limit)),
+          truncated: legacyRows.length >= CAP || inventoryRows.length >= CAP,
+        },
+      },
+    });
   } catch (error) {
-    res.status(500).json({ message: "Gagal mengambil stok item", error });
+    res.status(500).json({ message: "Gagal mengambil stok item" });
   }
 }

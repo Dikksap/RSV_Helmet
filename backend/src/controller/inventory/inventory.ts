@@ -16,6 +16,7 @@ import {
   postInventoryMovement,
   rejectStockAdjustment,
   requestStockAdjustment,
+  reverseInventoryMovement,
   setItemDefaultInventoryLocation,
 } from "../../model/inventory/inventory.js";
 import { getBatasDivisi } from "../../lib/divisiScope.js";
@@ -61,9 +62,11 @@ function respondError(res: Response, error: unknown) {
       "ADJUSTMENT_ALREADY_REVIEWED",
       "NO_DIFFERENCE",
       "IDEMPOTENCY_CONFLICT",
+      "ALREADY_REVERSED",
+      "MOVEMENT_HAS_DEPENDENCY",
     ].includes(error.code)
       ? 409
-      : ["LOCATION_NOT_FOUND", "ITEM_NOT_FOUND", "ADJUSTMENT_NOT_FOUND"].includes(error.code)
+      : ["LOCATION_NOT_FOUND", "ITEM_NOT_FOUND", "ADJUSTMENT_NOT_FOUND", "MOVEMENT_NOT_FOUND"].includes(error.code)
         ? 404
         : error.code === "SCOPE_DENIED" || error.code === "ADJUSTMENT_SELF_APPROVAL"
           ? 403
@@ -290,7 +293,6 @@ export async function postInventoryMovementHandler(req: Request, res: Response) 
       sourceId: key,
       reason,
       userId,
-      syncItemStok: true,
       ...(occurredAt ? { occurredAt } : {}),
     });
     return res.status(201).json(serialize(movement));
@@ -423,6 +425,32 @@ export async function rejectStockAdjustmentHandler(req: Request, res: Response) 
       batas.admin ? undefined : batas.divisiId ?? undefined,
     );
     return res.json(serialize(adjustment));
+  } catch (error) {
+    return respondError(res, error);
+  }
+}
+
+/**
+ * POST /api/inventory/movements/:id/reverse
+ * Membuat movement pembalik; movement asli tidak dihapus.
+ */
+export async function reverseInventoryMovementHandler(req: Request, res: Response) {
+  const id = positiveInt(req.params.id);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  if (!id) return res.status(400).json({ message: "id movement tidak valid" });
+  if (reason.length < 5) return res.status(400).json({ message: "reason minimal 5 karakter" });
+  if (!req.user?.id || !req.access) {
+    return res.status(401).json({ message: "Token tidak ditemukan" });
+  }
+  const batas = getBatasDivisi(req.access);
+  try {
+    const movement = await reverseInventoryMovement(
+      BigInt(id),
+      req.user.id,
+      reason,
+      batas.admin ? undefined : batas.divisiId ?? undefined,
+    );
+    return res.status(201).json(serialize(movement));
   } catch (error) {
     return respondError(res, error);
   }

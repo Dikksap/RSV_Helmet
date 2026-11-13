@@ -465,7 +465,6 @@ async function moveItemStock(
     sourceId: input.key,
     reason: input.reason,
     userId: input.userId,
-    syncItemStok: true,
   });
 }
 

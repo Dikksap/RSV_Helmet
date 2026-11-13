@@ -13,6 +13,7 @@ import {
   postInventoryMovementHandler,
   rejectStockAdjustmentHandler,
   requestStockAdjustmentHandler,
+  reverseInventoryMovementHandler,
   setItemDefaultLocationHandler,
 } from "../controller/inventory/inventory.js";
 import { authenticate, authorize, requirePermission } from "../middleware/auth.js";
@@ -30,6 +31,11 @@ router.post("/items/summary", requirePermission("INVENTORY_VIEW"), getInventoryI
 router.post("/items/totals", requirePermission("INVENTORY_VIEW"), getInventoryItemTotalsHandler);
 router.get("/movements", requirePermission("INVENTORY_VIEW"), getInventoryMovementsHandler);
 router.post("/movements", requirePermission("INVENTORY_MOVE", "INVENTORY_ADJUST"), postInventoryMovementHandler);
+router.post(
+  "/movements/:id/reverse",
+  requirePermission("INVENTORY_ADJUST"),
+  reverseInventoryMovementHandler,
+);
 router.get(
   "/adjustments",
   requirePermission("INVENTORY_VIEW", "INVENTORY_ADJUST_APPROVE"),

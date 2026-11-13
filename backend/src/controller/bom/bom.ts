@@ -192,6 +192,7 @@ export async function createBomHandler(req: Request, res: Response) {
     if (error?.code === "P2002") return res.status(409).json({ message: "Kombinasi output dan version BOM sudah dipakai" });
     if (error?.code === "P2003") return res.status(400).json({ message: "Output atau komponen BOM tidak ditemukan" });
     if (error instanceof BomSiklikusError || error?.code === "BOM_SIKLIKUS") return res.status(400).json({ message: "BOM membentuk hubungan komponen yang siklikus" });
+    if (error?.code === "BOM_TERKUNCI") return res.status(409).json({ code: "BOM_TERKUNCI", message: error.message });
     res.status(500).json({ message: "Gagal membuat BOM", error });
   }
 }
@@ -269,6 +270,7 @@ export async function updateBomHandler(req: Request, res: Response) {
     if (error?.code === "P2003") return res.status(400).json({ message: "Output atau komponen BOM tidak ditemukan" });
     if (error?.code === "P2025") return res.status(404).json({ message: "BOM tidak ditemukan" });
     if (error instanceof BomSiklikusError || error?.code === "BOM_SIKLIKUS") return res.status(400).json({ message: "BOM membentuk hubungan komponen yang siklikus" });
+    if (error?.code === "BOM_TERKUNCI") return res.status(409).json({ code: "BOM_TERKUNCI", message: error.message });
     res.status(500).json({ message: "Gagal mengupdate BOM", error });
   }
 }

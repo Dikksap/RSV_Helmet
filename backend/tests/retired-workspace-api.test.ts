@@ -13,11 +13,6 @@ import app from "../src/app.js";
 
 describe("retired production and Divisi workspace APIs", () => {
   it.each([
-    ["GET", "/api/hasil-produksi-harian"],
-    ["POST", "/api/hasil-produksi-harian"],
-    ["GET", "/api/hasil-produksi-harian/rekap"],
-    ["GET", "/api/hasil-produksi-harian/wip"],
-    ["GET", "/api/hasil-produksi-harian/1"],
     ["GET", "/api/wip-transfer"],
     ["POST", "/api/wip-transfer"],
     ["GET", "/api/wip-transfer/opsi"],
@@ -29,6 +24,16 @@ describe("retired production and Divisi workspace APIs", () => {
       : method === "POST" ? await request(app).post(path)
         : await request(app).patch(path);
     expect(response.status).toBe(404);
+  });
+
+  it.each([
+    ["GET", "/api/hasil-produksi-harian"],
+    ["POST", "/api/hasil-produksi-harian"],
+    ["GET", "/api/hasil-produksi-harian/1"],
+  ] as const)("kembali aktif dan menuntut autentikasi: %s %s", async (method, path) => {
+    const response = method === "GET" ? await request(app).get(path)
+      : await request(app).post(path);
+    expect(response.status).toBe(401);
   });
 
   it("keeps the Divisi master-data API available for admin and shared workflows", async () => {

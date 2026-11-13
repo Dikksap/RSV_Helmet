@@ -28,6 +28,8 @@ type ScannedItem = {
   targetStatus: StatusBarang;
   pernahRetur?: boolean;
   statusSaved?: boolean;
+  /** true bila unit tidak punya tautan dokumen produksi/QC (tidak akan muncul di laporan material). */
+  unlinked?: boolean;
 };
 
 type Toast = { type: "success" | "error"; msg: string };
@@ -183,16 +185,33 @@ function ScanQr() {
       };
       if (!barang) return drop(`Kode ${item.kode} tidak ditemukan.`);
       if (String(barang.status).toUpperCase() === item.targetStatus.toUpperCase()) {
-        return drop(`Kode ${item.kode} dilewati — statusnya sudah ${barang.status}.`);
+        const sejak = barang.finishGoodAt
+          ? ` sejak ${new Date(barang.finishGoodAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}`
+          : "";
+        return drop(
+          item.targetStatus === "FINISHGOOD"
+            ? `Kode ${item.kode} sudah FINISHGOOD${sejak} — tidak diproses ulang.`
+            : `Kode ${item.kode} dilewati — statusnya sudah ${barang.status}.`,
+        );
       }
       const kode = barang.kodeBarang;
       const dup = listRef.current.some((it) => it.id !== item.id && !it.loading && keyOf(it.kode) === keyOf(kode));
       if (dup) return drop(`Kode ${item.kode} duplikat — tidak dimasukkan.`);
       const found = barang;
+      const unlinked =
+        found.hasilProduksiHarianItemId == null && found.qualityInspectionLineId == null;
       setScannedItems((prev) =>
         prev.map((it) =>
           it.id === item.id
-            ? { ...it, id: found.id ?? it.id, kode, variant: variantName(found), loading: false, pernahRetur: found.pernahRetur }
+            ? {
+                ...it,
+                id: found.id ?? it.id,
+                kode,
+                variant: variantName(found),
+                loading: false,
+                pernahRetur: found.pernahRetur,
+                unlinked,
+              }
             : it,
         ),
       );
@@ -371,15 +390,19 @@ function ScanQr() {
   const saveStatuses = async (items: ScannedItem[], onStep: () => void) => {
     const ok = new Set<string>();
     const failed: BulkScanItemResult[] = [];
+    let alreadyFinishGood = 0;
     for (const [st, kodes] of groupByStatus(items)) {
       const result = await bulkScanBarang(kodes, st, keterangan.trim() || undefined);
-      result.success.forEach((s) => ok.add(keyOf(s.kodeBarang)));
+      result.success.forEach((s) => {
+        ok.add(keyOf(s.kodeBarang));
+        if (s.alreadyFinishGood) alreadyFinishGood += 1;
+      });
       failed.push(...result.failed);
       onStep();
     }
     setFailedItems(failed);
     setShowFailed(failed.length > 0);
-    return { ok, failed };
+    return { ok, failed, alreadyFinishGood };
   };
 
   const handleSave = async () => {
@@ -400,14 +423,15 @@ function ScanQr() {
       const total = groupByStatus(pending).length + (isDusMode ? 1 : 0);
       const tick = () => setProgress(Math.round((++step / Math.max(total, 1)) * 100));
 
-      const { ok, failed } = await saveStatuses(pending, tick);
+      const { ok, failed, alreadyFinishGood } = await saveStatuses(pending, tick);
+      const alreadyNote = alreadyFinishGood > 0 ? ` (${alreadyFinishGood} sudah FINISHGOOD sebelumnya)` : "";
 
       if (!isDusMode) {
         addToReport(pending.filter((it) => ok.has(keyOf(it.kode))));
         setScannedItems((prev) => prev.filter((it) => it.loading || !ok.has(keyOf(it.kode))));
-        if (failed.length === 0) notify("success", `${ok.size} item tersimpan.`);
+        if (failed.length === 0) notify("success", `${ok.size} item tersimpan.${alreadyNote}`);
         else if (ok.size === 0) notify("error", failed[0].reason ?? failed[0].error ?? `${failed.length} item gagal diproses.`);
-        else notify("error", `${ok.size} tersimpan, ${failed.length} gagal — perbaiki lalu simpan ulang.`);
+        else notify("error", `${ok.size} tersimpan${alreadyNote}, ${failed.length} gagal — perbaiki lalu simpan ulang.`);
         beep(failed.length === 0);
         return;
       }
@@ -427,7 +451,7 @@ function ScanQr() {
       tick();
       notify(
         failed.length ? "error" : "success",
-        `${ready.length} item masuk ${target.nama}${failed.length ? ` · ${failed.length} gagal` : ""}.`,
+        `${ready.length} item masuk ${target.nama}${failed.length ? ` · ${failed.length} gagal` : ""}${alreadyNote}.`,
       );
       beep(failed.length === 0);
     } catch (e) {
@@ -474,6 +498,7 @@ function ScanQr() {
   const loadingCount = scannedItems.filter((it) => it.loading).length;
   const validItems = scannedItems.filter((it) => !it.loading);
   const validCount = validItems.length;
+  const unlinkedCount = validItems.filter((it) => it.unlinked).length;
   const visibleGroups = groups.filter((g) => !g.isArsip);
   const perVariant = Object.entries(
     validItems.reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.variant]: (acc[it.variant] ?? 0) + 1 }), {}),
@@ -818,6 +843,15 @@ function ScanQr() {
             </div>
           )}
 
+          {status === "FINISHGOOD" && unlinkedCount > 0 && (
+            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
+              <span className="font-bold">{unlinkedCount} unit tidak punya tautan dokumen produksi/QC.</span>{" "}
+              Unit tetap bisa disimpan sebagai FINISHGOOD, tetapi materialnya tidak akan muncul di
+              Laporan Produksi → Konsumsi Material. Catat hasil produksi lewat Input Hasil Produksi
+              (tahap akhir + ProductVariant) agar unit baru punya genealogi material.
+            </div>
+          )}
+
           <div className={`${CARD} flex min-h-[260px] flex-1 flex-col overflow-hidden`}>
             {scannedItems.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
@@ -845,6 +879,14 @@ function ScanQr() {
                         {statusBadge(it.targetStatus)}
                         {it.pernahRetur && (
                           <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">Pernah retur</span>
+                        )}
+                        {it.unlinked && (
+                          <span
+                            title="Unit ini tidak punya dokumen Hasil Produksi/QC. Materialnya tidak dapat dihitung pada laporan konsumsi material."
+                            className="rounded-md bg-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700"
+                          >
+                            Tanpa tautan produksi
+                          </span>
                         )}
                         {it.statusSaved && (
                           <span className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700">

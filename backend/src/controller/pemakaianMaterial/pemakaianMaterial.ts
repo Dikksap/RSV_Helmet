@@ -100,6 +100,20 @@ const handleError = (res: Response, error: unknown, fallback: string) => {
   if (errCode(error) === "P2025") {
     return res.status(404).json({ message: "Data tidak ditemukan" });
   }
+  // Penerimaan/pemakaian kini memposting ledger lokasi; kegagalan saldo atau
+  // lokasi harus dilaporkan sebagai konflik, bukan error server.
+  if (errCode(error) === "INSUFFICIENT_STOCK") {
+    return res.status(409).json({
+      kode: "INSUFFICIENT_STOCK",
+      message: error instanceof Error ? error.message : "Saldo lokasi tidak cukup",
+    });
+  }
+  if (errCode(error) === "LOCATION_NOT_FOUND") {
+    return res.status(409).json({
+      kode: "LOCATION_NOT_FOUND",
+      message: error instanceof Error ? error.message : "Lokasi inventory tidak ditemukan",
+    });
+  }
   return res.status(500).json({ message: fallback, error });
 };
 

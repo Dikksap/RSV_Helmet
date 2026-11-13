@@ -2,6 +2,13 @@ import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { SumberPemakaianMaterial } from "../../../generated/prisma/enums.js";
 import { getWipRows } from "../wip/wip.js";
+import {
+  ensureDivisionInventoryLocation,
+  InventoryError,
+  postInventoryMovementInTransaction,
+  receiveItemToDivision,
+} from "../inventory/inventory.js";
+import { awalHariBisnis } from "../../lib/tanggalBisnis.js";
 
 export type PemakaianItemInput = {
   permintaanBarangItemId: number;
@@ -207,11 +214,39 @@ async function validateAndPrepare(
   return rows;
 }
 
+async function resolveReceiptSourceLocation(
+  tx: PrismaTransactionClient,
+  itemId: number,
+  preferredLocationId: number | null,
+): Promise<number> {
+  if (preferredLocationId !== null) {
+    const preferred = await tx.stockBalance.aggregate({
+      where: { itemId, locationId: preferredLocationId, quantity: { gt: 0 } },
+      _sum: { quantity: true },
+    });
+    if (Number(preferred._sum.quantity ?? 0) > 0) return preferredLocationId;
+  }
+  const rows = await tx.stockBalance.groupBy({
+    by: ["locationId"],
+    where: { itemId, quantity: { gt: 0 }, location: { type: "WAREHOUSE", isActive: true } },
+    _sum: { quantity: true },
+    orderBy: { _sum: { quantity: "desc" } },
+  });
+  const source = rows.find((row) => Number(row._sum.quantity ?? 0) > 0);
+  if (!source) {
+    throw new InventoryError(
+      "INSUFFICIENT_STOCK",
+      `Tidak ada saldo gudang untuk item ${itemId}; penerimaan divisi tidak dapat diposting`,
+    );
+  }
+  return source.locationId;
+}
+
 async function createInTx(tx: PrismaTransactionClient, input: PemakaianInput, userId: number | null): Promise<PemakaianRecord> {
-  const tanggal = effectiveTanggal(input);
+  const tanggal = awalHariBisnis(effectiveTanggal(input));
   const rows = await validateAndPrepare(tx, input);
   const nomor = await generateNomor(tx, tanggal);
-  return tx.pemakaianMaterial.create({
+  const created = await tx.pemakaianMaterial.create({
     data: {
       nomor,
       permintaanId: input.permintaanId,
@@ -221,6 +256,82 @@ async function createInTx(tx: PrismaTransactionClient, input: PemakaianInput, us
       keterangan: input.keterangan ?? null,
       items: { create: rows },
     },
+    select: {
+      id: true,
+      items: {
+        select: {
+          id: true,
+          itemId: true,
+          jumlahDiterima: true,
+          jumlahDipakai: true,
+          item: { select: { defaultInventoryLocationId: true } },
+        },
+      },
+    },
+  });
+
+  // Penerimaan fisik ke divisi WAJIB tercermin di ledger lokasi.
+  //
+  // Semantik dokumen ini: `jumlahDiterima` adalah SALDO SEBELUM pemakaian
+  // (saldo berjalan), bukan kuantitas yang baru masuk. Karena itu:
+  // - penerimaan (IN) hanya diposting pada catatan PERTAMA per (divisi,item),
+  //   yang memang mewakili material yang baru diterima divisi;
+  // - pemakaian manual (`jumlahDipakai`) diposting sebagai OUT pada lokasi
+  //   divisi. Nilai ini sudah relatif terhadap saldo sebelumnya (yang telah
+  //   memperhitungkan konsumsi produksi), sehingga tidak dihitung dua kali.
+  const divisionLocation = await ensureDivisionInventoryLocation(tx, input.divisiId);
+  for (const lot of created.items) {
+    if (lot.itemId === null) continue;
+    const diterima = Number(lot.jumlahDiterima);
+    const dipakai = Number(lot.jumlahDipakai);
+    const priorRecords = await tx.pemakaianMaterialItem.count({
+      where: {
+        itemId: lot.itemId,
+        id: { not: lot.id },
+        pemakaian: { divisiId: input.divisiId },
+      },
+    });
+
+    if (priorRecords === 0 && diterima > 0) {
+      const sourceLocationId = await resolveReceiptSourceLocation(
+        tx,
+        lot.itemId,
+        lot.item?.defaultInventoryLocationId ?? null,
+      );
+      await receiveItemToDivision(tx, {
+        itemId: lot.itemId,
+        fromLocationId: sourceLocationId,
+        toLocationId: divisionLocation.id,
+        pemakaianMaterialItemId: lot.id,
+        quantity: diterima,
+        idempotencyKey: `pemakaian-receipt:${lot.id}`,
+        sourceType: "PEMAKAIAN_MATERIAL",
+        sourceId: String(created.id),
+        reason: `Penerimaan material divisi ${nomor}`,
+        userId,
+        occurredAt: tanggal,
+      });
+    }
+
+    if (dipakai > 0) {
+      await postInventoryMovementInTransaction(tx, {
+        itemId: lot.itemId,
+        pemakaianMaterialItemId: lot.id,
+        fromLocationId: divisionLocation.id,
+        type: "ADJUSTMENT",
+        quantity: dipakai,
+        idempotencyKey: `pemakaian-usage:${lot.id}`,
+        sourceType: "PEMAKAIAN_MATERIAL_USAGE",
+        sourceId: String(created.id),
+        reason: `Pemakaian manual material divisi ${nomor}`,
+        userId,
+        occurredAt: tanggal,
+      });
+    }
+  }
+
+  return tx.pemakaianMaterial.findUniqueOrThrow({
+    where: { id: created.id },
     include: {
       permintaan: { include: { items: { include: { item: true } } } },
       divisi: true,
@@ -373,12 +484,30 @@ async function pastikanPemakaianManual(
   }
 }
 
+async function pastikanBelumPunyaLedger(
+  tx: PrismaTransactionClient,
+  pemakaianId: number,
+  aksi: string,
+): Promise<void> {
+  const movement = await tx.inventoryMovement.findFirst({
+    where: { pemakaianMaterialItem: { pemakaianId } },
+    select: { id: true },
+  });
+  if (movement) {
+    throw new PemakaianError(
+      PEMAKAIAN_TERKUNCI,
+      `Pemakaian material sudah tercatat di ledger inventory dan tidak bisa ${aksi}; gunakan koreksi/reversal`,
+    );
+  }
+}
+
 export async function updatePemakaian(id: number, input: PemakaianInput, userId: number | null = null): Promise<PemakaianRecord | null> {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.pemakaianMaterial.findUnique({ where: { id }, select: { id: true } });
     if (!existing) return null;
     await pastikanPemakaianManual(tx, id, "diubah");
     await pastikanBelumDipakaiProduksi(tx, id, "diubah");
+    await pastikanBelumPunyaLedger(tx, id, "diubah");
     const tanggal = effectiveTanggal(input);
     const rows = await validateAndPrepare(tx, input, id);
     return tx.pemakaianMaterial.update({
@@ -406,6 +535,7 @@ export async function deletePemakaian(id: number): Promise<boolean> {
     if (!existing) return false;
     await pastikanPemakaianManual(tx, id, "dihapus");
     await pastikanBelumDipakaiProduksi(tx, id, "dihapus");
+    await pastikanBelumPunyaLedger(tx, id, "dihapus");
     await tx.pemakaianMaterial.delete({ where: { id } });
     return true;
   });

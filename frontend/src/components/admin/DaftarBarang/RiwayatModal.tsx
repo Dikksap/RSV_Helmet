@@ -29,11 +29,38 @@ export function RiwayatModal({ barangId, kodeBarang, onClose }: Props) {
         <h2 className="mt-1 font-mono text-sm font-bold text-[#1E3A5F]">{kodeBarang}</h2>
         {data && (() => {
           const returCount = data.data.filter((r) => r.status === "RETUR").length;
+          const fgRows = data.data.filter((r) => r.status === "FINISHGOOD");
+          const firstFg = fgRows.reduce<{ status: string; tanggal: string } | null>(
+            (earliest, row) =>
+              !earliest || new Date(row.tanggal).getTime() < new Date(earliest.tanggal).getTime()
+                ? row
+                : earliest,
+            null,
+          );
           return (
-            <p className="mt-1 text-xs text-[#6B7280]">
-              {data.summary.total} entri • Status saat ini: {data.summary.currentStatus}
-              {returCount > 0 && <span className="ml-1 font-semibold text-amber-700">• Pernah RETUR {returCount}x</span>}
-            </p>
+            <>
+              <p className="mt-1 text-xs text-[#6B7280]">
+                {data.summary.total} entri • Status saat ini: {data.summary.currentStatus}
+                {returCount > 0 && <span className="ml-1 font-semibold text-amber-700">• Pernah RETUR {returCount}x</span>}
+              </p>
+              {firstFg ? (
+                <p className="mt-0.5 text-xs text-emerald-700">
+                  FINISHGOOD pertama:{" "}
+                  {new Date(firstFg.tanggal).toLocaleString("id-ID", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {fgRows.length > 1 ? ` (${fgRows.length} kali tercatat)` : ""}
+                </p>
+              ) : data.summary.currentStatus === "FINISHGOOD" ? (
+                <p className="mt-0.5 text-xs text-amber-700">
+                  Status FINISHGOOD tercatat tanpa histori transisi (legacy).
+                </p>
+              ) : null}
+            </>
           );
         })()}
 

@@ -18,6 +18,7 @@ const prismaMock = vi.hoisted(() => {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
+    hasilProduksiHarian: { count: vi.fn() },
     $transaction: vi.fn(),
   };
 });
@@ -35,6 +36,7 @@ describe("createBom", () => {
     prismaMock.tx.bom.findUniqueOrThrow.mockResolvedValue({ id: 12, subassemblyId: 7, items: [] });
     prismaMock.tx.bomItem.create.mockImplementation(async () => ({ id: nextItemId++ }));
     prismaMock.tx.bomItem.deleteMany.mockResolvedValue(undefined);
+    prismaMock.hasilProduksiHarian.count.mockResolvedValue(0);
     prismaMock.$transaction.mockImplementation(async (callback) => callback(prismaMock.tx));
   });
 
@@ -101,6 +103,32 @@ describe("createBom", () => {
     expect(prismaMock.tx.bom.create).toHaveBeenNthCalledWith(2, expect.objectContaining({
       data: expect.objectContaining({ kode: undefined }),
     }));
+  });
+
+  it("menolak menimpa BOM yang sudah dipakai transaksi produksi (histori harus tetap)", async () => {
+    const conflict = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    prismaMock.tx.bom.create.mockRejectedValue(conflict);
+    prismaMock.bom.findFirst.mockResolvedValue({ id: 12 });
+    prismaMock.bom.findUnique.mockResolvedValue({
+      id: 12,
+      productVariantId: null,
+      subassemblyId: 7,
+      version: "1.0",
+      items: [],
+    });
+    prismaMock.hasilProduksiHarian.count.mockResolvedValue(3);
+
+    await expect(
+      createBom({
+        nama: "Rakitan",
+        version: "1.0",
+        subassemblyId: 7,
+        items: [{ itemId: 3, quantity: 2 }],
+      }),
+    ).rejects.toMatchObject({ code: "BOM_TERKUNCI" });
+
+    expect(prismaMock.tx.bomItem.deleteMany).not.toHaveBeenCalled();
+    expect(prismaMock.tx.bom.update).not.toHaveBeenCalled();
   });
 
   it("menyimpan level komponen dan relasi parent-child dalam satu BOM", async () => {

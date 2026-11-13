@@ -132,6 +132,27 @@ export const MANAJEMEN: NavGroup = {
       end: false,
       description: "Pencatatan aktual produksi",
     },
+    {
+      to: "/produksi/home",
+      label: "Input Hasil Produksi",
+      icon: faBoxesStacked,
+      end: false,
+      description: "Posting konsumsi WIP & output produksi (HP)",
+    },
+    {
+      to: "/admin/routing-produksi",
+      label: "Routing Produksi",
+      icon: faSitemap,
+      end: false,
+      description: "Tahap, input, dan output proses produksi",
+    },
+    {
+      to: "/admin/laporan-produksi",
+      label: "Laporan Produksi",
+      icon: faDatabase,
+      end: false,
+      description: "Finished Goods, konsumsi material, traceability, rekonsiliasi",
+    },
   ],
 };
 

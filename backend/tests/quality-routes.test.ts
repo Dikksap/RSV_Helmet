@@ -20,6 +20,8 @@ vi.mock("../src/controller/quality/quality.js", () => {
     listWipRejectReasonsHandler: noContent,
     listWipRejectsHandler: noContent,
     reviewWipRejectRepairHandler: noContent,
+    listRoutingsHandler: (_req: any, res: any) => res.json([{ id: 1, version: 1 }]),
+    replaceRoutingHandler: (_req: any, res: any) => res.status(201).json({ id: 2 }),
   };
 });
 
@@ -38,12 +40,21 @@ describe("retired ERP quality endpoints", () => {
     ["GET", "/api/quality/wip-stocktake"],
     ["POST", "/api/quality/wip-stocktake"],
     ["GET", "/api/quality/variants"],
-    ["GET", "/api/quality/routings"],
-    ["PUT", "/api/quality/routings"],
   ])("does not expose retired endpoint %s %s", async (method, path) => {
     const response = method === "GET" ? await request(app).get(path)
       : method === "POST" ? await request(app).post(path)
         : await request(app).put(path);
     expect(response.status).toBe(404);
+  });
+
+  it("exposes routing administration dibutuhkan posting HP", async () => {
+    const list = await request(app).get("/api/quality/routings");
+    const replace = await request(app)
+      .put("/api/quality/routings")
+      .send({ stages: [{ stage: "BUFFING", divisiId: 1, inputItemIds: [1], outputItemIds: [2] }] });
+
+    expect(list.status).toBe(200);
+    expect(list.body).toEqual([{ id: 1, version: 1 }]);
+    expect(replace.status).toBe(201);
   });
 });

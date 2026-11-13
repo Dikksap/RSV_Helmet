@@ -240,14 +240,16 @@ export default function RoutingStagePanel({
 
             <ItemPicker
               label="Item output"
-              hint="Hanya item berjenis SM yang merupakan milik divisi yang dipilih."
+              hint={index === total - 1
+                ? "Tahap akhir (Perakitan) menghasilkan ProductVariant (helm jadi). Kosongkan jika output langsung berupa varian produk."
+                : "Hanya item berjenis SM yang merupakan milik divisi yang dipilih."}
               items={outputOptions}
               selectedIds={draft.outputItemIds}
               invalidIds={invalidOutputIds}
               search={outputSearch}
-              emptyHint={divisionId
-                ? "Belum ada item SM untuk divisi ini."
-                : "Pilih divisi produksi terlebih dahulu."}
+              emptyHint={index === total - 1
+                ? "Tahap akhir menghasilkan varian produk; output item tabel boleh dikosongkan."
+                : (divisionId ? "Belum ada item SM untuk divisi ini." : "Pilih divisi produksi terlebih dahulu.")}
               onSearchChange={setOutputSearch}
               onSelectionChange={(outputItemIds) => updateDraft({ outputItemIds })}
             />

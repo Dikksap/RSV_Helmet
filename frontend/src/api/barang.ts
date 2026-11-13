@@ -27,6 +27,12 @@ export interface Barang {
   variantId: number;
   batchId: number | null;
   status: StatusBarang;
+  /** Waktu PERTAMA unit mencapai FINISHGOOD (write-once, null untuk legacy). */
+  finishGoodAt?: string | null;
+  /** Baris Hasil Produksi yang membuat unit ini; null = legacy/tanpa genealogi. */
+  hasilProduksiHarianItemId?: number | null;
+  /** Baris inspeksi QC sumber genealogi alternatif; null bila tidak ada. */
+  qualityInspectionLineId?: number | null;
   tanggal: string | null;
   pernahRetur?: boolean;
   jumlahRetur?: number;
@@ -513,6 +519,11 @@ export async function getScanBarang(kodeBarang: string): Promise<Barang> {
 export interface BulkScanItemResult {
   id?: number;
   kodeBarang: string;
+  /** Terisi bila backend mengembalikan objek Barang penuh (baris sukses). */
+  status?: StatusBarang;
+  finishGoodAt?: string | null;
+  /** true bila unit sudah FINISHGOOD sebelumnya (scan idempoten, bukan gagal). */
+  alreadyFinishGood?: boolean;
   reason?: string;
   error?: string;
 }

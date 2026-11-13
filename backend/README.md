@@ -63,30 +63,42 @@ npm run build
 
 `npm test` menjalankan tes Vitest di `tests/`. `npm run build` menjalankan TypeScript compiler dan menghasilkan output di `dist/`.
 
-## Alur perubahan database
+## Alur perubahan database (Docker development)
 
-1. Ubah model di `prisma/schema.prisma`.
-2. Buat migration terhadap database pengembangan:
+Stack development berjalan di Docker Compose: `backend-api-1` (API, `tsx watch` + `prisma generate` saat start), `backend-db-1` (MariaDB, port host `3307`), `backend-redis-1`, `backend-phpmyadmin-1`. Karena `DATABASE_URL` mengarah ke host `db` **di dalam jaringan Compose**, perintah Prisma harus dijalankan lewat container, bukan dari host.
 
-   ```powershell
-   npx prisma migrate dev --name nama_perubahan
-   ```
+```powershell
+npm run docker:up          # docker compose up -d
+npm run db:status          # docker exec backend-api-1 npx prisma migrate status
+npm run db:migrate:deploy  # terapkan migration yang sudah ada (non-interaktif)
+npm run db:seed            # docker exec -it backend-api-1 npx prisma db seed
+```
 
-3. Pastikan Prisma Client sudah ter-generate:
+Untuk membuat migration baru (interaktif, butuh TTY):
 
-   ```powershell
-   npx prisma generate
-   ```
+```powershell
+npm run db:migrate         # docker exec -it backend-api-1 npx prisma migrate dev
+```
 
-4. Jalankan tes dan build, lalu sertakan file migration baru bersama perubahan schema.
+Catatan penting:
+
+- Container **tidak** menjalankan migration otomatis saat start; hanya `prisma generate` + `npm run dev`. Migration baru harus diterapkan manual (`db:migrate:deploy`) lalu container di-restart agar client baru dipakai: `docker restart backend-api-1`.
+- `prisma db push` hanya untuk eksperimen yang tidak memerlukan histori migration. Jangan pakai untuk perubahan yang akan di-commit.
+- Jangan gunakan `migrate dev`/`migrate reset` pada database produksi. Image produksi menjalankan `prisma migrate deploy` saat startup.
+- Verifikasi cepat pasca-migration (butuh data development):
+
+```powershell
+npm run verify:reports     # 4 laporan: FG summary, konsumsi material, traceability, rekonsiliasi
+npm run verify:e2e         # HP decal -> transfer WIP -> HP varian -> unit Barang -> FINISHGOOD -> traceability
+```
+
+`verify:e2e` menulis data uji berlabel `E2E-*` (dokumen HP, transfer, 1 unit `Barang`) ke database development; jangan dijalankan pada database produksi.
 
 Untuk mengisi data seed pada database yang dikonfigurasi:
 
 ```powershell
 npx prisma db seed
 ```
-
-Jangan gunakan `migrate dev` pada database produksi. Image produksi menjalankan `prisma migrate deploy` saat startup.
 
 Seed utama juga membuat data contoh alur WIP berbasis workflow aplikasi: RAW020 → SM0025 (Buffing), SM0025 → SM0026/SM0027/SM0028 (Base Coat), 7 varian keluaran Decal, lalu SM0001–SM0008 (Top Coat). Seed menetapkan mapping untuk 8 varian warna, membuat routing aktif untuk seluruh kombinasi ukuran produk beserta BOM seed, serta mencatat hasil produksi dan transfer melalui workflow agar lot dan ledger terbentuk. Pembagian contoh Decal adalah: Base Coat hitam → solid black dan motif BOB/Carbon; putih → solid white dan motif Nation; platinum grey → solid platinum dan motif Redline. Black doff dan black glossy sama-sama memakai output decal hitam, tetapi tetap menghasilkan item Top Coat yang berbeda. Data ini adalah contoh konsisten untuk pengujian, bukan pengganti konfirmasi BOM produksi aktual. Seed `seed-hasil-produksi-harian.ts` memanggil fixture alur yang sama; fixture lama yang membuat perpindahan tanpa posting ledger sudah dihapus.
 
@@ -107,6 +119,7 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 | `/api/colors` | `colors.ts` |
 | `/api/divisi` | `divisi.ts` |
 | `/api/gudang` | `gudang.ts` |
+| `/api/hasil-produksi-harian` | `hasil-produksi-harian.ts` (jalur kanonik posting produksi) |
 | `/api/integrasi-jurnal` | `integrasi-jurnal.ts` |
 | `/api/inventory` | `inventory.ts` (workflow adjustment saja) |
 | `/api/items` | `item.ts` |
@@ -119,6 +132,7 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 | `/api/production-orders` | `production-orders.ts` |
 | `/api/products` | `products.ts` |
 | `/api/quality` | `quality.ts` |
+| `/api/reports` | `reports.ts` (Finished Goods, konsumsi material, traceability, rekonsiliasi) |
 | `/api/roles` | `role.ts` |
 | `/api/sizes` | `sizes.ts` |
 | `/api/status-barang` | `statusBarang.ts` |
@@ -148,17 +162,19 @@ Semua router didaftarkan di `src/app.ts`. Prefix di bawah dipasangkan dengan fil
 
 ### API inventory dan quality yang masih aktif
 
-Endpoint UI eksklusif yang dihapus: seluruh `/api/shipments`, endpoint saldo/lokasi/mutasi umum pada `/api/inventory` (hanya workflow `/adjustments` yang dipertahankan untuk persetujuan supervisor), seluruh `/api/hasil-produksi-harian`, seluruh `/api/wip-transfer`, `GET /api/quality/daily-report`, `POST /api/quality/final-inspections`, seluruh `/api/quality/wip-flow` dan `/api/quality/wip-stocktake`, `GET /api/quality/variants`, serta `PUT /api/quality/routings`. Skema, tabel, data historis, dan migration terkait sengaja dipertahankan. Helper `src/model/inventory/inventory.ts` tetap digunakan untuk posting ledger dan validasi saldo, termasuk transfer item pada endpoint `/api/items/:id/stok/transfer`; API `/api/mutasi-gudang` dan endpoint gudang untuk workflow aktif tetap tersedia.
+**Perubahan November 2026:** `HasilProduksiHarian` kembali menjadi jalur kanonik posting produksi per divisi (`/api/hasil-produksi-harian`), sementara `ProduksiHarian` tidak lagi menerima posting baru (`PRODUKSI_HARIAN_POSTING` harus bernilai `true` untuk mengaktifkannya kembali) dan tetap tersedia untuk pembacaan histori. `POST /api/quality/final-inspections` tetap tidak diekspos: FINISHGOOD kini dicapai lewat scan/PATCH status barang dan **tidak** memerlukan QC PASS terpisah. `GET`/`PUT /api/quality/routings` diaktifkan kembali karena posting HP divalidasi terhadap routing.
 
-API quality yang masih aktif hanya menyediakan workflow reject/rework serta `GET /api/quality/routings`. Reject/rework dipertahankan sebagai workflow QC/admin bersama yang juga digunakan halaman Quality Control aktif; tidak ada prefix quality tersendiri untuk Divisi. Endpoint baca routing dipertahankan karena Work Order tahap aktif menggunakannya untuk memilih tahap. Penulisan konfigurasi routing, final-inspection mandiri, laporan QC harian, laporan WIP, dan opname WIP tidak lagi diekspos.
+Endpoint yang masih dihapus: seluruh `/api/shipments`, seluruh `/api/wip-transfer`, `GET /api/quality/daily-report`, `POST /api/quality/final-inspections`, seluruh `/api/quality/wip-flow` dan `/api/quality/wip-stocktake`, serta `GET /api/quality/variants`. Skema, tabel, data historis, dan migration terkait sengaja dipertahankan.
 
-Penyesuaian saldo operasional internal wajib tetap melalui helper ledger: gerakan idempoten, pemeriksaan saldo lokasi/lot, dan riwayat append-only tetap diberlakukan oleh model inventory.
+`StokItemMutasi` (ledger L1) **dibekukan**: tetap disimpan dan dapat dibaca untuk histori, tetapi tidak lagi menjadi sumber posting baru dan tidak lagi mengubah `Item.stok`. Semua penulisan inventory baru memakai `InventoryMovement` + `StockBalance`, dan `Item.stok` adalah proyeksi dari gerakan satu arah di ledger tersebut. Endpoint baca stok (`/api/items/:id/stok`, `/api/items/stok-saldo`, `/api/items/stok-ringkasan`) memakai ledger lokasi; riwayat stok item menggabungkan baris legacy (id positif) dan ledger baru (id negatif, `sumber: "INVENTORY"`). Gunakan `GET /api/items/:id/stok?sumber=LEGACY|INVENTORY` untuk membaca satu ledger saja.
 
-Kolom **Stok Gudang** di Master Item & Material adalah penjumlahan `StockBalance` untuk seluruh gudang aktif, yang terbentuk dari gerakan ledger `InventoryMovement`. Ringkasan **Masuk/Keluar/Net** dan riwayat input stok lama berasal dari `StokItemMutasi` (ledger legacy), sehingga keduanya memiliki sumber data berbeda. Rincian gudang dan pemindahan stok tersedia pada halaman stok item; transfer memindahkan saldo sumber ke tujuan tanpa menambah total.
+`PUT /api/quality/routings` menyimpan routing sebagai **versi baru**. Bila body menyertakan `routingId`, hanya routing tersebut yang dinonaktifkan; tanpa `routingId` perilaku lama (mengganti seluruh routing aktif) dipertahankan. Ini memungkinkan beberapa routing aktif berdampingan (mis. Solid dan Motif).
 
-`/api/divisi` tetap aktif untuk master-data divisi yang dikelola admin dan dipakai oleh operasi bersama. Endpoint shared `/api/permintaan-barang`, `/api/pemakaian-material` (termasuk alias `/api/pemakaian-materials`), `/api/items`, `/api/karyawan`, dan `/api/production-orders` juga tetap aktif karena digunakan di luar workspace Divisi, termasuk proses admin/gudang dan master data. Tidak ada endpoint Hasil Produksi Harian atau transfer WIP yang terdaftar pada Express app, dan route/controller API lamanya telah dihapus. Service `createHasilProduksi`, `createWipTransfer`, serta `approveWipTransfer` tetap menjadi dependensi internal seed alur produksi; keduanya bukan endpoint HTTP. Schema, tabel, konfigurasi routing, dan histori tetap dipertahankan.
+Kolom **Stok Gudang** di Master Item & Material adalah penjumlahan `StockBalance` untuk seluruh gudang aktif. Rincian gudang dan pemindahan stok tersedia pada halaman stok item; transfer memindahkan saldo sumber ke tujuan tanpa menambah total.
 
-Repair/rework bersama tetap menyimpan alokasi lot dan riwayat pelaku. `GET /api/quality/routings` dan layanan production-order/work-order dipertahankan; layanan tersebut tetap dapat merujuk ke record divisi meskipun workspace Divisi tidak lagi tersedia melalui API.
+`/api/divisi` tetap aktif untuk master-data divisi yang dikelola admin dan dipakai oleh operasi bersama. Endpoint shared `/api/permintaan-barang`, `/api/pemakaian-material` (termasuk alias `/api/pemakaian-materials`), `/api/items`, `/api/karyawan`, dan `/api/production-orders` juga tetap aktif. Service `createHasilProduksi` dan `createWipTransfer` tetap dipakai seed alur produksi; `createHasilProduksi` kini juga merupakan handler endpoint HTTP.
+
+Repair/rework bersama tetap menyimpan alokasi lot dan riwayat pelaku. Layanan production-order/work-order dipertahankan; layanan tersebut tetap dapat merujuk ke record divisi.
 
 Migration routing produksi dan aliran/opname WIP, termasuk `20261026200000_route_repaired_wip_forward`, sudah diterapkan ke database Docker lokal `express_api`. Untuk database lain, terapkan migration yang belum ada secara berurutan dengan `npx prisma migrate deploy` sebelum menjalankan versi backend ini. Saldo legacy dari export stok tetap merupakan sumber terpisah dari ledger WIP per lokasi; jangan anggap saldo lama atau 5.010 barang `FINISHGOOD` sebagai stok operasional yang tersedia.
 

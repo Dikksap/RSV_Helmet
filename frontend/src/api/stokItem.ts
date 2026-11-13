@@ -11,6 +11,8 @@ export interface StokMutasiRecord {
   keterangan: string | null;
   userId: number | null;
   tanggal: string;
+  /** Asal baris: ledger lokasi baru (`INVENTORY`) atau ledger legacy (`LEGACY`). */
+  sumber?: "INVENTORY" | "LEGACY";
 }
 
 export interface StokItemResponse {
@@ -18,7 +20,14 @@ export interface StokItemResponse {
   saldo: number;
   riwayat: {
     data: StokMutasiRecord[];
-    meta: { page: number; limit: number; total: number; totalPages: number };
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      /** true bila histori melebihi jendela tampil (cap server). */
+      truncated?: boolean;
+    };
   };
 }
 
@@ -53,6 +62,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export interface StokRiwayatFilter {
   dari?: string;
   sampai?: string;
+  /** Batasi riwayat ke satu ledger; kosong = gabungan legacy + inventory. */
+  sumber?: "LEGACY" | "INVENTORY";
 }
 
 export const getStokItem = (id: number, page = 1, limit = 20, filter: StokRiwayatFilter = {}) => {
@@ -62,6 +73,7 @@ export const getStokItem = (id: number, page = 1, limit = 20, filter: StokRiwaya
   });
   if (filter.dari) query.set("dari", filter.dari);
   if (filter.sampai) query.set("sampai", filter.sampai);
+  if (filter.sumber) query.set("sumber", filter.sumber);
   return request<StokItemResponse>(`/items/${id}/stok?${query}`);
 };
 
@@ -123,18 +135,6 @@ export async function getSaldoGudangBulk(ids: number[]): Promise<{ saldo: Record
   }
   return { saldo };
 }
-
-export const tambahStokItem = (id: number, body: { jumlah: number; keterangan?: string; tanggal?: string }) =>
-  request<{ mutasi: StokMutasiRecord; saldo: number }>(`/items/${id}/stok`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-
-export const catatKeluarItem = (id: number, body: { jumlah: number; keterangan?: string; tanggal?: string }) =>
-  request<{ mutasi: StokMutasiRecord; saldo: number }>(`/items/${id}/stok/keluar`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
 
 export const getItemGudangBalances = (id: number) =>
   request<StokItemGudangBalance[]>(`/items/${id}/stok/gudang`);

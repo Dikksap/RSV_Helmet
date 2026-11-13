@@ -253,8 +253,9 @@ export async function getRealisasi(
 }
 
 // Hitungan Barang per tanggal per variant sebagai saran pengisian aktual.
-// Semua status kecuali REGISTER dihitung (REGISTER = label baru dicetak,
-// belum masuk alur produksi). Hanya variant milik order yang dihitung.
+// Memakai tanggal FINISHGOOD pertama (`finishGoodAt`) dan hanya status yang
+// merepresentasikan unit yang dihasilkan. OUT = sudah dikirim, jadi tidak
+// diusulkan lagi sebagai hasil produksi.
 export async function getFinishgoodCounts(
   orderId: number,
   awal: Date | null,
@@ -263,18 +264,18 @@ export async function getFinishgoodCounts(
   const items = await prisma.productionOrderItem.findMany({ where: { orderId }, select: { variantId: true } });
   if (items.length === 0) return [];
   const conds = [
-    Prisma.sql`b.status <> 'REGISTER'`,
+    Prisma.sql`b.status IN ('FINISHGOOD', 'RETUR', 'BAD')`,
     ...(awal && akhir
-      ? [Prisma.sql`b.tanggal >= ${startOfDay(awal)} AND b.tanggal <= ${endOfDay(akhir)}`]
+      ? [Prisma.sql`COALESCE(b.finishGoodAt, b.tanggal) >= ${startOfDay(awal)} AND COALESCE(b.finishGoodAt, b.tanggal) <= ${endOfDay(akhir)}`]
       : []),
     Prisma.sql`b.variantId IN (${Prisma.join(items.map((i) => i.variantId))})`,
   ];
   const where = Prisma.join(conds, " AND ");
   const rows = await prisma.$queryRaw<{ tanggal: Date; variantId: number; qty: bigint }[]>(Prisma.sql`
-    SELECT DATE(b.tanggal) AS tanggal, b.variantId AS variantId, COUNT(*) AS qty
+    SELECT DATE(COALESCE(b.finishGoodAt, b.tanggal)) AS tanggal, b.variantId AS variantId, COUNT(*) AS qty
     FROM Barang b
     WHERE ${where}
-    GROUP BY DATE(b.tanggal), b.variantId`);
+    GROUP BY DATE(COALESCE(b.finishGoodAt, b.tanggal)), b.variantId`);
   return rows.map((r) => ({ tanggal: dayKey(r.tanggal), variantId: r.variantId, qty: Number(r.qty), reject: 0 }));
 }
 

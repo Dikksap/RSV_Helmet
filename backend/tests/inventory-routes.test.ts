@@ -23,6 +23,7 @@ vi.mock("../src/controller/inventory/inventory.js", () => ({
   requestStockAdjustmentHandler: (_req: any, res: any) => res.sendStatus(201),
   approveStockAdjustmentHandler: (_req: any, res: any) => res.sendStatus(200),
   rejectStockAdjustmentHandler: (_req: any, res: any) => res.sendStatus(200),
+  reverseInventoryMovementHandler: (_req: any, res: any) => res.sendStatus(201),
   setItemDefaultLocationHandler: (_req: any, res: any) => res.sendStatus(200),
 }));
 
@@ -53,6 +54,9 @@ describe("inventory API", () => {
     const itemTotals = await request(app).post("/api/inventory/items/totals").send({ ids: [1] });
     const unmapped = await request(app).get("/api/inventory/items/unmapped-legacy");
     const setDefault = await request(app).put("/api/inventory/items/1/default-location");
+    const reverse = await request(app)
+      .post("/api/inventory/movements/5/reverse")
+      .send({ reason: "koreksi salah input" });
 
     expect(locations.status).toBe(200);
     expect(balances.status).toBe(200);
@@ -62,5 +66,6 @@ describe("inventory API", () => {
     expect(itemTotals.status).toBe(200);
     expect(unmapped.status).toBe(200);
     expect(setDefault.status).toBe(200);
+    expect(reverse.status).toBe(201);
   });
 });

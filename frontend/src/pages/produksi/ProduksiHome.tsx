@@ -1,243 +1,209 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRotateRight,
   faBoxesStacked,
-  faBoxOpen,
-  faCalendarDays,
-  faCheck,
-  faFlask,
+  faChartLine,
+  faClipboardCheck,
   faIndustry,
+  faSitemap,
   faSpinner,
   faTriangleExclamation,
   faWarehouse,
 } from "@fortawesome/free-solid-svg-icons";
 import { getUser } from "../../api/auth";
+import { getDivisi, type Divisi } from "../../api/divisi";
 import { getItems, type Item } from "../../api/item";
+import { getVariantProduk, type VariantProdukRow } from "../../api/products";
+import { listProductionRoutings, type ProductionRouting } from "../../api/erp";
+import { getStokDivisi, type StokDivisiRecord } from "../../api/pemakaianMaterial";
+import { getStokGudang, type StokGudang } from "../../api/produksiHarian";
 import {
-  createProduksiHarian,
-  getBomPreview,
-  getLokasiProduksi,
-  getOpsiProduksi,
-  getStokGudang,
-  listProduksiHarian,
-  type BomPreview,
-  type Lokasi,
-  type OpsiProduksi,
-  type ProduksiList,
-  type ProduksiRecord,
-} from "../../api/produksiHarian";
+  listHasilProduksi,
+  type HasilProduksiList,
+  type HasilProduksiRecord,
+} from "../../api/hasilProduksiHarian";
+import HasilProduksiForm from "../../components/produksi/HasilProduksiForm";
+import LaporanProduksiContent from "../../components/admin/LaporanProduksi/LaporanProduksiContent";
 
 const TABS = [
   { id: "produksi", label: "Catat Hasil Produksi", icon: faIndustry },
-  { id: "bom", label: "Formula BOM", icon: faFlask },
-  { id: "stok", label: "Stok & Riwayat Data", icon: faBoxesStacked },
+  { id: "riwayat", label: "Riwayat Produksi", icon: faClipboardCheck },
+  { id: "routing", label: "Routing & BOM", icon: faSitemap },
+  { id: "stok", label: "Stok WIP & Gudang", icon: faBoxesStacked },
+  { id: "laporan", label: "Laporan", icon: faChartLine },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-const todayISO = () => new Date().toLocaleDateString("en-CA");
 const n = (value: number | string | null | undefined) => Number(value ?? 0);
 const fmt = (value: number | string | null | undefined) =>
   n(value).toLocaleString("id-ID", { maximumFractionDigits: 6 });
+
 const inputCls =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/20 disabled:bg-slate-100";
-const labelCls = "mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500";
+  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#00A8E8] focus:outline-none focus:ring-2 focus:ring-[#00A8E8]/20";
 const cardCls = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5";
-
-function namaLokasi(lokasi: Lokasi) {
-  if (lokasi.type === "DIVISION") return lokasi.divisi?.nama ?? lokasi.name;
-  return lokasi.gudang?.name ?? lokasi.name;
-}
-
-function jenisLokasi(lokasi: Lokasi) {
-  return lokasi.type === "DIVISION" ? "Divisi" : "Gudang";
-}
 
 function pesan(error: unknown) {
   return error instanceof Error ? error.message : "Terjadi kesalahan.";
 }
 
 export default function ProduksiHome() {
+  const navigate = useNavigate();
   const user = getUser();
+  const lockedDivisiId = user?.role === "admin" ? null : user?.divisiId ?? null;
   const [tab, setTab] = useState<TabId>("produksi");
-  const [opsi, setOpsi] = useState<OpsiProduksi | null>(null);
-  const [lokasi, setLokasi] = useState<Lokasi[]>([]);
+
+  const [divisions, setDivisions] = useState<Divisi[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [stokGudang, setStokGudang] = useState<Record<number, number>>({});
-  const [riwayat, setRiwayat] = useState<ProduksiList | null>(null);
+  const [routings, setRoutings] = useState<ProductionRouting[]>([]);
+  const [variants, setVariants] = useState<VariantProdukRow[]>([]);
+  const [stokDivisi, setStokDivisi] = useState<StokDivisiRecord[]>([]);
+  const [stokGudang, setStokGudang] = useState<StokGudang[]>([]);
+  const [riwayat, setRiwayat] = useState<HasilProduksiList | null>(null);
+  const [divisiId, setDivisiId] = useState(String(lockedDivisiId ?? ""));
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [tanggal, setTanggal] = useState(todayISO());
-  const [divisiId, setDivisiId] = useState(String(user?.divisiId ?? ""));
-  const [outputItemId, setOutputItemId] = useState("");
-  const [jumlah, setJumlah] = useState("");
-  const [tujuanLocationId, setTujuanLocationId] = useState("");
-  const [keterangan, setKeterangan] = useState("");
-  const [preview, setPreview] = useState<BomPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [sumber, setSumber] = useState<Record<number, string>>({});
-  const [savingProduksi, setSavingProduksi] = useState(false);
-
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [cariStok, setCariStok] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const muatData = async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    setRefreshing(quiet);
-    try {
-      const [opsiData, lokasiData, itemData, history, gudangData] = await Promise.all([
-        getOpsiProduksi(),
-        getLokasiProduksi(),
-        getItems({ aktif: true }),
-        listProduksiHarian({ page: 1, limit: 20 }),
-        getStokGudang(),
-      ]);
-      setOpsi(opsiData);
-      setLokasi(lokasiData);
-      setItems(itemData);
-      setRiwayat(history);
-      const totals: Record<number, number> = {};
-      for (const location of gudangData) {
-        for (const stock of location.items) {
-          totals[stock.itemId] = (totals[stock.itemId] ?? 0) + stock.quantity;
-        }
-      }
-      setStokGudang(totals);
-      setLoadError(null);
-      if (!divisiId) {
-        const awal = user?.divisiId ? String(user.divisiId) : String(opsiData.divisions[0]?.id ?? "");
-        setDivisiId(awal);
-      }
-      if (!tujuanLocationId) setTujuanLocationId(String(opsiData.warehouses[0]?.id ?? ""));
-    } catch (error) {
-      setLoadError(pesan(error));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    void muatData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- muat sekali saat mount
+  const muatMaster = useCallback(async () => {
+    const [divisiRows, itemRows, routingRows, variantRows, gudangRows] = await Promise.all([
+      getDivisi(),
+      getItems({ aktif: true }),
+      listProductionRoutings(),
+      getVariantProduk(),
+      getStokGudang(),
+    ]);
+    setDivisions(divisiRows);
+    setItems(itemRows);
+    setRoutings(routingRows);
+    setVariants(variantRows);
+    setStokGudang(gudangRows);
   }, []);
 
   useEffect(() => {
-    if (!outputItemId || !jumlah || n(jumlah) <= 0 || !divisiId) {
-      setPreview(null);
-      return;
-    }
-    let aktif = true;
-    const timer = window.setTimeout(() => {
-      setPreviewLoading(true);
-      getBomPreview(Number(outputItemId), n(jumlah), Number(divisiId))
-        .then((data) => {
-          if (!aktif) return;
-          setPreview(data);
-          const defaults: Record<number, string> = {};
-          for (const line of data.lines) {
-            const div = line.stok.find((row) => row.locationId === data.divisionLocationId && row.quantity >= line.jumlah);
-            const pilihan = div ?? line.stok[0];
-            if (pilihan) defaults[line.itemId] = String(pilihan.locationId);
-          }
-          setSumber(defaults);
-        })
-        .catch((error) => {
-          if (aktif) {
-            setPreview(null);
-            setNotice({ tone: "error", text: pesan(error) });
-          }
-        })
-        .finally(() => {
-          if (aktif) setPreviewLoading(false);
-        });
-    }, 300);
+    let active = true;
+    setLoading(true);
+    muatMaster()
+      .then(() => {
+        if (!active) return;
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (active) setLoadError(pesan(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
-      aktif = false;
-      window.clearTimeout(timer);
+      active = false;
     };
-  }, [outputItemId, jumlah, divisiId]);
+  }, [muatMaster, reloadKey]);
+
+  // Divisi default setelah master termuat (admin tanpa pilihan → divisi pertama).
+  useEffect(() => {
+    if (divisiId || divisions.length === 0) return;
+    setDivisiId(String(divisions[0].id));
+  }, [divisiId, divisions]);
 
   useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 5000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+    if (!divisiId) return;
+    let active = true;
+    const divisiNum = Number(divisiId);
+    setRefreshing(true);
+    Promise.all([
+      getStokDivisi(),
+      listHasilProduksi({ page, limit: 10, divisiId: divisiNum }),
+    ])
+      .then(([stokRows, riwayatRows]) => {
+        if (!active) return;
+        setStokDivisi(stokRows);
+        setRiwayat(riwayatRows);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (active) setLoadError(pesan(error));
+      })
+      .finally(() => {
+        if (active) setRefreshing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [divisiId, page, reloadKey]);
 
-  const outputTerpilih = useMemo(
-    () => opsi?.outputs.find((row) => String(row.item.id) === outputItemId) ?? null,
-    [opsi, outputItemId],
+  const refresh = () => {
+    setReloadKey((value) => value + 1);
+  };
+
+  const divisiTerpilih = useMemo(
+    () => divisions.find((row) => String(row.id) === divisiId) ?? null,
+    [divisions, divisiId],
   );
 
-  const lokasiBahan = useMemo(() => {
-    const cari = (locationId: number) => lokasi.find((row) => row.id === locationId);
-    return (lineItemId: number) => {
-      const line = preview?.lines.find((row) => row.itemId === lineItemId);
-      const ids = new Set((line?.stok ?? []).filter((row) => row.quantity > 0).map((row) => row.locationId));
-      if (preview?.divisionLocationId) ids.add(preview.divisionLocationId);
-      return [...ids]
-        .map(cari)
-        .filter((row): row is Lokasi => Boolean(row))
-        .sort((a, b) => {
-          const qa = line?.stok.find((row) => row.locationId === a.id)?.quantity ?? 0;
-          const qb = line?.stok.find((row) => row.locationId === b.id)?.quantity ?? 0;
-          return qb - qa;
-        });
-    };
-  }, [lokasi, preview]);
-
-  const bisaSimpanProduksi =
-    Boolean(divisiId && outputItemId && n(jumlah) > 0 && tujuanLocationId) &&
-    Boolean(preview && preview.lines.length > 0) &&
-    (preview?.lines.every((line) => Boolean(sumber[line.itemId])) ?? false) &&
-    !savingProduksi;
-
-  const simpanProduksi = async () => {
-    if (!bisaSimpanProduksi || !preview) return;
-    setSavingProduksi(true);
-    setNotice(null);
-    try {
-      const hasil = await createProduksiHarian({
-        tanggalProduksi: tanggal,
-        divisiId: Number(divisiId),
-        outputItemId: Number(outputItemId),
-        jumlah: n(jumlah),
-        tujuanLocationId: Number(tujuanLocationId),
-        keterangan: keterangan.trim() || undefined,
-        bahan: preview.lines.map((line) => ({
-          itemId: line.itemId,
-          sumberLocationId: Number(sumber[line.itemId]),
-        })),
-      });
-      setNotice({ tone: "ok", text: `Produksi ${hasil.nomor} tersimpan. Bahan otomatis dikonsumsi dari lokasi sumber dan hasil masuk gudang.` });
-      setJumlah("");
-      setKeterangan("");
-      setPreview(null);
-      setSumber({});
-      await muatData(true);
-    } catch (error) {
-      setNotice({ tone: "error", text: pesan(error) });
-    } finally {
-      setSavingProduksi(false);
+  const wipByItem = useMemo(() => {
+    const record = stokDivisi.find((row) => row.divisiId === Number(divisiId));
+    const map: Record<number, number> = {};
+    for (const material of record?.materials ?? []) {
+      if (material.itemId !== null) map[material.itemId] = material.sisa;
     }
-  };
+    return map;
+  }, [stokDivisi, divisiId]);
+
+  const wipDivisi = useMemo(() => {
+    const record = stokDivisi.find((row) => row.divisiId === Number(divisiId));
+    return (record?.materials ?? []).filter((row) => row.sisa !== 0 || row.dipakai !== 0);
+  }, [stokDivisi, divisiId]);
+
+  const stokGudangTotal = useMemo(() => {
+    const totals: Record<number, number> = {};
+    for (const location of stokGudang) {
+      for (const item of location.items) {
+        totals[item.itemId] = (totals[item.itemId] ?? 0) + item.quantity;
+      }
+    }
+    return totals;
+  }, [stokGudang]);
 
   const itemsStok = useMemo(() => {
     const q = cariStok.trim().toLowerCase();
     return items
-      .filter((item) => !q || item.kode.toLowerCase().includes(q) || item.nama.toLowerCase().includes(q) || (item.jenis ?? "").toLowerCase().includes(q))
-      .sort((a, b) => (stokGudang[b.id] ?? 0) - (stokGudang[a.id] ?? 0));
-  }, [items, cariStok, stokGudang]);
+      .filter(
+        (item) =>
+          !q ||
+          item.kode.toLowerCase().includes(q) ||
+          item.nama.toLowerCase().includes(q) ||
+          (item.jenis ?? "").toLowerCase().includes(q),
+      )
+      .sort((a, b) => (stokGudangTotal[b.id] ?? 0) - (stokGudangTotal[a.id] ?? 0));
+  }, [items, cariStok, stokGudangTotal]);
+
+  const onSaved = (_record: HasilProduksiRecord) => {
+    setPage(1);
+    refresh();
+  };
 
   if (loading) {
     return (
       <div className="grid min-h-[60vh] place-items-center text-slate-500">
         <p className="flex items-center gap-2 text-sm font-semibold">
-          <FontAwesomeIcon icon={faSpinner} spin /> Memuat produksi harian...
+          <FontAwesomeIcon icon={faSpinner} spin /> Memuat produksi...
         </p>
+      </div>
+    );
+  }
+
+  if (lockedDivisiId === null && user && user.divisiId === null && user.role !== "admin") {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          Akun ini belum terhubung ke divisi. Hubungi admin untuk menetapkan divisi sebelum mencatat
+          hasil produksi.
+        </div>
       </div>
     );
   }
@@ -249,37 +215,45 @@ export default function ProduksiHome() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-widest text-[#00A8E8]">Produksi</p>
-              <h1 className="mt-1 text-xl font-extrabold text-[#1E3A5F] sm:text-2xl">Produksi Harian</h1>
+              <h1 className="mt-1 text-xl font-extrabold text-[#1E3A5F] sm:text-2xl">Hasil Produksi Harian</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                Catat hasil produksi; konsumsi bahan otomatis mengurangi stok lokasi sumber yang dipilih.
+                Catat konsumsi WIP dan output proses sesuai routing. Output tahap akhir membuat unit
+                Barang + QR yang siap dipindai FINISHGOOD.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void muatData(true)}
-              disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            >
-              <FontAwesomeIcon icon={faArrowRotateRight} spin={refreshing} /> Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Divisi
+                <select
+                  value={divisiId}
+                  onChange={(event) => {
+                    setDivisiId(event.target.value);
+                    setPage(1);
+                  }}
+                  disabled={lockedDivisiId !== null}
+                  className={`${inputCls} mt-1 min-w-[150px]`}
+                >
+                  <option value="">Pilih divisi</option>
+                  {divisions.map((row) => (
+                    <option key={row.id} value={row.id}>{row.nama}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={refreshing}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <FontAwesomeIcon icon={faArrowRotateRight} spin={refreshing} /> Refresh
+              </button>
+            </div>
           </div>
         </header>
 
         {loadError && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" /> {loadError}
-          </div>
-        )}
-        {notice && (
-          <div
-            className={`rounded-xl border px-4 py-3 text-sm ${
-              notice.tone === "ok"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-red-200 bg-red-50 text-red-700"
-            }`}
-          >
-            <FontAwesomeIcon icon={notice.tone === "ok" ? faCheck : faTriangleExclamation} className="mr-2" />
-            {notice.text}
           </div>
         )}
 
@@ -299,196 +273,108 @@ export default function ProduksiHome() {
         </nav>
 
         {tab === "produksi" && (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <section className={cardCls}>
-              <h2 className="text-sm font-extrabold text-[#1E3A5F]">Data Produksi</h2>
-              <div className="mt-4 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label>
-                    <span className={labelCls}>Tanggal</span>
-                    <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} className={inputCls} />
-                  </label>
-                  <label>
-                    <span className={labelCls}>Divisi Produksi</span>
-                    <select
-                      value={divisiId}
-                      onChange={(e) => setDivisiId(e.target.value)}
-                      disabled={user?.role !== "admin"}
-                      className={inputCls}
-                    >
-                      <option value="">Pilih divisi</option>
-                      {opsi?.divisions.map((row) => (
-                        <option key={row.id} value={row.id}>{row.nama}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <label>
-                  <span className={labelCls}>Item Hasil Produksi</span>
-                  <select value={outputItemId} onChange={(e) => setOutputItemId(e.target.value)} className={inputCls}>
-                    <option value="">Pilih item hasil (harus punya subassembly/BOM)</option>
-                    {opsi?.outputs.map((row) => (
-                      <option key={row.item.id} value={row.item.id}>
-                        {row.item.kode} — {row.item.nama} (BOM {row.bom?.version ?? "-"})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label>
-                    <span className={labelCls}>Jumlah Hasil</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.000001"
-                      value={jumlah}
-                      onChange={(e) => setJumlah(e.target.value)}
-                      placeholder="0"
-                      className={inputCls}
-                    />
-                  </label>
-                  <label>
-                    <span className={labelCls}>Gudang Tujuan Hasil</span>
-                    <select value={tujuanLocationId} onChange={(e) => setTujuanLocationId(e.target.value)} className={inputCls}>
-                      <option value="">Pilih gudang</option>
-                      {opsi?.warehouses.map((row) => (
-                        <option key={row.id} value={row.id}>{row.gudang?.name ?? row.name} ({row.code})</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <label>
-                  <span className={labelCls}>Keterangan</span>
-                  <textarea
-                    value={keterangan}
-                    onChange={(e) => setKeterangan(e.target.value)}
-                    rows={2}
-                    placeholder="Opsional"
-                    className={inputCls}
-                  />
-                </label>
-
-                {outputTerpilih && (
-                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    BOM <span className="font-bold text-slate-700">{outputTerpilih.bom?.nama ?? "-"}</span> versi{" "}
-                    <span className="font-bold text-slate-700">{outputTerpilih.bom?.version ?? "-"}</span>.
-                  </p>
-                )}
-              </div>
-            </section>
-
-            <section className={cardCls}>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Bahan Dibutuhkan</h2>
-                {previewLoading && <FontAwesomeIcon icon={faSpinner} spin className="text-slate-400" />}
-              </div>
-              {!outputItemId || n(jumlah) <= 0 ? (
-                <p className="mt-6 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
-                  Pilih item hasil dan isi jumlah untuk menghitung BOM.
-                </p>
-              ) : preview && preview.lines.length > 0 ? (
-                <div className="mt-4 space-y-3">
-                  {preview?.lines.map((line) => {
-                    const pilihan = lokasiBahan(line.itemId);
-                    const stokSumber = line.stok.find((row) => String(row.locationId) === sumber[line.itemId]);
-                    return (
-                      <div key={line.itemId} className="rounded-xl border border-slate-200 p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-bold text-slate-700">{line.kode} — {line.nama}</p>
-                            <p className="text-xs text-slate-500">
-                              Butuh {fmt(line.jumlah)} {line.unit ?? ""} · Total stok gudang {fmt(stokGudang[line.itemId] ?? 0)}
-                            </p>
-                          </div>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${stokSumber && stokSumber.quantity >= line.jumlah ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                            {stokSumber ? `${fmt(stokSumber.quantity)} di sumber` : "Pilih sumber"}
-                          </span>
-                        </div>
-                        <select
-                          value={sumber[line.itemId] ?? ""}
-                          onChange={(e) => setSumber((prev) => ({ ...prev, [line.itemId]: e.target.value }))}
-                          className={`${inputCls} mt-2`}
-                        >
-                          <option value="">Pilih lokasi sumber</option>
-                          {pilihan.map((lok) => {
-                            const qty = line.stok.find((row) => row.locationId === lok.id)?.quantity ?? 0;
-                            return (
-                              <option key={lok.id} value={lok.id}>
-                                {jenisLokasi(lok)} · {namaLokasi(lok)} — stok {fmt(qty)}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={() => void simpanProduksi()}
-                    disabled={!bisaSimpanProduksi}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A5F] px-4 py-3 text-sm font-bold text-white hover:bg-[#152c49] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {savingProduksi ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faIndustry} />}
-                    {savingProduksi ? "Menyimpan..." : "Simpan Produksi"}
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-6 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
-                  BOM tidak ditemukan. Pastikan item hasil punya subassembly dengan BOM aktif.
-                </p>
-              )}
-            </section>
-          </div>
+          <HasilProduksiForm
+            key={divisiId}
+            divisiId={divisiId}
+            canChangeDivisi={lockedDivisiId === null}
+            onDivisiChange={(value) => {
+              setDivisiId(value);
+              setPage(1);
+            }}
+            divisions={divisions}
+            items={items}
+            routings={routings}
+            variants={variants}
+            wipByItem={wipByItem}
+            onWipUpdated={refresh}
+            onSaved={onSaved}
+            onScan={() => navigate("/scan-qr?status=FINISHGOOD")}
+          />
         )}
 
-        {tab === "bom" && (
+        {tab === "riwayat" && (
           <section className={cardCls}>
-            <h2 className="text-sm font-extrabold text-[#1E3A5F]">Formula BOM Subassembly</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Hanya BOM subassembly yang dipakai produksi harian. BOM product variant tidak dipakai.
-            </p>
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Riwayat Hasil Produksi</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {divisiTerpilih ? `Divisi ${divisiTerpilih.nama}` : "Semua divisi"} ·{" "}
+                  {riwayat?.meta.total ?? 0} dokumen
+                </p>
+              </div>
+              {riwayat && riwayat.meta.totalPages > 1 && (
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                    className="rounded-lg border border-slate-200 px-2 py-1 font-bold text-slate-600 disabled:opacity-40"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="tabular-nums text-slate-500">
+                    {page}/{riwayat.meta.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={page >= riwayat.meta.totalPages}
+                    onClick={() => setPage((value) => value + 1)}
+                    className="rounded-lg border border-slate-200 px-2 py-1 font-bold text-slate-600 disabled:opacity-40"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Item Hasil</th>
-                    <th className="px-3 py-2">Subassembly</th>
+                    <th className="px-3 py-2">Nomor</th>
+                    <th className="px-3 py-2">Tanggal</th>
+                    <th className="px-3 py-2">Divisi</th>
+                    <th className="px-3 py-2">Tahap</th>
                     <th className="px-3 py-2">BOM</th>
-                    <th className="px-3 py-2 text-right">Stok</th>
-                    <th className="px-3 py-2" />
+                    <th className="px-3 py-2">Output</th>
+                    <th className="px-3 py-2 text-right">Unit QR</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {opsi?.outputs.map((row) => (
-                    <tr key={row.subassemblyId}>
-                      <td className="px-3 py-3">
-                        <p className="font-bold text-slate-700">{row.item.kode} — {row.item.nama}</p>
-                        <p className="text-xs text-slate-400">{row.item.jenis ?? "Tanpa jenis"} · {row.item.unit}</p>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-slate-600">{row.subassemblyKode} — {row.subassemblyNama}</td>
-                      <td className="px-3 py-3 text-xs text-slate-600">{row.bom?.nama ?? "-"} · v{row.bom?.version ?? "-"}</td>
-                      <td className="px-3 py-3 text-right text-xs font-bold tabular-nums text-slate-700">{fmt(stokGudang[row.item.id] ?? 0)}</td>
-                      <td className="px-3 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOutputItemId(String(row.item.id));
-                            setTab("produksi");
-                          }}
-                          className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-[#1E3A5F] hover:bg-slate-50"
-                        >
-                          Pakai
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {opsi?.outputs.length === 0 && (
+                  {riwayat?.data.map((row) => {
+                    const hasil = row.items.filter((item) => item.tipe === "HASIL");
+                    const unitCount = hasil.reduce(
+                      (total, item) => total + item.barangDihasilkan.length,
+                      0,
+                    );
+                    return (
+                      <tr key={row.id}>
+                        <td className="px-3 py-3 font-mono text-xs font-bold text-[#1E3A5F]">{row.nomor}</td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          {new Date(row.tanggalProduksi).toLocaleDateString("id-ID")}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">{row.divisi?.nama ?? "-"}</td>
+                        <td className="px-3 py-3 text-xs text-slate-600">{row.routingStage?.stage ?? "-"}</td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          {row.bom ? `v${row.bom.version}` : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-700">
+                          {hasil.map((item) => (
+                            <span key={item.id} className="block">
+                              {item.item.kode} · {fmt(item.jumlah)} {item.item.unit}
+                              {item.productVariant ? ` · ${item.productVariant.kodeVariant}` : ""}
+                            </span>
+                          ))}
+                        </td>
+                        <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-600">
+                          {unitCount > 0 ? unitCount.toLocaleString("id-ID") : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!riwayat || riwayat.data.length === 0) && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-400">
-                        Belum ada item dengan subassembly dan BOM aktif.
+                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-400">
+                        Belum ada hasil produksi tercatat untuk divisi ini.
                       </td>
                     </tr>
                   )}
@@ -498,14 +384,113 @@ export default function ProduksiHome() {
           </section>
         )}
 
+        {tab === "routing" && (
+          <section className={cardCls}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Routing Produksi Aktif</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Posting HP divalidasi terhadap tahap routing: input, output, divisi, dan urutan proses.
+                </p>
+              </div>
+              {user?.role === "admin" && (
+                <a
+                  href="/admin/routing-produksi"
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-[#1E3A5F] hover:bg-slate-50"
+                >
+                  Kelola routing
+                </a>
+              )}
+            </div>
+            <div className="mt-4 space-y-4">
+              {routings.map((routing) => (
+                <div key={routing.id} className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-xs font-bold text-slate-700">
+                    Routing v{routing.version} · {routing.stages.length} tahap
+                  </p>
+                  <ol className="mt-2 space-y-2">
+                    {[...routing.stages]
+                      .sort((a, b) => a.sequence - b.sequence)
+                      .map((stage) => (
+                        <li key={stage.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded bg-white px-2 py-0.5 font-bold text-[#1E3A5F]">
+                              {stage.sequence + 1}. {stage.stage}
+                            </span>
+                            <span className="text-slate-500">Divisi {stage.divisi.nama}</span>
+                          </div>
+                          <p className="mt-1 text-slate-600">
+                            <span className="font-semibold">Input:</span>{" "}
+                            {stage.inputItems.map((row) => row.item.kode).join(", ") || "—"}
+                          </p>
+                          <p className="text-slate-600">
+                            <span className="font-semibold">Output:</span>{" "}
+                            {stage.outputItems.map((row) => row.item.kode).join(", ") || "—"}
+                          </p>
+                        </li>
+                      ))}
+                  </ol>
+                </div>
+              ))}
+              {routings.length === 0 && (
+                <p className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-400">
+                  Belum ada routing aktif. Admin perlu mengatur Routing Produksi sebelum posting HP.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
         {tab === "stok" && (
           <div className="space-y-4">
             <section className={cardCls}>
+              <h2 className="text-sm font-extrabold text-[#1E3A5F]">
+                Stok WIP — {divisiTerpilih?.nama ?? "divisi"}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Sisa lot WIP yang tersedia untuk baris MASUK pada divisi ini.
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left text-sm">
+                  <thead className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Item</th>
+                      <th className="px-3 py-2">Jenis</th>
+                      <th className="px-3 py-2 text-right">Diterima</th>
+                      <th className="px-3 py-2 text-right">Dipakai</th>
+                      <th className="px-3 py-2 text-right">Sisa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {wipDivisi.map((row) => (
+                      <tr key={row.key}>
+                        <td className="px-3 py-2 text-xs font-semibold text-slate-700">{row.nama}</td>
+                        <td className="px-3 py-2 text-xs text-slate-500">{row.jenis ?? "—"}</td>
+                        <td className="px-3 py-2 text-right text-xs tabular-nums">{fmt(row.diterima)}</td>
+                        <td className="px-3 py-2 text-right text-xs tabular-nums">{fmt(row.dipakai)}</td>
+                        <td className="px-3 py-2 text-right text-xs font-bold tabular-nums text-[#1E3A5F]">
+                          {fmt(row.sisa)} {row.satuan ?? ""}
+                        </td>
+                      </tr>
+                    ))}
+                    {wipDivisi.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">
+                          Belum ada saldo WIP pada divisi ini.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className={cardCls}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Stok Total Item</h2>
+                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Stok Total di Gudang</h2>
                 <input
                   value={cariStok}
-                  onChange={(e) => setCariStok(e.target.value)}
+                  onChange={(event) => setCariStok(event.target.value)}
                   placeholder="Cari item..."
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm sm:w-64"
                 />
@@ -515,76 +500,23 @@ export default function ProduksiHome() {
                   <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                     <p className="truncate text-xs font-bold text-slate-700">{item.kode} — {item.nama}</p>
                     <p className="mt-0.5 text-[11px] text-slate-400">{item.jenis ?? "Tanpa jenis"} · {item.unit}</p>
-                    <p className="mt-1 text-sm font-extrabold tabular-nums text-[#1E3A5F]">{fmt(stokGudang[item.id] ?? 0)}</p>
+                    <p className="mt-1 text-sm font-extrabold tabular-nums text-[#1E3A5F]">
+                      {fmt(stokGudangTotal[item.id] ?? 0)}
+                    </p>
                   </div>
                 ))}
-              </div>
-            </section>
-
-            <section className={cardCls}>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-extrabold text-[#1E3A5F]">Riwayat Produksi</h2>
-                <span className="text-xs text-slate-400">{riwayat?.meta.total ?? 0} catatan</span>
-              </div>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Nomor</th>
-                      <th className="px-3 py-2">Tanggal</th>
-                      <th className="px-3 py-2">Divisi</th>
-                      <th className="px-3 py-2">Hasil</th>
-                      <th className="px-3 py-2">Tujuan</th>
-                      <th className="px-3 py-2 text-right">Bahan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {riwayat?.data.map((row: ProduksiRecord) => {
-                      const hasil = row.items.filter((item) => item.tipe === "HASIL");
-                      return (
-                        <tr key={row.id}>
-                          <td className="px-3 py-3 font-mono text-xs font-bold text-[#1E3A5F]">{row.nomor}</td>
-                          <td className="px-3 py-3 text-xs text-slate-600">
-                            {new Date(row.tanggalProduksi).toLocaleDateString("id-ID")}
-                          </td>
-                          <td className="px-3 py-3 text-xs text-slate-600">{row.divisi?.nama ?? "-"}</td>
-                          <td className="px-3 py-3 text-xs text-slate-700">
-                            {hasil.map((item) => (
-                              <span key={item.id} className="block">
-                                {item.item.kode} · {fmt(item.jumlah)} {item.item.unit}
-                              </span>
-                            ))}
-                          </td>
-                          <td className="px-3 py-3 text-xs text-slate-600">
-                            {row.tujuanLocation ? namaLokasi(row.tujuanLocation) : "-"}
-                          </td>
-                          <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-600">
-                            {row.items.filter((item) => item.tipe === "BAHAN").length}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {(!riwayat || riwayat.data.length === 0) && (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-400">
-                          Belum ada produksi tercatat.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
               </div>
             </section>
           </div>
         )}
 
+        {tab === "laporan" && <LaporanProduksiContent />}
+
         <footer className="flex flex-wrap items-center gap-2 pb-4 text-[11px] text-slate-400">
           <FontAwesomeIcon icon={faWarehouse} />
-          <span>Output produksi selalu masuk gudang. Stok divisi hanya sumber bahan.</span>
-          <FontAwesomeIcon icon={faBoxOpen} className="ml-2" />
+          <span>Output tahap akhir masuk sebagai unit Barang + QR di lokasi divisi.</span>
+          <FontAwesomeIcon icon={faBoxesStacked} className="ml-2" />
           <span>{items.length} item master aktif.</span>
-          <FontAwesomeIcon icon={faCalendarDays} className="ml-2" />
-          <span>{tanggal}</span>
         </footer>
       </div>
     </div>

@@ -76,6 +76,7 @@ export default function RoutingProduksi() {
   const [divisions, setDivisions] = useState<Divisi[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [routings, setRoutings] = useState<ProductionRouting[]>([]);
+  const [selectedRoutingId, setSelectedRoutingId] = useState<number | null>(null);
   const [stages, setStages] = useState<RoutingStageForm[]>([]);
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -99,13 +100,18 @@ export default function RoutingProduksi() {
     nextDivisions: Divisi[],
     nextItems: Item[],
     nextRoutings: ProductionRouting[],
+    preferredRoutingId?: number | null,
   ) => {
     setDivisions(nextDivisions);
     setItems(nextItems);
     setRoutings(nextRoutings);
     setLoadError(null);
 
-    const nextStages: RoutingStageForm[] = (nextRoutings[0]?.stages ?? []).map((stage, index) => ({
+    const chosen =
+      nextRoutings.find((routing) => routing.id === preferredRoutingId) ?? nextRoutings[0] ?? null;
+    setSelectedRoutingId(chosen?.id ?? null);
+
+    const nextStages: RoutingStageForm[] = (chosen?.stages ?? []).map((stage, index) => ({
       key: nextStageKey(),
       stage: stage.stage,
       divisiId: String(stage.divisiId),
@@ -154,7 +160,8 @@ export default function RoutingProduksi() {
     return () => { active = false; };
   }, [applyLoadedData, fetchData]);
 
-  const activeRouting = routings[0];
+  const activeRouting =
+    routings.find((routing) => routing.id === selectedRoutingId) ?? routings[0] ?? null;
   const activeItems = useMemo(() => items.map(toRoutingItem), [items]);
   const itemById = useMemo(() => {
     const map = new Map<string, RoutingItem>();
@@ -354,26 +361,29 @@ export default function RoutingProduksi() {
 
     setSaving(true);
     try {
-      const updated = await saveProductionRouting(payload);
-      const nextStages: RoutingStageForm[] = updated.stages.map((stage, index) => ({
-        key: stages[index]?.key ?? nextStageKey(),
-        stage: stage.stage,
-        divisiId: String(stage.divisiId),
-        inputItemIds: stage.inputItems.map((input) => String(input.itemId)),
-        outputItemIds: stage.outputItems.map((output) => String(output.itemId)),
-        position: stages[index]?.position ?? layoutPosition(index),
-      }));
-      setRoutings([updated]);
-      setStages(nextStages);
-      setSavedSnapshot(serializeStages(nextStages));
-      setEditingKey(null);
-      setSaveAttempted(false);
-      setNotice(`Routing global versi ${updated.version} berhasil disimpan dan diaktifkan.`);
+      // routingId membatasi perubahan pada lineage routing yang sedang diedit,
+      // sehingga routing aktif lain (mis. Solid & Motif) tetap aktif.
+      const updated = await saveProductionRouting(payload, activeRouting?.id);
+      const [nextDivisions, nextItems, nextRoutings] = await fetchData();
+      applyLoadedData(nextDivisions, nextItems, nextRoutings, updated.id);
+      setNotice(
+        activeRouting
+          ? `Routing v${updated.version} disimpan sebagai versi baru; routing lain tetap aktif.`
+          : `Routing global versi ${updated.version} berhasil disimpan dan diaktifkan.`,
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Gagal menyimpan routing produksi. Perubahan lokal tetap dipertahankan.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function pilihRouting(nextId: number) {
+    if (nextId === activeRouting?.id) return;
+    if (dirty && !window.confirm("Perubahan routing belum disimpan. Ganti routing dan buang perubahan?")) {
+      return;
+    }
+    applyLoadedData(divisions, items, routings, nextId);
   }
 
   const status = saving
@@ -416,13 +426,30 @@ export default function RoutingProduksi() {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {routings.length > 0 && (
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600">
+                Routing
+                <select
+                  value={activeRouting?.id ?? ""}
+                  onChange={(event) => pilihRouting(Number(event.target.value))}
+                  disabled={saving}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                >
+                  {routings.map((routing) => (
+                    <option key={routing.id} value={routing.id}>
+                      v{routing.version} · {routing.stages.length} tahap
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button type="button" className={secondaryButton} onClick={addStage} disabled={loading || saving}>
               <FontAwesomeIcon icon={faPlus} />
               Tambah Tahap
             </button>
             <button type="button" className={primaryButton} onClick={() => void saveRouting()} disabled={saving || loading}>
               <FontAwesomeIcon icon={saving ? faSpinner : faSave} spin={saving} />
-              {saving ? "Menyimpan..." : "Simpan dan Aktifkan Routing"}
+              {saving ? "Menyimpan..." : "Simpan versi baru"}
             </button>
           </div>
         </div>

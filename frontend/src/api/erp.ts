@@ -42,6 +42,12 @@ export interface ErpMovement {
   quantity: number | string;
   occurredAt: string;
   reason: string | null;
+  /** Referensi sumber transaksi (mis. PRODUCTION_CONSUMPTION, STOCK_ADJUSTMENT). */
+  sourceType?: string;
+  sourceId?: string;
+  idempotencyKey?: string;
+  reversalOfId?: string | null;
+  reversedBy?: { id: number | string } | null;
 }
 
 export interface ErpStockAdjustment {
@@ -443,9 +449,22 @@ export const postErpMovement = (body: {
   occurredAt?: string;
 }) => request("/inventory/movements", { method: "POST", body: JSON.stringify(body) });
 
+/**
+ * Balik satu movement ledger lokasi. Backend menolak movement produksi /
+ * adjustment (`MOVEMENT_HAS_DEPENDENCY`) dan pembalikan ganda.
+ */
+export const reverseInventoryMovement = (id: number, reason: string) =>
+  request<ErpMovement>(`/inventory/movements/${id}/reverse`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
 export const listProductionRoutings = () => request<ProductionRouting[]>("/quality/routings");
-export const saveProductionRouting = (body: ProductionRoutingInput) =>
-  request<ProductionRouting>("/quality/routings", { method: "PUT", body: JSON.stringify(body) });
+export const saveProductionRouting = (body: ProductionRoutingInput, routingId?: number) =>
+  request<ProductionRouting>("/quality/routings", {
+    method: "PUT",
+    body: JSON.stringify(routingId ? { ...body, routingId } : body),
+  });
 export const receiveErpFinishedGoods = (body: {
   qualityInspectionLineId: number;
   locationId: number;

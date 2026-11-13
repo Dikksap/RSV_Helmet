@@ -25,6 +25,12 @@ import {
   reviewWipRejectRepair,
   WipRejectError,
 } from "../../model/quality/wipReject.js";
+import {
+  listRoutings,
+  replaceActiveRouting,
+  RoutingError,
+  type RoutingStageInput,
+} from "../../model/quality/routing.js";
 
 function positiveInt(value: unknown): number | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
@@ -514,6 +520,76 @@ export async function reopenQualityInspectionHandler(req: Request, res: Response
   try {
     return res.status(201).json(await reopenQualityInspection(id, reason, lines, req.user.id));
   } catch (error) {
+    return respondError(res, error);
+  }
+}
+
+// =============================================
+// Administrasi routing produksi
+// =============================================
+
+export async function listRoutingsHandler(_req: Request, res: Response) {
+  try {
+    return res.json(await listRoutings(true));
+  } catch (error) {
+    return respondError(res, error);
+  }
+}
+
+export async function replaceRoutingHandler(req: Request, res: Response) {
+  const raw = req.body?.stages;
+  const routingIdRaw = req.body?.routingId;
+  const routingId =
+    routingIdRaw === undefined || routingIdRaw === null || routingIdRaw === ""
+      ? undefined
+      : positiveInt(routingIdRaw);
+  if (
+    routingIdRaw !== undefined &&
+    routingIdRaw !== null &&
+    routingIdRaw !== "" &&
+    routingId === null
+  ) {
+    return res.status(400).json({ message: "Field 'routingId' harus angka bulat positif" });
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return res.status(400).json({ message: "Field 'stages' wajib berisi minimal 1 tahap" });
+  }
+  const stages: RoutingStageInput[] = [];
+  for (const [index, row] of raw.entries()) {
+    const stage = (row ?? {}) as Record<string, unknown>;
+    const divisiId = positiveInt(stage.divisiId);
+    if (!divisiId) {
+      return res.status(400).json({ message: `stages[${index}].divisiId wajib angka bulat positif` });
+    }
+    const isLast = index === raw.length - 1;
+    const parseIds = (value: unknown, allowEmpty = false): number[] | null => {
+      if (!Array.isArray(value)) return null;
+      if (value.length === 0) return allowEmpty ? [] : null;
+      const ids = value.map((entry) => positiveInt(entry));
+      return ids.some((id) => !id) ? null : (ids as number[]);
+    };
+    const inputItemIds = parseIds(stage.inputItemIds);
+    const outputItemIds = parseIds(stage.outputItemIds, isLast);
+    if (!inputItemIds || inputItemIds.length === 0 || !outputItemIds || (!isLast && outputItemIds.length === 0)) {
+      return res
+        .status(400)
+        .json({ message: `stages[${index}] wajib punya inputItemIds minimal 1 dan outputItemIds minimal 1 (kecuali tahap akhir)` });
+    }
+    stages.push({
+      stage: String(stage.stage ?? "").trim(),
+      divisiId,
+      inputItemIds,
+      outputItemIds,
+    });
+  }
+  try {
+    return res.status(201).json(await replaceActiveRouting(stages, routingId ?? undefined));
+  } catch (error) {
+    if (error instanceof RoutingError) {
+      return res
+        .status(error.code === "ROUTING_TIDAK_DITEMUKAN" ? 404 : 400)
+        .json({ code: error.code, message: error.message });
+    }
     return respondError(res, error);
   }
 }

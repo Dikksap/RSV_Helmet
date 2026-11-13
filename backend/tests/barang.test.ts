@@ -436,7 +436,9 @@ describe("POST /api/barang/scan/bulk", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.summary).toEqual({ total: 3, success: 2, failed: 1 });
-    expect(mocked.bulkScanBarang).toHaveBeenCalledWith(["BC1", "BC2", "BC3"], "OUT", "test");
+    expect(mocked.bulkScanBarang).toHaveBeenCalledWith(["BC1", "BC2", "BC3"], "OUT", "test", {
+      userId: null,
+    });
     expect(mocked.broadcast).toHaveBeenCalledTimes(2);
 
     const event = mocked.broadcast.mock.calls[0][0] as AppEvent;
@@ -473,7 +475,9 @@ describe("PATCH /api/barang/:id/status", () => {
       .send({ status: "OUT", keterangan: "keluar gudang" });
 
     expect(res.status).toBe(200);
-    expect(mocked.updateBarangStatus).toHaveBeenCalledWith(1, "OUT", "keluar gudang");
+    expect(mocked.updateBarangStatus).toHaveBeenCalledWith(1, "OUT", "keluar gudang", {
+      userId: null,
+    });
     expect(mocked.broadcast).toHaveBeenCalledTimes(1);
   });
 
@@ -1004,11 +1008,14 @@ describe("POST /api/barang/bulk-status", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.summary).toEqual({ total: 3, success: 2, failed: 1 });
-    expect(mocked.bulkUpdateBarangStatus).toHaveBeenCalledWith([
-      { id: 1, status: "OUT", keterangan: "kirim" },
-      { id: 2, status: "OUT", keterangan: undefined },
-      { id: 3, status: "FINISHGOOD", keterangan: undefined },
-    ]);
+    expect(mocked.bulkUpdateBarangStatus).toHaveBeenCalledWith(
+      [
+        { id: 1, status: "OUT", keterangan: "kirim" },
+        { id: 2, status: "OUT", keterangan: undefined },
+        { id: 3, status: "FINISHGOOD", keterangan: undefined },
+      ],
+      { userId: null },
+    );
     expect(mocked.broadcast).toHaveBeenCalledTimes(2);
   });
 });

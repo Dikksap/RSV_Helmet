@@ -23,7 +23,9 @@ export async function updateStatusBarangHandler(req: Request, res: Response) {
       });
     }
 
-    const barang = await updateBarangStatus(id, status, keterangan);
+    const barang = await updateBarangStatus(id, status, keterangan, {
+      userId: req.user?.id ?? null,
+    });
 
     await broadcast({
       type: "barang.status_updated",
@@ -74,7 +76,9 @@ export async function bulkStatusBarangHandler(req: Request, res: Response) {
       keterangan: typeof it.keterangan === "string" ? it.keterangan : undefined,
     }));
 
-    const result = await bulkUpdateBarangStatus(normalized);
+    const result = await bulkUpdateBarangStatus(normalized, {
+      userId: req.user?.id ?? null,
+    });
 
     for (const barang of result.success) {
       await broadcast({

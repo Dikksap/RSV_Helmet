@@ -102,6 +102,12 @@ async function configureProductionRoutings(
           inputItemIds: decalCodes.map(itemId),
           outputItemIds: topCoatCodes.map(itemId),
         },
+        {
+          stage: "PERAKITAN",
+          divisiId: divisionId("Perakitan"),
+          inputItemIds: topCoatCodes.map(itemId),
+          outputItemIds: [],
+        },
       ];
 
       await tx.productionRouting.create({

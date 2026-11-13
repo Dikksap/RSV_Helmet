@@ -31,7 +31,7 @@ export function PermintaanPaper({
             RSV
           </div>
           <div className="mt-[1mm] text-[9pt] font-bold uppercase tracking-[0.3em] text-[#0B0B0B]">
-            Helmet Indonesia
+            Helmet Mnaufacture
           </div>
           <div className="mt-[1mm] text-[8pt] text-[#6b7280]">
             PT. RSV MANUFACTURE INDONESIA — Inventory &amp; Procurement System

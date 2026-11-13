@@ -5,6 +5,7 @@ const { tx } = vi.hoisted(() => ({
     pemakaianMaterial: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
     pemakaianMaterialItem: { findFirst: vi.fn() },
     wipTransferAlokasi: { findFirst: vi.fn() },
+    inventoryMovement: { findFirst: vi.fn() },
   },
 }));
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   tx.pemakaianMaterial.findUnique.mockResolvedValue({ id: 1, sumber: "PERMINTAAN_BARANG" });
   tx.pemakaianMaterialItem.findFirst.mockResolvedValue({ id: 5 });
   tx.wipTransferAlokasi.findFirst.mockResolvedValue(null);
+  tx.inventoryMovement.findFirst.mockResolvedValue(null);
 });
 
 describe("guard pemakaian yang sudah dipakai produksi", () => {

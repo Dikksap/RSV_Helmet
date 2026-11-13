@@ -59,6 +59,16 @@ export class BomSiklikusError extends Error {
   }
 }
 
+export class BomTerkunciError extends Error {
+  readonly code = "BOM_TERKUNCI";
+  constructor() {
+    super(
+      "BOM sudah dipakai transaksi produksi sehingga tidak boleh diubah; buat versi BOM baru",
+    );
+    this.name = "BomTerkunciError";
+  }
+}
+
 const include = {
   productVariant: {
     select: {
@@ -261,9 +271,18 @@ export async function updateBom(id: number, data: UpdateBomInput) {
 
   const itemsForCycle: Array<{ subassemblyId?: number | null }> = data.items !== undefined
     ? flattenItems(data.items)
-    : existing.items;
+    : (existing.items as unknown as Array<{ subassemblyId?: number | null }>);
 
   await assertNoSubassemblyCycle(finalSubassemblyId, itemsForCycle);
+
+  // BOM yang sudah dipakai transaksi produksi TIDAK boleh ditimpa: histori
+  // kebutuhan teoretis harus tetap dapat direproduksi. Perubahan = versi baru.
+  const referenced = await prisma.hasilProduksiHarian.count({ where: { bomId: id } });
+  const changesItems = data.items !== undefined;
+  const changesVersion = data.version !== undefined && data.version !== existing.version;
+  if (referenced > 0 && (changesItems || changesVersion)) {
+    throw new BomTerkunciError();
+  }
 
   return prisma.$transaction(async (tx) => {
     await tx.bom.update({

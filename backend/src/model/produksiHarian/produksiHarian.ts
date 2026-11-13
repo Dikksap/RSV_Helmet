@@ -470,6 +470,15 @@ export async function getProduksiById(id: number) {
 }
 
 export async function createProduksi(input: ProduksiInput, userId: number | null) {
+  // ProduksiHarian bukan lagi jalur posting produksi kanonik. Posting baru
+  // diblokir agar tidak ada dua jurnal untuk proses yang sama; data dan
+  // endpoint baca tetap tersedia untuk histori.
+  if (process.env.PRODUKSI_HARIAN_POSTING !== "true") {
+    throw new ProduksiHarianError(
+      "PH_DINONAKTIFKAN",
+      "Posting ProduksiHarian dinonaktifkan. Gunakan POST /api/hasil-produksi-harian sebagai jalur produksi kanonik.",
+    );
+  }
   if (!Number.isInteger(input.divisiId) || input.divisiId <= 0) {
     throw new ProduksiHarianError("INPUT_TIDAK_VALID", "divisiId harus angka bulat positif");
   }
@@ -601,7 +610,6 @@ export async function createProduksi(input: ProduksiInput, userId: number | null
       reason: `Hasil produksi ${header.nomor}`,
       userId,
       occurredAt: tanggal,
-      syncItemStok: true,
     });
 
     return tx.produksiHarian.findUniqueOrThrow({
@@ -646,7 +654,6 @@ export async function createPenerimaan(input: PenerimaanInput, userId: number | 
       reason: input.keterangan?.trim() || `Penerimaan bahan ${item.kode}`,
       userId,
       occurredAt: tanggal,
-      syncItemStok: true,
     });
     const updated = await tx.item.findUniqueOrThrow({
       where: { id: input.itemId },

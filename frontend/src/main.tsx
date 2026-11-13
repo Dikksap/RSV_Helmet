@@ -42,6 +42,8 @@ import StokOpname from "./pages/admin/StokOpname.tsx";
 import RiwayatMutasi from "./pages/admin/RiwayatMutasi.tsx";
 import DaftarPermintaan from "./pages/admin/DaftarPermintaan.tsx";
 import PemakaianMaterial from "./pages/admin/PemakaianMaterial.tsx";
+import LaporanProduksi from "./pages/admin/LaporanProduksi.tsx";
+import RoutingProduksi from "./pages/admin/RoutingProduksi.tsx";
 import HomepageGudang from "./pages/gudang/HomepageGudang.tsx";
 import ProduksiHome from "./pages/produksi/ProduksiHome.tsx";
 import Profil from "./pages/Profil.tsx";
@@ -99,6 +101,8 @@ const routes = (
       <Route path="/admin/spk" element={<SpkProduksi />} />
       <Route path="/admin/integrasi-jurnal" element={<IntegrasiJurnal />} />
       <Route path="/admin/realisasi-produksi" element={<RealisasiProduksi />} />
+      <Route path="/admin/laporan-produksi" element={<LaporanProduksi />} />
+      <Route path="/admin/routing-produksi" element={<RoutingProduksi />} />
       <Route path="/admin/profil" element={<Profil />} />
     </Route>
 

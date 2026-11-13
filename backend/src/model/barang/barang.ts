@@ -1,4 +1,4 @@
-import prisma, { type PrismaTransactionClient } from "../../lib/prisma.js";
+import prisma from "../../lib/prisma.js";
 import type { Prisma } from "../../../generated/prisma/client.js";
 import { generateBarangBulk, getGenerateInfo } from "./barang.generate.js";
 import {
@@ -6,8 +6,6 @@ import {
   bulkUpdateBarangStatus,
   statusScopeFilter,
   updateBarangStatus,
-  isTransitionAllowed,
-  transitionErrorMessage,
   type StatusBarang,
 } from "./barang.status.js";
 import {
@@ -273,8 +271,9 @@ export async function bulkScanBarang(
   kodeBarangList: string[],
   newStatus: StatusBarang,
   keterangan?: string,
+  options: { userId?: number | null } = {},
 ): Promise<{
-  success: Array<NonNullable<Awaited<ReturnType<typeof prisma.barang.update>>>>;
+  success: Array<Awaited<ReturnType<typeof updateBarangStatus>>>;
   failed: { kodeBarang: string; error: string }[];
 }> {
   const uniqueKodeBarang = [...new Set(kodeBarangList)];
@@ -283,15 +282,14 @@ export async function bulkScanBarang(
     (kode, index) => kodeBarangList.indexOf(kode) !== index,
   );
 
-  const results: Array<
-    NonNullable<Awaited<ReturnType<typeof prisma.barang.update>>>
-  > = [];
+  const results: Array<Awaited<ReturnType<typeof updateBarangStatus>>> = [];
   const failed: { kodeBarang: string; error: string }[] = [];
 
   for (const kode of uniqueKodeBarang) {
     try {
       const barang = await prisma.barang.findUnique({
         where: { kodeBarang: kode },
+        select: { id: true },
       });
 
       if (!barang) {
@@ -299,50 +297,7 @@ export async function bulkScanBarang(
         continue;
       }
 
-      if (!(await isTransitionAllowed(barang.status as StatusBarang, target))) {
-        failed.push({
-          kodeBarang: kode,
-          error: await transitionErrorMessage(barang.status, target),
-        });
-        continue;
-      }
-
-      const updated = await prisma.$transaction(async (tx: PrismaTransactionClient) => {
-        const updatedBarang = await tx.barang.update({
-          where: { id: barang.id },
-          data: { status: target },
-          include: {
-            variant: {
-              include: {
-                product: true,
-                style: true,
-                color: true,
-                size: true,
-              },
-            },
-            batch: {
-              select: {
-                id: true,
-                nomorBatch: true,
-                totalProduksi: true,
-                kapasitas: true,
-                status: true,
-              },
-            },
-          },
-        });
-
-        await tx.riwayatBarang.create({
-          data: {
-            barangId: barang.id,
-            status: target,
-            keterangan,
-          },
-        });
-
-        return updatedBarang;
-      });
-
+      const updated = await updateBarangStatus(barang.id, target, keterangan, options);
       results.push(updated);
     } catch (error) {
       failed.push({

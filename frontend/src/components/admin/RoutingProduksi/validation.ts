@@ -26,11 +26,15 @@ export function validateRouting(
     const divisionId = Number(stage.divisiId);
     const hasDivision = Boolean(stage.divisiId) && Number.isFinite(divisionId);
 
+    const isLastStage = index === stages.length - 1;
+
     if (!stage.stage.trim()) issues.push("Nama tahap wajib diisi.");
     if (stage.stage.trim().length > 80) issues.push("Nama tahap maksimal 80 karakter.");
     if (!hasDivision) issues.push("Divisi produksi wajib dipilih.");
     if (stage.inputItemIds.length === 0) issues.push("Pilih minimal satu item input.");
-    if (stage.outputItemIds.length === 0) issues.push("Pilih minimal satu item output.");
+    if (!isLastStage && stage.outputItemIds.length === 0) {
+      issues.push("Pilih minimal satu item output.");
+    }
     if (new Set(stage.inputItemIds).size !== stage.inputItemIds.length) {
       issues.push("Item input tidak boleh duplikat.");
     }
