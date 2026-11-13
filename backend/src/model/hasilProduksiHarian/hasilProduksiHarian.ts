@@ -201,6 +201,21 @@ function isTipeValid(value: unknown): value is TipeHasilProduksiItem {
   );
 }
 
+/**
+ * Baris MASUK/KELUAR wajib punya itemId; hanya baris HASIL berbasis varian yang
+ * boleh null. validasiInput() sudah menjamin ini, helper ini mempersempit tipe
+ * sekaligus menjadi jaring pengaman bila createInTx dipanggil tanpa validasi.
+ */
+function wajibItemId(item: HasilProduksiItemInput): number {
+  if (item.itemId == null) {
+    throw new HasilProduksiError(
+      INPUT_TIDAK_VALID,
+      `Baris ${item.tipe} wajib memiliki itemId`,
+    );
+  }
+  return item.itemId;
+}
+
 function isNomorUniqueViolation(error: unknown): boolean {
   const e = error as { code?: string; meta?: { target?: unknown } } | null;
   if (e?.code !== "P2002") return false;
@@ -831,7 +846,8 @@ async function createInTx(
   const keluarPerItem = new Map<number, number>();
   for (const item of input.items) {
     if (item.tipe !== TipeHasilProduksiItem.KELUAR) continue;
-    keluarPerItem.set(item.itemId, (keluarPerItem.get(item.itemId) ?? 0) + item.jumlah);
+    const itemId = wajibItemId(item);
+    keluarPerItem.set(itemId, (keluarPerItem.get(itemId) ?? 0) + item.jumlah);
   }
 
   // Kunci semua item dengan urutan tetap supaya produksi dan approval tidak deadlock.
@@ -844,8 +860,9 @@ async function createInTx(
     rows: Array<{ id: number; sisa: number }>;
   }> = [];
   for (const inputLine of barisMasuk) {
-    const itemMasuk = items.find((item) => item.id === inputLine.itemId)!;
-    const wipRows = await lockWipRows(tx, input.divisiId, inputLine.itemId);
+    const inputItemId = wajibItemId(inputLine);
+    const itemMasuk = items.find((item) => item.id === inputItemId)!;
+    const wipRows = await lockWipRows(tx, input.divisiId, inputItemId);
     const alokasi = wipRows.map((row) => {
       const sisa = Number(row.jumlahSisa);
       const dipakai = Number(row.jumlahDipakai);
@@ -879,7 +896,7 @@ async function createInTx(
         itemMasuk.divisi?.nama ?? null,
       );
     }
-    konsumsiPerInput.push({ itemId: inputLine.itemId, jumlah: inputLine.jumlah, rows: alokasi });
+    konsumsiPerInput.push({ itemId: inputItemId, jumlah: inputLine.jumlah, rows: alokasi });
   }
 
   // KELUAR = pengurangan stok pada lokasi divisi pelaksana.
