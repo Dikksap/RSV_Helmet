@@ -24,6 +24,7 @@ const BTN = `inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 
 const BTN_PRIMARY = `${BTN} bg-[#1E3A5F] text-white hover:bg-[#162C48]`;
 const BTN_GHOST = `${BTN} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`;
 const MINI = `rounded-lg px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${FOCUS}`;
+const MAX_BULK_DUS = 100;
 
 const BOX_ICON = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -279,6 +280,10 @@ function StokProduksi() {
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [formNama, setFormNama] = useState("");
   const [editingGroup, setEditingGroup] = useState<BarangGroup | null>(null);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [bulkStart, setBulkStart] = useState("");
+  const [bulkEnd, setBulkEnd] = useState("");
+  const [bulkProgress, setBulkProgress] = useState<number | null>(null);
   const [deletingGroup, setDeletingGroup] = useState<BarangGroup | null>(null);
   const [crudLoading, setCrudLoading] = useState(false);
   const [crudError, setCrudError] = useState<string | null>(null);
@@ -306,9 +311,10 @@ function StokProduksi() {
     void refresh();
   }, [refresh]);
 
-  const anyModal = formMode !== null || deletingGroup !== null || detailGroup !== null;
+  const anyModal = formMode !== null || bulkCreateOpen || deletingGroup !== null || detailGroup !== null;
   const closeAll = useCallback(() => {
     setFormMode(null);
+    setBulkCreateOpen(false);
     setDeletingGroup(null);
     setDetailGroup(null);
     detailFor.current = null;
@@ -316,12 +322,33 @@ function StokProduksi() {
 
   useEffect(() => {
     if (!anyModal) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeAll();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !crudLoading && closeAll();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [anyModal, closeAll]);
+  }, [anyModal, closeAll, crudLoading]);
 
   const active = useMemo(() => groups.filter((g) => !g.isArsip), [groups]);
+  const activeDusNumbers = useMemo(
+    () => {
+      const numbers = active
+        .map((g) => g.nama.trim().match(/^(?:DUS\s*)?(\d+)$/i)?.[1])
+        .map((n) => (n === undefined ? null : Number(n)))
+        .filter((n): n is number => n !== null && Number.isSafeInteger(n));
+      return new Set(numbers);
+    },
+    [active],
+  );
+  const bulkRange = useMemo(() => {
+    if (!bulkStart.trim() || !bulkEnd.trim()) return null;
+    const start = Number(bulkStart);
+    const end = Number(bulkEnd);
+    const count = end - start + 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start || count > MAX_BULK_DUS) return null;
+    return { start, end, count };
+  }, [bulkStart, bulkEnd]);
+  const bulkExistingCount = bulkRange
+    ? Array.from({ length: bulkRange.count }, (_, i) => bulkRange.start + i).filter((n) => activeDusNumbers.has(n)).length
+    : 0;
   const arsipCount = useMemo(() => groups.filter((g) => g.isArsip).length, [groups]);
   const totalBarang = active.reduce((a, g) => a + g._count.barang, 0);
   const fullCount = active.filter((g) => g._count.barang >= DUS_CAPACITY).length;
@@ -418,6 +445,50 @@ function StokProduksi() {
     setFormNama(g?.nama ?? "");
     setEditingGroup(g ?? null);
     setFormMode(mode);
+  };
+
+  const openBulkCreate = () => {
+    const next = [...activeDusNumbers].reduce((max, number) => Math.max(max, number), 0) + 1;
+    setBulkStart(String(next));
+    setBulkEnd("");
+    setBulkProgress(null);
+    setCrudError(null);
+    setBulkCreateOpen(true);
+  };
+
+  const submitBulkCreate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!bulkRange) {
+      setCrudError(`Masukkan rentang nomor yang valid (maksimal ${MAX_BULK_DUS} dus per proses).`);
+      return;
+    }
+
+    setCrudLoading(true);
+    setCrudError(null);
+    let created = 0;
+    let failed = 0;
+    let firstFailure = "";
+    for (let i = 0; i < bulkRange.count; i++) {
+      const number = bulkRange.start + i;
+      setBulkProgress(i + 1);
+      if (activeDusNumbers.has(number)) continue;
+      try {
+        await createBarangGroup(String(number));
+        created++;
+      } catch (err) {
+        failed++;
+        firstFailure ||= `${number}: ${errMsg(err, "Gagal membuat dus")}`;
+      }
+    }
+    setCrudLoading(false);
+    setBulkCreateOpen(false);
+    setBulkProgress(null);
+    if (failed > 0) {
+      toast(`${created} dus dibuat, ${bulkExistingCount} dilewati karena sudah ada, ${failed} gagal. ${firstFailure}`, "error");
+    } else {
+      toast(`${created} dus dibuat, ${bulkExistingCount} dilewati karena sudah ada`);
+    }
+    await refresh();
   };
 
   const submitForm = async (e: FormEvent) => {
@@ -656,6 +727,9 @@ function StokProduksi() {
           <button type="button" onClick={() => openForm("create")} className={BTN_PRIMARY}>
             + Dus Baru
           </button>
+          <button type="button" onClick={openBulkCreate} className={BTN_GHOST}>
+            + Dus Massal
+          </button>
         </div>
       </header>
 
@@ -801,6 +875,63 @@ function StokProduksi() {
               </button>
               <button type="submit" disabled={crudLoading} className={formDup.length > 0 ? `${BTN} bg-amber-500 text-white hover:bg-amber-600` : BTN_PRIMARY}>
                 {crudLoading ? "Menyimpan…" : formDup.length > 0 ? "Tetap simpan" : "Simpan"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {bulkCreateOpen && (
+        <Modal
+          title="Tambah dus massal"
+          onClose={() => {
+            if (!crudLoading) setBulkCreateOpen(false);
+          }}
+        >
+          <form onSubmit={submitBulkCreate}>
+            <p className="mb-4 text-sm text-slate-500">Nama dus berupa nomor berurutan, misalnya 5 sampai 10. Nomor yang sudah dipakai dus aktif akan dilewati.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-xs font-semibold text-slate-600">
+                Dari nomor
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  className={`${FIELD} mt-1.5`}
+                  value={bulkStart}
+                  onChange={(e) => setBulkStart(e.target.value)}
+                  autoFocus
+                  disabled={crudLoading}
+                />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600">
+                Sampai nomor
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  className={`${FIELD} mt-1.5`}
+                  value={bulkEnd}
+                  onChange={(e) => setBulkEnd(e.target.value)}
+                  disabled={crudLoading}
+                />
+              </label>
+            </div>
+            {bulkRange ? (
+              <p className="mt-3 text-xs text-slate-500">
+                {bulkRange.count - bulkExistingCount} dus akan dibuat · {bulkExistingCount} nomor sudah ada · Maksimal {MAX_BULK_DUS} dus per proses
+                {bulkProgress !== null && crudLoading ? ` · Progres ${bulkProgress}/${bulkRange.count}` : ""}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">Masukkan nomor akhir yang lebih besar atau sama dengan nomor awal (maksimal {MAX_BULK_DUS} dus).</p>
+            )}
+            <ErrorBox msg={crudError} />
+            <div className="mt-5 flex gap-2 [&>*]:flex-1">
+              <button type="button" onClick={() => setBulkCreateOpen(false)} disabled={crudLoading} className={BTN_GHOST}>
+                Batal
+              </button>
+              <button type="submit" disabled={crudLoading || !bulkRange || bulkRange.count === bulkExistingCount} className={BTN_PRIMARY}>
+                {crudLoading ? "Membuat…" : "Buat dus"}
               </button>
             </div>
           </form>
