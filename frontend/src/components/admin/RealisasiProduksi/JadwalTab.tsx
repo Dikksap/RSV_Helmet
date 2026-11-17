@@ -635,11 +635,8 @@ export default function JadwalTab({
                                 }
                                 className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
                               >
-                                +
-                                {d.unfilledTotal.toLocaleString(
-                                  "id-ID"
-                                )}{" "}
-                                barang
+                                + Tambah Finishgood (
+                                {d.unfilledTotal.toLocaleString("id-ID")} barang)
                               </button>
                             )}
                           </div>

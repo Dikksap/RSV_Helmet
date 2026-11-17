@@ -253,9 +253,7 @@ export async function getRealisasi(
 }
 
 // Hitungan Barang per tanggal per variant sebagai saran pengisian aktual.
-// Memakai tanggal FINISHGOOD pertama (`finishGoodAt`) dan hanya status yang
-// merepresentasikan unit yang dihasilkan. OUT = sudah dikirim, jadi tidak
-// diusulkan lagi sebagai hasil produksi.
+// Status selain REGISTER ikut dihitung agar status tambahan tetap didukung.
 export async function getFinishgoodCounts(
   orderId: number,
   awal: Date | null,
@@ -264,7 +262,7 @@ export async function getFinishgoodCounts(
   const items = await prisma.productionOrderItem.findMany({ where: { orderId }, select: { variantId: true } });
   if (items.length === 0) return [];
   const conds = [
-    Prisma.sql`b.status IN ('FINISHGOOD', 'RETUR', 'BAD')`,
+    Prisma.sql`b.status <> 'REGISTER'`,
     ...(awal && akhir
       ? [Prisma.sql`COALESCE(b.finishGoodAt, b.tanggal) >= ${startOfDay(awal)} AND COALESCE(b.finishGoodAt, b.tanggal) <= ${endOfDay(akhir)}`]
       : []),
