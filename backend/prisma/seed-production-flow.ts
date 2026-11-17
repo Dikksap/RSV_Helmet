@@ -265,7 +265,7 @@ export async function seedProductionFlow() {
   const [itemRows, divisionRows, variantRows] = await Promise.all([
     loadItems(allCodes),
     prisma.divisi.findMany({
-      where: { nama: { in: ["Buffing", "Base Coat", "Decal Solid", "Decal Motif", "Top Coat"] } },
+      where: { nama: { in: ["Buffing", "Base Coat", "Decal Solid", "Decal Motif", "Top Coat", "Perakitan"] } },
       select: { id: true, nama: true },
     }),
     prisma.productVariant.findMany({

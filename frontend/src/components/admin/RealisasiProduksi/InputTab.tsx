@@ -69,6 +69,7 @@ export default function InputTab({ tanggal, setTanggal, rows, inputs, setInputs,
           <button type="button" onClick={()=>void save()} disabled={saving || locked || !canSave} className="rounded-lg bg-[#1E3A5F] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#16294a] active:scale-[0.98] disabled:opacity-40">{saving ? "Menyimpan..." : "Simpan Realisasi"}</button>
         </div>
         <p className="border-b border-slate-100 bg-[#F5F7FA] px-4 py-2 text-xs text-[#6B7280]">Kolom Aktual terisi otomatis dari barang non-REGISTER — ubah manual bila perlu, lalu tekan Simpan Realisasi.</p>
+        {!loading && rows.length > 0 && totals.rencana === 0 && <p role="status" className="border-b border-slate-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">Tidak ada jadwal item pada tanggal ini. Realisasi tetap dapat diinput untuk variant dalam plan produksi.</p>}
         {loading ? (<p className="animate-pulse p-6 text-[15px] text-[#6B7280]">Memuat jadwal & realisasi...</p>) : rows.length===0 ? (<p className="p-6 text-center text-[#6B7280]">Tidak ada jadwal item pada tanggal ini — tahapan divisi di atas tetap bisa diisi lalu Simpan Realisasi.</p>) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">

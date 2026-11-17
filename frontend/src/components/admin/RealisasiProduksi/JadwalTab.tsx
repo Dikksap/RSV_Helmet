@@ -286,6 +286,11 @@ export default function JadwalTab({
         {/* =================================================
             CONTENT
         ================================================== */}
+        {!loadingOrder && !loadingJadwal && jadwalRows.length > 0 && jadwalRows.every((d) => d.rencana === 0) && (
+          <p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            Tidak ada jadwal produksi pada periode ini. Pilih &ldquo;Isi Realisasi&rdquo; pada tanggal yang sesuai untuk mencatat hasil produksi.
+          </p>
+        )}
         {loadingOrder || loadingJadwal ? (
           <LoadingState />
         ) : jadwalRows.length === 0 ? (

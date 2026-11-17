@@ -47,7 +47,7 @@ export default function RealisasiProduksi(){
   // eslint-disable-next-line react-hooks/set-state-in-effect -- update the date range when the selected order changes
   useEffect(()=>{ const o=orders.find(x=>x.id===orderId)??null; if(!o) return; const [a,b]=monthRange(o.periode); setAwal(a); setAkhir(b); },[orderId,orders]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch the selected order's summary and schedule
-  useEffect(()=>{ if(orderId===null) return; setLoadingOrder(true); Promise.all([getProductionOrderSummary(orderId),getProductionSchedule(orderId)]).then(([summary,schedule])=>{ setOrderData({summary,schedule}); const dates=schedule.rows.map(r=>r.tanggal).filter(Boolean).sort(); if(dates.length>0){ setAwal(dates[0]); setAkhir(dates[dates.length-1]); } }).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat order.")).finally(()=>setLoadingOrder(false)); },[orderId]);
+  useEffect(()=>{ if(orderId===null) return; setLoadingOrder(true); Promise.all([getProductionOrderSummary(orderId),getProductionSchedule(orderId)]).then(([summary,schedule])=>{ setOrderData({summary,schedule}); const dates=schedule.rows.map(r=>r.tanggal).filter(Boolean).sort(); const [periodStart,periodEnd]=monthRange(summary.periode); const start=dates[0]??periodStart, end=dates[dates.length-1]??periodEnd, today=todayKey(); setAwal(start<today?start:today); setAkhir(end>today?end:today); }).catch(e=>setError(e instanceof Error?e.message:"Gagal memuat order.")).finally(()=>setLoadingOrder(false)); },[orderId]);
 
   const loadInput=useCallback(async()=>{
     if(orderId===null || !orderData) return;
@@ -68,7 +68,6 @@ export default function RealisasiProduksi(){
       const next:Row[]=[]; const nextInputs:Record<number,number>={}; const nextReject:Record<number,number>={};
       for(const it of orderData.summary.items){
         const vid=it.variantId, rc=rencana.get(vid)??0, sv=saved.get(vid), f=fg.get(vid)??0;
-        if(rc===0 && sv===undefined && f===0) continue;
         next.push({ variantId:vid, label:`${it.variant.product.nama} · ${it.variant.style.nama} ${it.variant.color.nama}`, sub:`${it.variant.kodeVariant} · Size ${it.variant.size.nama}`, rencana:rc, finishgood:f });
         nextInputs[vid]=sv?.qty ?? f; nextReject[vid]=sv?.reject ?? 0;
       }
@@ -96,7 +95,7 @@ export default function RealisasiProduksi(){
       for(const x of rekapAll){ const cur=agg.get(x.variantId)??{baik:0,reject:0}; cur.baik+=x.qty; cur.reject+=x.reject??0; agg.set(x.variantId,cur); }
       return orderData.summary.items.map(it=>{ const a=agg.get(it.variantId)??{baik:0,reject:0}; const target=it.qty; const pct=target>0?(a.baik/target)*100:a.baik>0?100:0; return { variantId:it.variantId, item:`${it.variant.product.nama} ${it.variant.style.nama} ${it.variant.color.nama}`, size:it.variant.size.nama, target, baik:a.baik, reject:a.reject, pct }; });
     }
-    const groupKey=(it:any)=>`${it.variant.product.id}:${it.variant.style.id}:${it.variant.color.id}`;
+    const groupKey=(it:ProductionOrderSummary["items"][number])=>`${it.variant.product.id}:${it.variant.style.id}:${it.variant.color.id}`;
     const targetAgg=new Map<string,{item:string;target:number}>();
     const idToGroup=new Map<number,string>();
     for(const it of orderData.summary.items){ const k=groupKey(it); idToGroup.set(it.variantId,k); const cur=targetAgg.get(k)??{item:`${it.variant.product.nama} ${it.variant.style.nama} ${it.variant.color.nama}`,target:0}; cur.target+=it.qty; targetAgg.set(k,cur); }
@@ -181,7 +180,7 @@ export default function RealisasiProduksi(){
       const merged=[...existing, ...items.filter(i=>!have.has(i.variantId)).map(i=>({variantId:i.variantId, qty:i.qty, reject:0}))];
       await saveRealisasi(orderId,t,merged); setNotice(`${items.length} variant ${fmtDate(t)} terisi dari barang non-REGISTER (${items.reduce((n,u)=>n+u.qty,0).toLocaleString("id-ID")} pcs).`); await loadJadwal(); }catch(e){ setError(e instanceof Error?e.message:"Gagal isi otomatis."); } finally{ setSaving(false); }
   };
-  const dayStatus=rows.length===0?{text:"Belum ada jadwal hari ini",cls:"bg-slate-100 text-slate-500"}:statusOf(totals.rencana,totals.aktual);
+  const dayStatus=totals.rencana===0&&totals.aktual===0?{text:"Belum ada jadwal hari ini",cls:"bg-slate-100 text-slate-500"}:statusOf(totals.rencana,totals.aktual);
   const today=todayKey();
   // Auto: tanggal sebelum hari ini terkunci. Bisa di-override manual via tombol Kunci/Buka di InputTab.
   const [lockOverride,setLockOverride]=useState<boolean|null>(null);
