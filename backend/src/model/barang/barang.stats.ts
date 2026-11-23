@@ -197,6 +197,19 @@ type VariantStatusGroup = {
   jumlah: bigint;
 };
 
+type VariantStatusJoinGroup = {
+  tanggal: string | null;
+  variantId: number;
+  kodeVariant: string;
+  product: string;
+  style: string;
+  color: string;
+  size: string;
+  sizeUrutan: number;
+  status: string;
+  jumlah: bigint;
+};
+
 export async function getBarangRekapVariant(
   filter: BarangRekapVariantFilter,
   statusScope?: string[] | null,
@@ -287,21 +300,103 @@ export async function getBarangRekapVariant(
     row.total += count;
   }
 
-  const data = [...rows.values()].sort(
-    (a, b) =>
-      (b.tanggal ?? "").localeCompare(a.tanggal ?? "") ||
-      b.total - a.total ||
-      a.product.localeCompare(b.product) ||
-      a.style.localeCompare(b.style) ||
-      a.color.localeCompare(b.color) ||
-      a.size.localeCompare(b.size),
-  );
+  const data = [...rows.values()].sort(sortRekapVariantRows);
 
   return {
     data,
     statuses,
     total: data.reduce((sum, row) => sum + row.total, 0),
   };
+}
+
+// Query khusus endpoint publik: metadata variant ikut di JOIN supaya tidak ada
+// query kedua, dan hanya kolom agregat yang diambil (tanpa memuat baris Barang).
+export async function getBarangRekapVariantPublic(
+  filter: BarangRekapVariantFilter,
+): Promise<{
+  data: BarangRekapVariantRow[];
+  statuses: string[];
+  total: number;
+}> {
+  const conditions: Prisma.Sql[] = [Prisma.sql`1 = 1`];
+  if (filter.tanggalAwal) {
+    conditions.push(Prisma.sql`b.tanggal >= ${filter.tanggalAwal}`);
+  }
+  if (filter.tanggalAkhir) {
+    conditions.push(Prisma.sql`b.tanggal <= ${filter.tanggalAkhir}`);
+  }
+
+  const [groups, statusRows] = await Promise.all([
+    prisma.$queryRaw<VariantStatusJoinGroup[]>(Prisma.sql`
+      SELECT DATE_FORMAT(b.tanggal, '%Y-%m-%d') AS tanggal,
+             b.variantId AS variantId,
+             v.kodeVariant AS kodeVariant,
+             p.nama AS product,
+             s.nama AS style,
+             c.nama AS color,
+             sz.nama AS size,
+             sz.urutan AS sizeUrutan,
+             b.status AS status,
+             COUNT(*) AS jumlah
+      FROM Barang b
+      JOIN ProductVariant v ON v.id = b.variantId
+      JOIN Product p ON p.id = v.productId
+      JOIN Style s ON s.id = v.styleId
+      JOIN Color c ON c.id = v.colorId
+      JOIN Size sz ON sz.id = v.sizeId
+      WHERE ${Prisma.join(conditions, " AND ")}
+      GROUP BY DATE(b.tanggal), b.variantId, b.status,
+               v.kodeVariant, p.nama, s.nama, c.nama, sz.nama, sz.urutan`),
+    prisma.statusBarang.findMany({
+      where: { isActive: true },
+      orderBy: { urutan: "asc" },
+      select: { kode: true },
+    }),
+  ]);
+
+  const statuses = statusRows.map((row) => row.kode);
+  const rows = new Map<string, BarangRekapVariantRow>();
+  for (const group of groups) {
+    const key = `${group.tanggal ?? ""}\u0000${group.variantId}`;
+    let row = rows.get(key);
+    if (!row) {
+      row = {
+        tanggal: group.tanggal,
+        variantId: group.variantId,
+        kodeVariant: group.kodeVariant,
+        product: group.product,
+        style: group.style,
+        color: group.color,
+        size: group.size,
+        sizeUrutan: group.sizeUrutan,
+        perStatus: Object.fromEntries(statuses.map((kode) => [kode, 0])),
+        total: 0,
+      };
+      rows.set(key, row);
+    }
+    const count = Number(group.jumlah);
+    row.perStatus[group.status] = (row.perStatus[group.status] ?? 0) + count;
+    row.total += count;
+  }
+
+  const data = [...rows.values()].sort(sortRekapVariantRows);
+
+  return {
+    data,
+    statuses,
+    total: data.reduce((sum, row) => sum + row.total, 0),
+  };
+}
+
+function sortRekapVariantRows(a: BarangRekapVariantRow, b: BarangRekapVariantRow) {
+  return (
+    (b.tanggal ?? "").localeCompare(a.tanggal ?? "") ||
+    b.total - a.total ||
+    a.product.localeCompare(b.product) ||
+    a.style.localeCompare(b.style) ||
+    a.color.localeCompare(b.color) ||
+    a.size.localeCompare(b.size)
+  );
 }
 
 /** Bangun WHERE clause parameterized dari filter query params */

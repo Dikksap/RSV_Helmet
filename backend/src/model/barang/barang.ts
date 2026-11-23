@@ -15,6 +15,7 @@ import {
 } from "./barang.crud.js";
 import {
   getBarangRekapVariant,
+  getBarangRekapVariantPublic,
   getBarangStats,
   getBatchRentangTanggal,
   getFinishgoodPerBulan,
@@ -31,6 +32,7 @@ export {
   updateBarangStatus,
   updateBarang,
   getBarangRekapVariant,
+  getBarangRekapVariantPublic,
   getBarangStats,
   getBatchRentangTanggal,
   getFinishgoodPerBulan,
@@ -146,6 +148,13 @@ export async function listBarang(filter: BarangListFilter) {
 export async function getBarangById(id: number) {
   return prisma.barang.findUnique({
     where: { id },
+    include: barangInclude,
+  });
+}
+
+export async function getBarangByKode(kodeBarang: string) {
+  return prisma.barang.findUnique({
+    where: { kodeBarang },
     include: barangInclude,
   });
 }

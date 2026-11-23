@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Template Form Permintaan Barang</title>
+  <style>
+    :root {
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #d7e0ee;
+      --red: #e30613;
+      --dark: #0b0b0b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #eef1f5;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10pt;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px;
+      background: #fff;
+      border-bottom: 1px solid #d1d5db;
+    }
+
+    .toolbar button {
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 16px;
+      background: var(--red);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .paper {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 12mm auto;
+      padding: 14mm 16mm;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    }
+
+    .header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 4mm;
+    }
+
+    .brand-name {
+      color: var(--dark);
+      font-size: 26pt;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -1px;
+    }
+
+    .brand-tagline {
+      margin-top: 1mm;
+      color: var(--dark);
+      font-size: 8pt;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+
+    .brand-desc {
+      margin-top: 1mm;
+      color: var(--muted);
+      font-size: 7.5pt;
+    }
+
+    .document-title {
+      text-align: right;
+    }
+
+    .document-title strong {
+      display: block;
+      color: var(--dark);
+      font-size: 11pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .document-title span {
+      display: block;
+      margin-top: 1mm;
+      color: var(--red);
+      font-family: monospace;
+      font-size: 10pt;
+      font-weight: 700;
+    }
+
+    .red-line {
+      height: 2.5mm;
+      margin-bottom: 6mm;
+      background: var(--red);
+    }
+
+    .section-title {
+      margin: 0 0 2mm;
+      color: var(--dark);
+      font-size: 9.5pt;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .info,
+    .items,
+    .reason {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .info-box {
+      margin-bottom: 6mm;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      background: #f8fafc;
+      padding: 3mm 4mm;
+    }
+
+    .info td {
+      height: 7mm;
+      vertical-align: middle;
+    }
+
+    .info td:nth-child(odd) {
+      width: 18%;
+      color: var(--muted);
+    }
+
+    .info td:nth-child(even) {
+      width: 32%;
+      font-weight: 700;
+    }
+
+    .items {
+      margin-bottom: 6mm;
+      table-layout: fixed;
+      font-size: 9pt;
+    }
+
+    .items th {
+      border: 1px solid var(--dark);
+      border-bottom: 1.5mm solid var(--red);
+      background: var(--dark);
+      color: #fff;
+      padding: 2mm;
+      text-align: center;
+    }
+
+    .items td {
+      height: 8mm;
+      border: 1px solid var(--line);
+      padding: 1.5mm 2mm;
+    }
+
+    .items tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    .col-no { width: 6%; }
+    .col-name { width: 35%; }
+    .col-spec { width: 31%; }
+    .col-qty { width: 12%; }
+    .col-unit { width: 16%; }
+
+    .items td.no {
+      color: var(--red);
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .reason-box {
+      min-height: 20mm;
+      margin-bottom: 10mm;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      padding: 3mm 4mm;
+    }
+
+    .signatures {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      text-align: center;
+      font-size: 9pt;
+    }
+
+    .signature {
+      padding: 0 3mm;
+    }
+
+    .signature-title {
+      min-height: 19mm;
+      white-space: pre-line;
+    }
+
+    .signature-name {
+      border-top: 1px solid var(--ink);
+      padding-top: 1.5mm;
+      font-weight: 700;
+    }
+
+    .blank-field {
+      color: var(--muted);
+    }
+
+    @media (max-width: 220mm) {
+      .paper {
+        width: calc(100% - 16px);
+        min-height: auto;
+        margin: 8px auto;
+        padding: 20px;
+      }
+    }
+
+    @media print {
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      body {
+        background: #fff;
+      }
+
+      .toolbar {
+        display: none;
+      }
+
+      .paper {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Cetak / Simpan PDF</button>
+  </div>
+
+  <main class="paper">
+    <header class="header">
+      <div>
+        <div class="brand-name">RSV</div>
+        <div class="brand-tagline">Helmet Manufacture</div>
+        <div class="brand-desc">PT. RSV MANUFACTURE INDONESIA — Inventory &amp; Procurement System</div>
+      </div>
+      <div class="document-title">
+        <strong>Form Permintaan Barang</strong>
+        <span>PR-........</span>
+      </div>
+    </header>
+
+    <div class="red-line"></div>
+
+    <h2 class="section-title">Document Information</h2>
+    <div class="info-box">
+      <table class="info">
+        <tbody>
+          <tr>
+            <td>No. Permintaan</td>
+            <td><span class="blank-field">: ................................</span></td>
+            <td>Tanggal Form</td>
+            <td><span class="blank-field">: ................................</span></td>
+          </tr>
+          <tr>
+            <td>Departemen</td>
+            <td><span class="blank-field">: ................................</span></td>
+            <td>Tgl. Dibutuhkan</td>
+            <td><span class="blank-field">: ................................</span></td>
+          </tr>
+          <tr>
+            <td>Peminta</td>
+            <td><span class="blank-field">: ................................</span></td>
+            <td>Prioritas</td>
+            <td><span class="blank-field">: ................................</span></td>
+          </tr>
+          <tr>
+            <td>Kebutuhan Untuk</td>
+            <td colspan="3"><span class="blank-field">: ........................................................</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title">Item Details</h2>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="col-no">No</th>
+          <th class="col-name">Nama Barang / Bahan</th>
+          <th class="col-spec">Spesifikasi</th>
+          <th class="col-qty">Jml</th>
+          <th class="col-unit">Satuan</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">01</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">02</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">03</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">04</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">05</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">06</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">07</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">08</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">09</td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="no">10</td><td></td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="section-title">Request Reason</h2>
+    <div class="reason-box"></div>
+
+    <div class="signatures">
+      <div class="signature">
+        <div class="signature-title">Dibuat Oleh
+(PIC)</div>
+        <div class="signature-name">(............................)</div>
+      </div>
+      <div class="signature">
+        <div class="signature-title">Diperiksa Oleh
+(Kepala Produksi)</div>
+        <div class="signature-name">(............................)</div>
+      </div>
+      <div class="signature">
+        <div class="signature-title">Disetujui Oleh
+(Inventori Kontrol)</div>
+        <div class="signature-name">(............................)</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

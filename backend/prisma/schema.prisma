@@ -549,6 +549,7 @@ model Barang {
   @@index([hasilProduksiHarianItemId], map: "Barang_hasilProduksiHarianItemId_fkey")
   @@index([finishGoodAt])
   @@index([status])
+  @@index([tanggal, variantId, status])
 }
 
 model RiwayatBarang {

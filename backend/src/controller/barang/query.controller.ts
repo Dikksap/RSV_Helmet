@@ -25,13 +25,13 @@ function toEndOfDay(d: Date): Date {
   return c;
 }
 
-function parseTanggalAwal(value: string): Date | null {
+export function parseTanggalAwal(value: string): Date | null {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return toStartOfDay(d);
 }
 
-function parseTanggalAkhir(value: string): Date | null {
+export function parseTanggalAkhir(value: string): Date | null {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return toEndOfDay(d);
